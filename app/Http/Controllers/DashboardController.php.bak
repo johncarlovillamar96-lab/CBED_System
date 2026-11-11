@@ -1,0 +1,4 @@
+<?php
+namespace App\\Http\\Controllers;
+use Illuminate\\Support\\Facades\\DB;
+class DashboardController extends Controller { public function index(){ $counts=[]; foreach(['farmers','cooperatives','carabaos','mating_records','calves','milk_records','health_records'] as $t)$counts[$t]=DB::table($t)->count(); return view('dashboard',compact('counts')); } }
