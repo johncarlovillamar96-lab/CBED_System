@@ -219,9 +219,8 @@
                 <i class="fa-solid fa-heart-pulse"></i><span>FHPR Breeding Summary</span>
             </a>
 
-            {{-- Change this URL if your actual route is /calf-drop --}}
             <a href="{{ url('/calves') }}"
-               class="cbed-nav-link {{ request()->is('calves*') ? 'active' : '' }}">
+               class="cbed-nav-link {{ request()->is('calves*', 'calf-drop*') ? 'active' : '' }}">
                 <i class="fa-solid fa-baby"></i>
                 <span>Calf Records</span>
             </a>
@@ -270,10 +269,10 @@
                 <span>Semen Bull Management</span>
             </a>
 
-            <a href="{{ url('/semen-used') }}"
-               class="cbed-nav-link {{ request()->is('semen-used*') ? 'active' : '' }}">
-                <i class="fa-solid fa-vials"></i>
-                <span>Semen Used</span>
+            <a href="{{ route('ui.monitoring') }}"
+               class="cbed-nav-link {{ request()->is('monitoring*') ? 'active' : '' }}">
+                <i class="fa-solid fa-notes-medical"></i>
+                <span>Monitoring</span>
             </a>
         </nav>
 
@@ -364,6 +363,8 @@
             </div>
         </footer>
     </div>
+
+    @include('partials.athena')
 
     {{-- PAGE SCRIPTS --}}
     @stack('scripts')

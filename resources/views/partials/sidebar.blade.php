@@ -89,9 +89,9 @@
                 Mating Records
             </a>
 
-            <a href="{{ url('/calf-drop') }}"
+            <a href="{{ url('/calves') }}"
                 class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition hover:bg-white/10
-                {{ request()->is('calf-drop') ? 'bg-white/10 text-white' : 'text-slate-300' }}">
+                {{ request()->is('calves*', 'calf-drop*') ? 'bg-white/10 text-white' : 'text-slate-300' }}">
                 <i class="fa-solid fa-baby w-5 text-center"></i>
                 Calf Drop
             </a>

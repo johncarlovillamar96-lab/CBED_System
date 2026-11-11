@@ -23,7 +23,6 @@
         'fhpr' => 'Manage and monitor farm health and production records.',
         'mtd' => 'Manage milk test day records and production information.',
         'exits' => 'Monitor animal exits, transfers, and disposal records.',
-        'semen-used' => 'Manage semen utilization and breeding records.',
         'meat' => 'Manage meat production and related records.',
         'manure' => 'Manage manure production and utilization records.',
     ];
@@ -203,7 +202,13 @@
                                     ? ($column['label'] ?? $columnKey)
                                     : $column;
 
-                                $columnLabel = ucwords(str_replace(['_', '-'], ' ', $columnLabel));
+                                $columnLabel = match ($columnKey) {
+                                    'registry_id' => 'Registry ID',
+                                    'cooperative_name' => 'Cooperative',
+                                    'farmer_name' => 'Farmer',
+                                    'monitoring_date' => 'Date',
+                                    default => ucwords(str_replace(['_', '-'], ' ', $columnLabel)),
+                                };
                             @endphp
                             <th class="th whitespace-nowrap">{{ $columnLabel }}</th>
                         @endforeach

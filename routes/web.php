@@ -3,6 +3,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AthenaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\CooperativeImportController;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 Route::get('/login', [AuthController::class, 'show'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::post('/athena/chat', [AthenaController::class, 'chat'])->middleware('throttle:10,1')->name('athena.chat');
 
 // Dashboard - temporary access without login
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
@@ -30,7 +32,8 @@ Route::view('/farmers', 'farmer')->name('ui.farmers');
 Route::view('/cooperatives', 'cooperative')->name('ui.cooperatives');
 Route::view('/carabaos', 'carabao')->name('ui.carabaos');
 Route::view('/mating', 'mating')->name('ui.mating');
-Route::view('/calf-drop', 'calf-drop')->name('ui.calf-drop');
+Route::view('/calves', 'calf-drop')->name('ui.calves');
+Route::redirect('/calf-drop', '/calves')->name('ui.calf-drop');
 Route::view('/health-nutrition', 'health-nutrition')->name('ui.health-nutrition');
 Route::view('/milk-production', 'milk-production')->name('ui.milk-production');
 Route::view('/mil-test', 'mil-test')->name('ui.mil-test');
@@ -39,12 +42,11 @@ Route::view('/mapping', 'mapping')->name('ui.mapping');
 Route::view('/admin/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
 Route::view('/admin/semen-bulls', 'semen-bull')->name('admin.semen-bulls');
 Route::get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
-Route::get('/calves', [ModuleController::class, 'index'])->defaults('module', 'calves')->name('ui.calves');
 Route::get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
 Route::get('/mtd', [ModuleController::class, 'index'])->defaults('module', 'mtd')->name('ui.mtd');
 Route::get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
+Route::get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
 Route::get('/exits', [ModuleController::class, 'index'])->defaults('module', 'exits')->name('ui.exits');
-Route::get('/semen-used', [ModuleController::class, 'index'])->defaults('module', 'semen-used')->name('ui.semen-used');
 Route::get('/meat', [ModuleController::class, 'index'])->defaults('module', 'meat')->name('ui.meat');
 Route::get('/manure', [ModuleController::class, 'index'])->defaults('module', 'manure')->name('ui.manure');
 
@@ -58,6 +60,77 @@ Route::get('/admin/carabao-inventory-api', fn () => DB::table('carabaos')
     ->leftJoin('fhpr_records as fhpr', 'fhpr.carabao_id', '=', 'carabaos.id')
     ->select('carabaos.*', 'fhpr.days_in_milk')
     ->orderByDesc('carabaos.id')->get());
+Route::post('/admin/calf-drop-api', function (Request $request) {
+    $data = $request->validate([
+        'calf_id' => ['nullable', 'string', 'max:255'],
+        'mother_id' => ['required', 'string', 'max:255'],
+        'date_of_birth' => ['required', 'date'],
+        'sex' => ['required', 'in:Male,Female'],
+        'animal_status' => ['nullable', 'in:Live,Out,Dead,Not Applicable'],
+        'breed' => ['nullable', 'string', 'max:255'],
+        'sire_id' => ['nullable', 'string', 'max:255'],
+        'birth_place' => ['nullable', 'string', 'max:255'],
+        'breeder' => ['nullable', 'string', 'max:255'],
+        'association_coop_institution' => ['nullable', 'string', 'max:255'],
+        'barangay' => ['nullable', 'string', 'max:255'],
+        'municipality' => ['nullable', 'string', 'max:255'],
+        'province' => ['nullable', 'string', 'max:255'],
+        'district' => ['nullable', 'string', 'max:255'],
+        'region' => ['nullable', 'string', 'max:255'],
+        'remarks' => ['nullable', 'string'],
+    ]);
+
+    $motherId = trim($data['mother_id']);
+    $mother = DB::table('carabaos')
+        ->where(function ($query) use ($motherId) {
+            if (ctype_digit($motherId)) {
+                $query->where('id', (int) $motherId);
+            }
+            $query->orWhere('animal_id', $motherId)
+                ->orWhere('registry_number', $motherId)
+                ->orWhere('bolus_id', $motherId)
+                ->orWhere('tag_number', $motherId);
+        })
+        ->first();
+
+    abort_if(! $mother, 422, 'Mother ID was not found in Carabao Inventory.');
+
+    $animalId = trim((string) ($data['calf_id'] ?? ''));
+    if ($animalId === '') {
+        $animalId = 'CALF-' . date('Y', strtotime($data['date_of_birth'])) . '-' . (string) \Illuminate\Support\Str::uuid();
+    }
+    abort_if(DB::table('carabaos')->where('animal_id', $animalId)->exists(), 422, 'Calf ID already exists in Carabao Inventory.');
+
+    $id = DB::table('carabaos')->insertGetId([
+        'animal_id' => $animalId,
+        'farmer_id' => $mother->farmer_id,
+        'cooperative_id' => $mother->cooperative_id,
+        'animal_name' => null,
+        'sex' => $data['sex'],
+        'breed' => $data['breed'] ?? $mother->breed,
+        'classification' => $data['sex'] === 'Male' ? 'Male Calf' : 'Female Calf',
+        'birth_date' => $data['date_of_birth'],
+        'status' => $data['animal_status'] ?? 'Live',
+        'sire_id' => $data['sire_id'] ?? null,
+        'dam_id' => $mother->animal_id,
+        'dam_name' => $mother->animal_name,
+        'birth_place' => $data['birth_place'] ?? null,
+        'breeder' => $data['breeder'] ?? null,
+        'association_coop_institution' => $data['association_coop_institution'] ?? null,
+        'barangay' => $data['barangay'] ?? $mother->barangay,
+        'municipality' => $data['municipality'] ?? $mother->municipality,
+        'province' => $data['province'] ?? $mother->province,
+        'district' => $data['district'] ?? $mother->district,
+        'region' => $data['region'] ?? $mother->region,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    return response()->json([
+        'message' => 'Calf added to Carabao Inventory.',
+        'animal' => DB::table('carabaos')->where('id', $id)->first(),
+    ], 201);
+})->name('admin.calf-drop.store');
 Route::patch('/admin/carabao-inventory-api/{id}/classification', function (\Illuminate\Http\Request $request, int $id) {
     $data = $request->validate(['classification' => ['nullable', 'string', 'max:255']]);
     $updated = DB::table('carabaos')->where('id', $id)->update([

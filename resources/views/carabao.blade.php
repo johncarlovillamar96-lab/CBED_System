@@ -1538,7 +1538,7 @@ document.addEventListener('alpine:init', () => {
             if (sex === 'Male') {
                 if (age < 1) return 'Male Calf';
                 if (age < 2) return 'Yearling Bull';
-                if (age < 3) return 'Junior Bull';
+                if (age < 4) return 'Junior Bull';
                 return 'Senior Bull';
             }
 
@@ -2212,4 +2212,3 @@ async importCSV(event) {
 });
 </script>
 @endpush
-

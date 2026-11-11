@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'athena' => [
+        'base_url' => env('ATHENA_BASE_URL'),
+        'api_key' => env('ATHENA_API_KEY'),
+        'model' => env('ATHENA_MODEL'),
+    ],
+
 ];

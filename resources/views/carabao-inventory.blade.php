@@ -124,8 +124,8 @@
             </div>
         </div>
         <div class="mt-5 border-t border-slate-100 pt-4">
-            <h3 class="text-sm font-bold text-slate-800">Age and sex estimates for animals with blank classification</h3>
-            <p class="mt-1 text-xs text-slate-500">Calculated from birthday: under 1, 1 to under 2, and 2 to under 3 years; bulls 3 years and older are Senior Bulls.</p>
+            <h3 class="text-sm font-bold text-slate-800">Classification summary by sex, age, mating, and milk production</h3>
+            <p class="mt-1 text-xs text-slate-500">Blank live-animal classifications are inferred from age, sex, calf records, pregnancy checks, FHPR days in milk, and milk records stored in this browser, then saved. Existing classifications are included in these counts.</p>
             <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                 <template x-for="item in ageSexSummary" :key="item.key">
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-3"><p class="text-xs text-slate-500" x-text="item.label"></p><p class="mt-1 text-2xl font-bold text-slate-800" x-text="item.count"></p></div>
@@ -136,7 +136,7 @@
 
     <section class="inventory-panel mb-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div class="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div><h2 class="text-lg font-bold text-slate-900">Calves Born by Year</h2><p class="mt-1 text-sm text-slate-500">Select a year to filter the inventory, or compare annual birth counts below.</p></div>
+            <div><h2 class="text-lg font-bold text-slate-900">Calves Born by Year</h2><p class="mt-1 text-sm text-slate-500">Counts include animals with a Dam ID and birth date. Select a year to filter the inventory, or compare annual birth counts below.</p></div>
             <div class="flex items-center gap-3"><label for="birth-year-filter" class="text-sm font-medium text-slate-600">Filter year</label><select id="birth-year-filter" x-model="birthYearFilter" @change="page=1" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="all">All years</option><template x-for="year in birthYears" :key="year"><option :value="String(year)" x-text="year"></option></template></select></div>
         </div>
         <p class="mb-3 text-sm text-slate-700">Unique animals born <strong x-text="birthYearFilter==='all'?'in all years':'in '+birthYearFilter"></strong>: <strong class="text-lg" x-text="selectedBirthCount"></strong></p>
@@ -620,6 +620,9 @@ function carabaoInventoryPage() {
     return {
         fields,
         records: [],
+        matingRecords: [],
+        milkProductionRecords: [],
+        classificationSignalsLoaded: false,
         cooperatives: [],
         farmers: [],
         apiConnected: false,
@@ -642,9 +645,19 @@ function carabaoInventoryPage() {
         toast: {show:false,message:'',type:'success'},
 
         async init() {
-            // Do not load demo data or browser-local records. MySQL/API is the source of truth.
+            // Inventory animals come from the API; browser storage is only used for milk signals.
             try { localStorage.removeItem('cbed_carabao_inventory_fields_v2'); } catch (e) {}
             await Promise.all([this.loadRecords(), this.loadTransferLookups()]);
+            if (!this.apiConnected) return;
+            try {
+                await this.loadMatingRecords();
+                this.loadMilkProductionRecords();
+                this.classificationSignalsLoaded=true;
+                await this.inferAndSaveMissingClassifications();
+            } catch (e) {
+                console.error('Could not infer blank animal classifications:', e);
+                this.notify(`Could not infer blank classifications: ${e.message}`, 'error');
+            }
         },
 
         get filteredRecords() {
@@ -660,7 +673,7 @@ function carabaoInventoryPage() {
                 const matchesSex=this.sexFilter==='all' || (this.sexFilter==='Female'?['f','female'].includes(sex):['m','male'].includes(sex));
                 const matchesProvince=this.provinceFilter==='all' || normalizeProvince(a.province)===this.provinceFilter;
                 const birthDate=a.birth_date||a.birthday||'';
-                const matchesBirthYear=this.birthYearFilter==='all'||String(birthDate).slice(0,4)===String(this.birthYearFilter);
+                const matchesBirthYear=this.birthYearFilter==='all'||(String(a.dam_id??'').trim()!==''&&String(birthDate).slice(0,4)===String(this.birthYearFilter));
                 return matchesSearch && matchesExit && matchesSex && matchesProvince && matchesBirthYear;
             });
         },
@@ -668,6 +681,7 @@ function carabaoInventoryPage() {
         get birthYearSummary() {
             const byYear=new Map();
             this.records.forEach(a=>{
+                if(!String(a.dam_id??'').trim()) return;
                 const date=a.birth_date||a.birthday||'';
                 const year=String(date).slice(0,4);
                 if(!/^\d{4}$/.test(year)) return;
@@ -721,38 +735,161 @@ function carabaoInventoryPage() {
         },
 
         get ageSexSummary() {
-            const counts={femaleCalf:0,yearlingHeifer:0,heifer:0,maleCalf:0,yearlingBull:0,juniorBull:0,seniorBull:0};
-            const now=new Date();
+            const counts={femaleCalf:0,yearlingHeifer:0,heifer:0,heiferPregnant:0,cowDry:0,cowDryPregnant:0,cowLactating:0,cowLactatingPregnant:0,maleCalf:0,yearlingBull:0,juniorBull:0,seniorBull:0};
+            const keys={
+                femalecalf:'femaleCalf',yearlingheifer:'yearlingHeifer',heifer:'heifer',heiferpregnant:'heiferPregnant',
+                cowdry:'cowDry',cowdrypregnant:'cowDryPregnant',cowlactating:'cowLactating',
+                cowlactatingpregnant:'cowLactatingPregnant',malecalf:'maleCalf',yearlingbull:'yearlingBull',
+                juniorbull:'juniorBull',seniorbull:'seniorBull'
+            };
             this.records.forEach(a=>{
-                if(String(a.status??'Live').trim().toLowerCase()!=='live'||String(a.classification??'').trim()) return;
-                const birthday=a.birth_date||a.birthday;
-                if(!birthday) return;
-                const dob=new Date(`${String(birthday).slice(0,10)}T00:00:00`);
-                if(Number.isNaN(dob.getTime())||dob>now) return;
-                let age=now.getFullYear()-dob.getFullYear();
-                const month=now.getMonth()-dob.getMonth();
-                if(month<0||(month===0&&now.getDate()<dob.getDate())) age--;
-                const sex=String(a.sex??'').trim().toLowerCase();
-                if(['f','female'].includes(sex)){
-                    if(age<1) counts.femaleCalf++;
-                    else if(age<2) counts.yearlingHeifer++;
-                    else if(age<3) counts.heifer++;
-                } else if(['m','male'].includes(sex)){
-                    if(age<1) counts.maleCalf++;
-                    else if(age<2) counts.yearlingBull++;
-                    else if(age<3) counts.juniorBull++;
-                    else counts.seniorBull++;
-                }
+                if(!this.isLiveAnimal(a)) return;
+                const classification=String(a.classification??'').trim()
+                    ||(this.classificationSignalsLoaded?this.inferredClassification(a):'');
+                const key=keys[String(classification).toLowerCase().replace(/[\s_-]+/g,'')];
+                if(key) counts[key]++;
             });
             return [
                 {key:'femaleCalf',label:'Female Calf',count:counts.femaleCalf},
                 {key:'yearlingHeifer',label:'Yearling Heifer',count:counts.yearlingHeifer},
                 {key:'heifer',label:'Heifer',count:counts.heifer},
+                {key:'heiferPregnant',label:'Heifer Pregnant',count:counts.heiferPregnant},
+                {key:'cowDry',label:'Cow Dry',count:counts.cowDry},
+                {key:'cowDryPregnant',label:'Cow Dry Pregnant',count:counts.cowDryPregnant},
+                {key:'cowLactating',label:'Cow Lactating',count:counts.cowLactating},
+                {key:'cowLactatingPregnant',label:'Cow Lactating Pregnant',count:counts.cowLactatingPregnant},
                 {key:'maleCalf',label:'Male Calf',count:counts.maleCalf},
                 {key:'yearlingBull',label:'Yearling Bull',count:counts.yearlingBull},
                 {key:'juniorBull',label:'Junior Bull',count:counts.juniorBull},
                 {key:'seniorBull',label:'Senior Bull',count:counts.seniorBull}
             ];
+        },
+
+        isLiveAnimal(animal) {
+            const status=String(animal.status??'').trim().toLowerCase();
+            return status ? status==='live' : !animal.nature_of_exit;
+        },
+
+        animalIdentifiers(animal) {
+            return new Set([
+                animal.id,animal.animal_id,animal.registry_number,animal.bolus_id,animal.tag_no,animal.tag_number
+            ].map(value=>String(value??'').trim().toLowerCase()).filter(Boolean));
+        },
+
+        animalAge(animal) {
+            const birthday=animal.birth_date||animal.birthday;
+            if(!birthday) return null;
+            const dob=new Date(`${String(birthday).slice(0,10)}T00:00:00`);
+            const today=new Date();
+            if(Number.isNaN(dob.getTime())||dob>today) return null;
+            let age=today.getFullYear()-dob.getFullYear();
+            const month=today.getMonth()-dob.getMonth();
+            if(month<0||(month===0&&today.getDate()<dob.getDate())) age--;
+            return age;
+        },
+
+        hasCalf(animal, identifiers=this.animalIdentifiers(animal)) {
+            return this.records.some(calf=>identifiers.has(String(calf.dam_id??'').trim().toLowerCase()));
+        },
+
+        hasMilkProduction(animal, identifiers=this.animalIdentifiers(animal)) {
+            if(Number(animal.days_in_milk)>0) return true;
+            return this.milkProductionRecords.some(record=>
+                identifiers.has(String(record.animal_id??'').trim().toLowerCase())
+                && Number(record.milk_volume)>0
+            );
+        },
+
+        hasPositivePregnancyCheck(animal, identifiers=this.animalIdentifiers(animal)) {
+            const checks=this.matingRecords.filter(record=>
+                (animal.id!=null&&record.carabao_id!=null&&String(record.carabao_id)===String(animal.id))
+                || identifiers.has(String(record.animal_id??'').trim().toLowerCase())
+            ).map(record=>{
+                const result=String(record.pd_result??record.pregnancy_result??'').trim().toLowerCase();
+                const status=['+','p','positive','pregnant','yes'].includes(result)?'positive'
+                    :['-','n','negative','not pregnant','non-pregnant','no'].includes(result)?'negative':'';
+                return {
+                    status,
+                    date:String(record.pd_date||record.pregnancy_check_date||record.breeding_date||record.mating_date||'').slice(0,10)
+                };
+            }).filter(record=>record.status);
+            checks.sort((a,b)=>b.date.localeCompare(a.date));
+            return checks[0]?.status==='positive';
+        },
+
+        inferredClassification(animal) {
+            const age=this.animalAge(animal);
+            if(age===null) return '';
+            const sex=String(animal.sex??'').trim().toLowerCase();
+            if(['m','male'].includes(sex)){
+                if(age<1) return 'Male Calf';
+                if(age<2) return 'Yearling Bull';
+                if(age<4) return 'Junior Bull';
+                return 'Senior Bull';
+            }
+            if(!['f','female'].includes(sex)) return '';
+
+            const identifiers=this.animalIdentifiers(animal);
+            const hasCalf=this.hasCalf(animal,identifiers);
+            const lactating=this.hasMilkProduction(animal,identifiers);
+            const pregnant=this.hasPositivePregnancyCheck(animal,identifiers);
+            if(lactating) return pregnant?'Cow Lactating Pregnant':'Cow Lactating';
+            if(hasCalf) return pregnant?'Cow Dry Pregnant':'Cow Dry';
+            if(pregnant) return 'Heifer Pregnant';
+            if(age<1) return 'Female Calf';
+            if(age<2) return 'Yearling Heifer';
+            return 'Heifer';
+        },
+
+        async loadMatingRecords() {
+            const response=await fetch('/admin/breeding-api/records',{headers:{Accept:'application/json'}});
+            if(!response.ok) throw new Error(await this.errorMessage(response));
+            const payload=await response.json();
+            const rows=Array.isArray(payload)?payload:(payload?.data??payload?.records??[]);
+            if(!Array.isArray(rows)) throw new Error('The mating API did not return a record list.');
+            this.matingRecords=rows;
+        },
+
+        loadMilkProductionRecords() {
+            const saved=localStorage.getItem('cbed_milk_production_records');
+            if(saved===null){
+                this.milkProductionRecords=[];
+                return;
+            }
+            const rows=JSON.parse(saved);
+            if(!Array.isArray(rows)) throw new Error('Saved milk production data is not a record list.');
+            this.milkProductionRecords=rows;
+        },
+
+        async inferAndSaveMissingClassifications() {
+            const candidates=this.records.filter(animal=>
+                this.isLiveAnimal(animal)&&!String(animal.classification??'').trim()
+            ).map(animal=>({animal,classification:this.inferredClassification(animal)}))
+                .filter(item=>item.classification);
+            if(!candidates.length) return;
+
+            const results=await Promise.all(candidates.map(async item=>{
+                try {
+                    const response=await fetch(`${apiUrl}/${encodeURIComponent(item.animal.id)}/classification`,{
+                        method:'PATCH',
+                        headers:this.requestHeaders(),
+                        body:JSON.stringify({classification:item.classification})
+                    });
+                    if(!response.ok) throw new Error(await this.errorMessage(response));
+                    return {...item,error:null};
+                } catch(error) {
+                    console.error(`Could not save inferred classification for animal ${item.animal.id}:`,error);
+                    return {...item,error};
+                }
+            }));
+            const saved=results.filter(item=>!item.error);
+            saved.forEach(item=>{item.animal.classification=item.classification;});
+            const failed=results.length-saved.length;
+            if(failed){
+                this.notify(`Saved ${saved.length} inferred classification(s); ${failed} could not be saved. Reload the page to retry.`, 'error');
+            } else {
+                this.notify(`Inferred and saved classifications for ${saved.length} animal(s).`);
+            }
         },
 
         get provinces() {
