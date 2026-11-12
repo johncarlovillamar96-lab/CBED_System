@@ -7,7 +7,7 @@ use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Carbon\Carbon;
 class ModuleController extends Controller {
- private array $map=['farmers'=>'farmers','cooperatives'=>'cooperatives','carabaos'=>'carabaos','mating'=>'mating_records','fhpr'=>'fhpr_records','calves'=>'calves','milk'=>'milk_records','mtd'=>'mtd_records','health'=>'health_records','nature-of-exit'=>'nature_of_exits','exits'=>'nature_of_exits','semen-bulls'=>'semen_bulls','semen-usage'=>'semen_usage','meat'=>'cooperative_product_records','manure'=>'cooperative_product_records'];
+ private array $map=['farmers'=>'farmers','cooperatives'=>'cooperatives','carabaos'=>'carabaos','mating'=>'mating_records','fhpr'=>'fhpr_records','calves'=>'calves','milk'=>'milk_records','mtd'=>'mtd_records','health'=>'health_records','bcs'=>'bcs_records','nature-of-exit'=>'nature_of_exits','exits'=>'nature_of_exits','semen-bulls'=>'semen_bulls','semen-usage'=>'semen_usage','meat'=>'cooperative_product_records','manure'=>'cooperative_product_records'];
  private function table($m){abort_unless(isset($this->map[$m]),404);return $this->map[$m];}
  public function monitoring(Request $request){
      $search=trim((string)$request->query('search',''));
@@ -29,8 +29,45 @@ class ModuleController extends Controller {
      ];
      return view('monitoring',compact('rows','counts','search'));
  }
+ public function natureOfExit(Request $request){
+     $search=trim((string)$request->query('search',''));
+     $hasFarmerName=Schema::hasColumn('nature_of_exits','farmer_name');
+     $query=DB::table('nature_of_exits as exit_record')
+         ->leftJoin('cooperatives as cooperative','cooperative.id','=','exit_record.cooperative_id')
+         ->leftJoin('carabaos as animal','animal.id','=','exit_record.carabao_id')
+         ->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')
+         ->select('exit_record.id','exit_record.exit_date','exit_record.nature_of_exit','exit_record.remarks')
+         ->selectRaw('cooperative.cooperative_name as cooperative_name')
+         ->selectRaw(($hasFarmerName
+             ? "COALESCE(NULLIF(exit_record.farmer_name, ''), NULLIF(CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), '')), ''))"
+             : "CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), ''))"
+         ).' as farmer_name')
+         ->selectRaw("COALESCE(NULLIF(exit_record.registry_number, ''), NULLIF(animal.registry_number, '')) as registry_number");
+     if($search!=='')$query->where(function($builder)use($search,$hasFarmerName){
+         $like='%'.$search.'%';
+         $builder->where('cooperative.cooperative_name','like',$like)
+             ->orWhereRaw("CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), '')) LIKE ?",[$like])
+             ->orWhere('exit_record.registry_number','like',$like)
+             ->orWhere('animal.registry_number','like',$like)
+             ->orWhere('exit_record.nature_of_exit','like',$like)
+             ->orWhere('exit_record.remarks','like',$like);
+         if($hasFarmerName)$builder->orWhere('exit_record.farmer_name','like',$like);
+     });
+     $rows=$query->orderByDesc('exit_record.exit_date')->orderByDesc('exit_record.id')->paginate(25)->withQueryString();
+     $rows->getCollection()->transform(function($row){
+         if(!empty($row->exit_date))$row->exit_date=Carbon::parse($row->exit_date)->format('F j, Y');
+         return $row;
+     });
+     $summaryCards=DB::table('nature_of_exits')
+         ->select('nature_of_exit as nature')
+         ->selectRaw('COUNT(*) as total')
+         ->groupBy('nature_of_exit')
+         ->orderByDesc('total')
+         ->get();
+     return view('nature-of-exit-records',compact('rows','search','summaryCards'));
+ }
  public function index(\Illuminate\Http\Request $request, $module){
-     $table=$this->table($module);$allColumns=Schema::getColumnListing($table);$columns=collect($allColumns)->reject(fn($column)=>in_array($column,['id','created_at','updated_at']))->values()->all();$search=trim((string)$request->query('search',$request->query('q','')));
+     $table=$this->table($module);$allColumns=Schema::getColumnListing($table);$columns=collect($allColumns)->reject(fn($column)=>in_array($column,['id','created_at','updated_at'])||($module==='bcs'&&$column==='source_data'))->values()->all();$search=trim((string)$request->query('search',$request->query('q','')));
      if($module==='health'){
          $healthColumns=array_values(array_diff($allColumns,['id','created_at','updated_at','remarks','carabao_id','registry_number','cooperative_id']));
          $columns=array_merge(
@@ -81,7 +118,8 @@ class ModuleController extends Controller {
      }else{
          $query=DB::table($table);if(in_array($module,['meat','manure'],true))$query->where('product_type',$module);if($search!=='')$query->where(function($builder)use($columns,$search){foreach($columns as $column)$builder->orWhere($column,'like','%'.$search.'%');});$rows=$query->orderByDesc('id')->paginate(25)->withQueryString();
      }
-     return view('modules.index',compact('module','table','rows','columns'));
+     $moduleTitle=$module==='bcs'?'Body Condition Score Records':null;
+     return view('modules.index',compact('module','table','rows','columns','moduleTitle'));
  }
 
  private function animalAge(?string $birthDate): string

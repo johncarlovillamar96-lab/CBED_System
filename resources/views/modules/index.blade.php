@@ -20,6 +20,7 @@
     $searchValue = request('search', '');
 
     $moduleDescriptions = [
+        'bcs' => 'Review dated body condition score measurements and their animal registry references.',
         'fhpr' => 'Manage and monitor farm health and production records.',
         'mtd' => 'Manage milk test day records and production information.',
         'exits' => 'Monitor animal exits, transfers, and disposal records.',

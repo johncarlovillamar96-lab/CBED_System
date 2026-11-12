@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\SpreadsheetWorksheetReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -48,31 +49,108 @@ class CooperativeImportController extends Controller
         }
         abort_unless(file_exists($path), 422, 'The uploaded workbook expired. Please upload it again.');
 
-        $records = $this->readInventory($path);
-        $result = DB::transaction(function () use ($records, $batch) {
-            $coopId = $batch['cooperative_id'];
+        $result = $this->importInventoryRecords($this->readInventory($path), (int) $batch['cooperative_id']);
+
+        @unlink($path);
+        $request->session()->forget('cooperative_import');
+
+        return redirect()->route('admin.carabao-inventory')->with('success', "Import complete: {$result['farmers']} new farmer(s), {$result['matched']} matched farmer(s), and {$result['animals']} animal row(s) added or updated.");
+    }
+
+    public function importInventorySheet(string $path, int $cooperativeId): array
+    {
+        return $this->importInventoryRecords($this->readInventory($path), $cooperativeId);
+    }
+
+    public function importInventoryWorksheet(
+        array $rows,
+        ?array $breedingRows,
+        int $cooperativeId,
+        ?callable $rowCooperativeResolver = null,
+        ?callable $unmappedRowHandler = null
+    ): array
+    {
+        $records = $this->parseInventoryRows($rows, $breedingRows);
+        if ($rowCooperativeResolver === null) {
+            return $this->importInventoryRecords($records, $cooperativeId);
+        }
+
+        $recordsByCooperative = [];
+        $unmappedRows = 0;
+        foreach ($records as $record) {
+            $resolution = $rowCooperativeResolver($record);
+            $rowCooperativeId = $resolution['cooperative_id'] ?? null;
+            if ($rowCooperativeId === null) {
+                if ($unmappedRowHandler !== null) {
+                    $unmappedRowHandler($record, $resolution['identifier_id'] ?? null);
+                }
+                $unmappedRows++;
+                continue;
+            }
+            $recordsByCooperative[$rowCooperativeId][] = $record;
+        }
+
+        $result = [
+            'farmers' => 0,
+            'animals' => 0,
+            'matched' => 0,
+            'rows' => count($records),
+            'unmapped' => $unmappedRows,
+            'inserted' => 0,
+            'updated' => 0,
+            'skipped' => $unmappedRows,
+        ];
+        foreach ($recordsByCooperative as $rowCooperativeId => $cooperativeRecords) {
+            $cooperativeResult = $this->importInventoryRecords($cooperativeRecords, (int) $rowCooperativeId);
+            foreach (['farmers', 'animals', 'matched', 'inserted', 'updated', 'skipped'] as $key) {
+                $result[$key] += $cooperativeResult[$key];
+            }
+        }
+
+        return $result;
+    }
+
+    private function importInventoryRecords(array $records, int $coopId): array
+    {
+        return DB::transaction(function () use ($records, $coopId) {
             $seq = (int) DB::table('farmers')->where('cooperative_id', $coopId)->max('cooperative_sequence');
             $farmers = 0;
             $animals = 0;
+            $animalsInserted = 0;
+            $animalsUpdated = 0;
+            $rowsSkipped = 0;
             $matched = 0;
+            $farmersByName = [];
+            foreach (DB::table('farmers')->where('cooperative_id', $coopId)->get() as $candidate) {
+                foreach ($this->farmerNameVariants($candidate) as $variant) {
+                    if ($variant !== '') {
+                        $farmersByName[$variant][] = $candidate;
+                    }
+                }
+            }
+
+            $registries = collect($records)
+                ->map(fn ($row) => $this->value($row, 'registry'))
+                ->filter()
+                ->unique()
+                ->values();
+            $animalsByRegistry = DB::table('carabaos')
+                ->whereIn('registry_number', $registries)
+                ->get()
+                ->groupBy('registry_number');
 
             foreach ($records as $row) {
                 $name = trim((string) ($row['farmer'] ?? ''));
                 $animalName = trim((string) ($row['animal'] ?? ''));
-                if ($name === '' && $animalName === '') continue;
+                if ($name === '' && $animalName === '') {
+                    $rowsSkipped++;
+                    continue;
+                }
 
                 $farmer = null;
                 if ($name !== '') {
                     $key = $this->normalize($name);
-                    $matches = DB::table('farmers')->where('cooperative_id', $coopId)->get()->filter(function ($candidate) use ($key) {
-                        $given = trim($candidate->first_name.' '.$candidate->middle_name);
-                        $variants = [
-                            $this->normalize(trim($given.' '.$candidate->last_name)),
-                            $this->normalize(trim($candidate->last_name.' '.$given)),
-                            $this->normalize($candidate->last_name),
-                        ];
-                        return in_array($key, $variants, true);
-                    });
+                    $matches = collect($farmersByName[$key] ?? [])->unique('id')->values();
                     abort_if($matches->count() > 1, 422, "More than one existing farmer in this cooperative matches '{$name}'. Resolve the duplicate farmer records before importing.");
                     $farmer = $matches->first();
                     if (! $farmer) {
@@ -86,6 +164,11 @@ class CooperativeImportController extends Controller
                             'created_at' => now(), 'updated_at' => now(),
                         ]);
                         $farmer = DB::table('farmers')->find($farmerId);
+                        foreach ($this->farmerNameVariants($farmer) as $variant) {
+                            if ($variant !== '') {
+                                $farmersByName[$variant][] = $farmer;
+                            }
+                        }
                         $farmers++;
                     } else {
                         $matched++;
@@ -95,11 +178,15 @@ class CooperativeImportController extends Controller
                 $registry = $this->value($row, 'registry');
                 $tag = $this->value($row, 'tag');
                 $bolus = $this->value($row, 'bolus');
-                if ($animalName === '' && ! $registry && ! $tag && ! $bolus) continue;
+                if ($animalName === '' && ! $registry && ! $tag && ! $bolus) {
+                    $rowsSkipped++;
+                    continue;
+                }
                 $status = $this->status($row);
                 $existing = null;
                 if ($registry) {
-                    $inCooperative = DB::table('carabaos')->where('registry_number', $registry)->where('cooperative_id', $coopId)->get();
+                    $registryAnimals = $animalsByRegistry->get($registry, collect());
+                    $inCooperative = $registryAnimals->where('cooperative_id', $coopId)->values();
                     $existing = $inCooperative->first(fn ($animal) => $animal->farmer_id === $farmer?->id && $animal->status === $status);
                     if (! $existing && $inCooperative->isNotEmpty()) {
                         $hasClosedEpisode = $inCooperative->contains(fn ($animal) => in_array(mb_strtolower($animal->status), ['out', 'dead'], true));
@@ -111,15 +198,10 @@ class CooperativeImportController extends Controller
                             $existing = $inCooperative->first(fn ($animal) => mb_strtolower($animal->status) === 'live');
                         }
                     }
-                    if (! $existing && $inCooperative->isEmpty()) {
-                        $global = DB::table('carabaos')->where('registry_number', $registry)->get();
-                        if ($global->isNotEmpty()) {
-                            $hasClosedEpisode = $global->contains(fn ($animal) => in_array(mb_strtolower($animal->status), ['out', 'dead'], true));
-                            if (in_array(mb_strtolower($status), ['out', 'dead'], true) || $hasClosedEpisode) {
-                                $existing = null;
-                            } else {
-                                $existing = $global->first(fn ($animal) => mb_strtolower($animal->status) === 'live');
-                            }
+                    if (! $existing && $inCooperative->isEmpty() && $registryAnimals->isNotEmpty()) {
+                        $hasClosedEpisode = $registryAnimals->contains(fn ($animal) => in_array(mb_strtolower($animal->status), ['out', 'dead'], true));
+                        if (! in_array(mb_strtolower($status), ['out', 'dead'], true) && ! $hasClosedEpisode) {
+                            $existing = $registryAnimals->first(fn ($animal) => mb_strtolower($animal->status) === 'live');
                         }
                     }
                 } else {
@@ -162,54 +244,96 @@ class CooperativeImportController extends Controller
                     'updated_at' => now(),
                 ];
                 if ($existing) {
-                    DB::table('carabaos')->where('id', $existing->id)->update(array_filter($animalData, fn ($v) => $v !== null && $v !== ''));
+                    $updates = array_filter($animalData, fn ($v) => $v !== null && $v !== '');
+                    DB::table('carabaos')->where('id', $existing->id)->update($updates);
+                    foreach ($updates as $column => $value) {
+                        $existing->{$column} = $value;
+                    }
+                    $animalsUpdated++;
                 } else {
                     $baseAnimalId = $registry ?: ($tag ?: ($bolus ?: 'CB-'.$coopId.'-'.str()->uuid()));
                     $animalData['animal_id'] = DB::table('carabaos')->where('animal_id', $baseAnimalId)->exists()
                         ? 'CB-'.$coopId.'-'.$baseAnimalId.'-F'.($farmer?->id ?? '0').'-'.strtoupper(substr($status, 0, 1))
                         : $baseAnimalId;
                     $animalData['created_at'] = now();
-                    DB::table('carabaos')->insert($animalData);
+                    $animalId = DB::table('carabaos')->insertGetId($animalData);
+                    if ($registry) {
+                        $animalData['id'] = $animalId;
+                        $animalsByRegistry->put(
+                            $registry,
+                            $animalsByRegistry->get($registry, collect())->push((object) $animalData)
+                        );
+                    }
+                    $animalsInserted++;
                 }
                 $animals++;
             }
-            return compact('farmers', 'animals', 'matched');
+            return [
+                'farmers' => $farmers,
+                'animals' => $animals,
+                'matched' => $matched,
+                'rows' => count($records),
+                'inserted' => $animalsInserted,
+                'updated' => $animalsUpdated,
+                'skipped' => $rowsSkipped,
+            ];
         });
+    }
 
-        @unlink($path);
-        $request->session()->forget('cooperative_import');
+    private function farmerNameVariants(object $farmer): array
+    {
+        $given = trim(($farmer->first_name ?? '').' '.($farmer->middle_name ?? ''));
 
-        return redirect()->route('admin.carabao-inventory')->with('success', "Import complete: {$result['farmers']} new farmer(s), {$result['matched']} matched farmer(s), and {$result['animals']} animal row(s) added or updated.");
+        return array_unique([
+            $this->normalize(trim($given.' '.($farmer->last_name ?? ''))),
+            $this->normalize(trim(($farmer->last_name ?? '').' '.$given)),
+            $this->normalize($farmer->last_name ?? ''),
+        ]);
     }
 
     private function readInventory(string $path): array
     {
-        $book = null;
-        $breedingRows = null;
-        if (in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['xlsx', 'xlsm'], true)) {
-            $rows = $this->readOpenXmlSheet($path, 'BD_ALL');
-            $breedingRows = $this->readOpenXmlSheet($path, 'FHPR_Breeding');
-            abort_if(! count($rows), 422, 'Could not find the BD_ALL inventory sheet in this workbook.');
-        } else {
-            $book = IOFactory::load($path);
-            $sheet = $book->getSheetByName('BD_ALL') ?: $book->getActiveSheet();
-            $rows = $sheet->toArray(null, true, true, false);
-            $breeding = $book->getSheetByName('FHPR_Breeding');
-            $breedingRows = $breeding?->toArray(null, true, true, false);
-        }
+        $book = IOFactory::load($path);
+        $findSheet = function (string $expected) use ($book) {
+            $expectedName = preg_replace('/[^a-z0-9]/i', '', $expected);
+            foreach ($book->getWorksheetIterator() as $worksheet) {
+                if (strcasecmp(preg_replace('/[^a-z0-9]/i', '', $worksheet->getTitle()), $expectedName) === 0) {
+                    return $worksheet;
+                }
+            }
+
+            return null;
+        };
+        $sheet = $findSheet('BD_ALL');
+        abort_if(! $sheet, 422, 'Could not find the BD_ALL inventory sheet in this workbook.');
+        $rows = SpreadsheetWorksheetReader::rows($sheet);
+        $breeding = $findSheet('FHPR_Breeding');
+        $breedingRows = $breeding ? SpreadsheetWorksheetReader::rows($breeding) : null;
+        $out = $this->parseInventoryRows($rows, $breedingRows);
+        $book->disconnectWorksheets();
+        return $out;
+    }
+
+    private function parseInventoryRows(array $rows, ?array $breedingRows): array
+    {
         $headerRow = null;
-        foreach (array_slice($rows, 0, 10, true) as $index => $values) {
-            $joined = strtolower(implode('|', array_map('strval', $values)));
-            if (str_contains($joined, 'farmer/recipient') && str_contains($joined, 'name of animal')) { $headerRow = $index; break; }
+        $normalizeHeader = fn ($value) => preg_replace('/[^a-z0-9]/i', '', strtolower(trim((string) $value)));
+        foreach (array_slice($rows, 0, 30, true) as $index => $values) {
+            $normalizedHeaders = array_map($normalizeHeader, $values);
+            if (in_array('farmerrecipient', $normalizedHeaders, true) && in_array('nameofanimal', $normalizedHeaders, true)) {
+                $headerRow = $index;
+                break;
+            }
         }
         if ($headerRow === null) abort(422, 'Could not find the BD_ALL inventory headers (Farmer/Recipient and Name of Animal).');
-        $headers = array_map(fn ($v) => strtolower(trim((string) $v)), $rows[$headerRow]);
+        $headers = array_map($normalizeHeader, $rows[$headerRow]);
         $out = [];
-        foreach (array_slice($rows, $headerRow + 1) as $values) {
+        foreach (array_slice($rows, $headerRow + 1, null, true) as $rowIndex => $values) {
             $width = max(count($headers), count($values));
             $r = array_combine(array_pad(array_slice($headers, 0, $width), $width, ''), array_pad(array_slice($values, 0, $width), $width, null));
-            $get = fn (array $names) => collect($names)->map(fn ($n) => $r[$n] ?? null)->first(fn ($v) => $v !== null && $v !== '');
+            $get = fn (array $names) => collect($names)->map(fn ($n) => $r[$normalizeHeader($n)] ?? null)->first(fn ($v) => $v !== null && $v !== '');
             $out[] = [
+                'source_row' => (int) $rowIndex + 1,
                 'herd_code' => $get(['herd code']),
                 'farmer' => $get(['farmer/recipient']), 'animal' => $get(['name of animal']),
                 'registry' => $get(['registry no.', 'registry no', 'registry number']), 'tag' => $get(['tag no.', 'tag no', 'tag no.']),
@@ -263,90 +387,7 @@ class CooperativeImportController extends Controller
                 unset($record);
             }
         }
-        $book?->disconnectWorksheets();
         return $out;
-    }
-
-    private function readOpenXmlSheet(string $path, string $sheetName): array
-    {
-        $zip = new \ZipArchive();
-        abort_if($zip->open($path) !== true, 422, 'Could not open the Excel workbook.');
-
-        $mainNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
-        $relNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-        $packageNs = 'http://schemas.openxmlformats.org/package/2006/relationships';
-        $workbook = new \DOMDocument();
-        $workbook->loadXML($zip->getFromName('xl/workbook.xml'), LIBXML_NONET | LIBXML_COMPACT);
-        $workbookXpath = new \DOMXPath($workbook);
-        $workbookXpath->registerNamespace('m', $mainNs);
-        $workbookXpath->registerNamespace('r', $relNs);
-        $rels = new \DOMDocument();
-        $rels->loadXML($zip->getFromName('xl/_rels/workbook.xml.rels'), LIBXML_NONET | LIBXML_COMPACT);
-        $relsXpath = new \DOMXPath($rels);
-        $relsXpath->registerNamespace('p', $packageNs);
-
-        $targets = [];
-        foreach ($relsXpath->query('/p:Relationships/p:Relationship') as $relationship) {
-            $targets[$relationship->getAttribute('Id')] = $relationship->getAttribute('Target');
-        }
-
-        $sheetPath = null;
-        foreach ($workbookXpath->query('/m:workbook/m:sheets/m:sheet') as $sheetNode) {
-            if ($sheetNode->getAttribute('name') === $sheetName) {
-                $target = $targets[$sheetNode->getAttributeNS($relNs, 'id')] ?? null;
-                if ($target) $sheetPath = str_starts_with($target, '/') ? ltrim($target, '/') : 'xl/'.$target;
-                break;
-            }
-        }
-        if (! $sheetPath || $zip->getFromName($sheetPath) === false) {
-            $zip->close();
-            return [];
-        }
-
-        $sharedStrings = [];
-        $sharedXml = $zip->getFromName('xl/sharedStrings.xml');
-        if ($sharedXml !== false) {
-            $sharedDoc = new \DOMDocument();
-            $sharedDoc->loadXML($sharedXml, LIBXML_NONET | LIBXML_COMPACT);
-            $sharedXpath = new \DOMXPath($sharedDoc);
-            $sharedXpath->registerNamespace('m', $mainNs);
-            foreach ($sharedXpath->query('/m:sst/m:si') as $item) $sharedStrings[] = $item->textContent;
-        }
-
-        $sheetDoc = new \DOMDocument();
-        $sheetDoc->loadXML($zip->getFromName($sheetPath), LIBXML_NONET | LIBXML_COMPACT);
-        $sheetXpath = new \DOMXPath($sheetDoc);
-        $sheetXpath->registerNamespace('m', $mainNs);
-        $rows = [];
-        $maxColumn = 0;
-        foreach ($sheetXpath->query('/m:worksheet/m:sheetData/m:row') as $rowNode) {
-            $rowIndex = max(0, (int) $rowNode->getAttribute('r') - 1);
-            $cells = [];
-            foreach ($sheetXpath->query('m:c', $rowNode) as $cell) {
-                if (! preg_match('/^([A-Z]+)\d+$/', $cell->getAttribute('r'), $match)) continue;
-                $columnIndex = 0;
-                foreach (str_split($match[1]) as $letter) $columnIndex = $columnIndex * 26 + ord($letter) - 64;
-                $columnIndex--;
-                $maxColumn = max($maxColumn, $columnIndex);
-                $type = $cell->getAttribute('t');
-                $valueNode = $sheetXpath->query('m:v', $cell)->item(0);
-                $value = $valueNode?->textContent ?? '';
-                if ($type === 's') $value = $sharedStrings[(int) $value] ?? '';
-                elseif ($type === 'inlineStr') $value = $sheetXpath->query('m:is', $cell)->item(0)?->textContent ?? '';
-                $cells[$columnIndex] = $value;
-            }
-            $rows[$rowIndex] = $cells;
-        }
-        $zip->close();
-
-        if (! count($rows)) return [];
-        ksort($rows);
-        $lastRow = max(array_keys($rows));
-        $output = [];
-        for ($rowIndex = 0; $rowIndex <= $lastRow; $rowIndex++) {
-            $output[] = array_replace(array_fill(0, $maxColumn + 1, ''), $rows[$rowIndex] ?? []);
-        }
-        return $output;
     }
 
     private function normalize(mixed $name): string

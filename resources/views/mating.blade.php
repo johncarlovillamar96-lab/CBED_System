@@ -1,8 +1,7 @@
 ﻿{{-- resources/views/breeding.blade.php --}}
 @extends('layouts.admin')
 
-@section('title', 'Mating Management | CBED')
-@section('page-heading', 'Mating Management')
+
 
 @section('content')
 <div x-data="breedingPage()" x-init="init()" x-cloak class="mating-dashboard min-w-0 bg-slate-50 text-slate-800">

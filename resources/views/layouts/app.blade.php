@@ -53,6 +53,7 @@
                     'calves' => 'Calf Records',
                     'milk' => 'Milk / MTD',
                     'health' => 'Health & Nutrition',
+                    'bcs' => 'Body Condition Score',
                     'nature-of-exit' => 'Nature of Exit',
                     'semen-bulls' => 'Semen Bulls',
                     'semen-usage' => 'Semen Used'
@@ -105,7 +106,7 @@
         </div>
     </div>
 
-    @include('partials.athena')
+    {{-- Athena temporarily disabled for local development --}}
 
 </body>
 </html>

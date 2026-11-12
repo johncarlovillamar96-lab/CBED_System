@@ -47,7 +47,7 @@
         }
 
         html {
-            font-size: 90%;
+            font-size: 70%;
             scroll-behavior: smooth;
         }
 
@@ -201,6 +201,12 @@
                 <span>Cooperatives</span>
             </a>
 
+            <a href="{{ route('imports.cooperative-workbook.create') }}"
+               class="cbed-nav-link {{ request()->is('imports/cooperative-workbook*') ? 'active' : '' }}">
+                <i class="fa-solid fa-file-import"></i>
+                <span>Import Cooperative Excel</span>
+            </a>
+
             <p class="cbed-section-label mt-5">Animal Management</p>
 
             <a href="{{ route('admin.carabao-inventory') }}"
@@ -229,6 +235,12 @@
                class="cbed-nav-link {{ request()->is('health*') ? 'active' : '' }}">
                 <i class="fa-solid fa-heart-pulse"></i>
                 <span>Health &amp; Nutrition</span>
+            </a>
+
+            <a href="{{ route('ui.bcs') }}"
+               class="cbed-nav-link {{ request()->is('bcs*') ? 'active' : '' }}">
+                <i class="fa-solid fa-scale-balanced"></i>
+                <span>Body Condition Score • BCS</span>
             </a>
 
             <a href="{{ url('/milk') }}"
@@ -298,43 +310,6 @@
     {{-- MAIN APPLICATION --}}
     <div class="cbed-main flex min-h-screen flex-col">
 
-        {{-- TOP NAVIGATION --}}
-        <header class="sticky top-0 z-30 flex h-[4.5rem] shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4 backdrop-blur sm:px-6 lg:px-8">
-
-            <div class="flex min-w-0 items-center gap-3">
-                <button
-                    type="button"
-                    @click="sidebarOpen = !sidebarOpen"
-                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 lg:hidden"
-                    aria-label="Toggle navigation"
-                    aria-controls="cbed-sidebar"
-                    :aria-expanded="sidebarOpen.toString()">
-                    <i class="fa-solid fa-bars"></i>
-                </button>
-
-                <div class="min-w-0">
-                    <h2 class="truncate text-base font-bold text-slate-800">
-                        @yield('page-heading', 'Dashboard')
-                    </h2>
-
-                    <p class="hidden truncate text-xs text-slate-500 sm:block">
-                        Carabao-Based Enterprise Development
-                    </p>
-                </div>
-            </div>
-
-            <div class="flex shrink-0 items-center gap-3">
-                <div class="hidden text-right sm:block">
-                    <p class="text-xs font-semibold text-slate-700">Administrator</p>
-                    <p class="mt-1 text-[.68rem] text-slate-400">CBED Management</p>
-                </div>
-
-                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-                    <i class="fa-solid fa-user"></i>
-                </div>
-            </div>
-        </header>
-
         {{-- PAGE CONTENT --}}
         <main class="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
 
@@ -364,7 +339,7 @@
         </footer>
     </div>
 
-    @include('partials.athena')
+    {{-- Athena temporarily disabled for local development --}}
 
     {{-- PAGE SCRIPTS --}}
     @stack('scripts')

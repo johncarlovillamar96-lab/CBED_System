@@ -36,6 +36,9 @@
             <a href="{{ route('imports.cooperative.create') }}" class="action-secondary">
                 <i class="fa-solid fa-file-import"></i> Import Workbook by Cooperative
             </a>
+            <a href="{{ route('imports.cooperative-workbook.create') }}" class="action-secondary">
+                <i class="fa-solid fa-file-excel"></i> Import All Workbook Tabs
+            </a>
             <button type="button" @click="openBulk()" class="action-secondary">
                 <i class="fa-solid fa-layer-group"></i> Bulk Add
             </button>

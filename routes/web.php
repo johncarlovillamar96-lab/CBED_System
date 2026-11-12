@@ -7,6 +7,7 @@ use App\Http\Controllers\AthenaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\CooperativeImportController;
+use App\Http\Controllers\CooperativeWorkbookImportController;
 use App\Http\Controllers\CooperativeSpreadsheetController;
 use App\Http\Controllers\FarmerSpreadsheetController;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,28 @@ Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard
 Route::get('/imports/cooperative', [CooperativeImportController::class, 'create'])->name('imports.cooperative.create');
 Route::post('/imports/cooperative/preview', [CooperativeImportController::class, 'preview'])->name('imports.cooperative.preview');
 Route::post('/imports/cooperative/commit', [CooperativeImportController::class, 'import'])->name('imports.cooperative.import');
+Route::get('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'create'])->name('imports.cooperative-workbook.create');
+Route::post('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'import'])->name('imports.cooperative-workbook.import');
+Route::post('/imports/cooperative-workbook/batches', [CooperativeWorkbookImportController::class, 'createBatch'])->name('imports.cooperative-workbook.batches.create');
+Route::post('/imports/cooperative-workbook/batches/{batchId}/files', [CooperativeWorkbookImportController::class, 'stageBatchFile'])
+    ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.files.stage');
+Route::post('/imports/cooperative-workbook/batches/{batchId}/confirm', [CooperativeWorkbookImportController::class, 'confirmBatch'])
+    ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.confirm');
+Route::post('/imports/cooperative-workbook/unmapped/{identifierId}/map', [CooperativeWorkbookImportController::class, 'mapUnmappedIdentifier'])
+    ->whereNumber('identifierId')->name('imports.cooperative-workbook.unmapped.map');
+Route::post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/import', [CooperativeWorkbookImportController::class, 'importBatchFile'])
+    ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.import');
+Route::post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/retry', [CooperativeWorkbookImportController::class, 'retryBatchFile'])
+    ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.retry');
+Route::delete('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}', [CooperativeWorkbookImportController::class, 'removeBatchFile'])
+    ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.remove');
+Route::delete('/imports/cooperative-workbook/batches/{batchId}', [CooperativeWorkbookImportController::class, 'cancelBatch'])
+    ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.cancel');
+Route::post('/imports/cooperative-workbook/{cooperativeId}/{sheetKey}', [CooperativeWorkbookImportController::class, 'importSheet'])
+    ->whereNumber('cooperativeId')
+    ->name('imports.cooperative-workbook.import-sheet');
+Route::delete('/imports/cooperative-workbook/history', [CooperativeWorkbookImportController::class, 'clearHistory'])
+    ->name('imports.cooperative-workbook.clear-history');
 Route::get('/admin/cooperatives/export', [CooperativeSpreadsheetController::class, 'export'])->name('admin.cooperatives.export');
 Route::post('/admin/cooperatives/import', [CooperativeSpreadsheetController::class, 'import'])->name('admin.cooperatives.import');
 
@@ -37,16 +60,17 @@ Route::redirect('/calf-drop', '/calves')->name('ui.calf-drop');
 Route::view('/health-nutrition', 'health-nutrition')->name('ui.health-nutrition');
 Route::view('/milk-production', 'milk-production')->name('ui.milk-production');
 Route::view('/mil-test', 'mil-test')->name('ui.mil-test');
-Route::view('/nature-of-exit', 'nature-of-exit')->name('ui.nature-of-exit');
+Route::get('/nature-of-exit', [ModuleController::class, 'natureOfExit'])->name('ui.nature-of-exit');
 Route::view('/mapping', 'mapping')->name('ui.mapping');
 Route::view('/admin/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
 Route::view('/admin/semen-bulls', 'semen-bull')->name('admin.semen-bulls');
 Route::get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
+Route::get('/bcs', [ModuleController::class, 'index'])->defaults('module', 'bcs')->name('ui.bcs');
 Route::get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
 Route::get('/mtd', [ModuleController::class, 'index'])->defaults('module', 'mtd')->name('ui.mtd');
 Route::get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
 Route::get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
-Route::get('/exits', [ModuleController::class, 'index'])->defaults('module', 'exits')->name('ui.exits');
+Route::get('/exits', [ModuleController::class, 'natureOfExit'])->name('ui.exits');
 Route::get('/meat', [ModuleController::class, 'index'])->defaults('module', 'meat')->name('ui.meat');
 Route::get('/manure', [ModuleController::class, 'index'])->defaults('module', 'manure')->name('ui.manure');
 
