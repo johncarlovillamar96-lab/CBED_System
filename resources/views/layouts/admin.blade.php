@@ -201,34 +201,28 @@
                 <span>Cooperatives</span>
             </a>
 
-            <a href="{{ route('imports.cooperative-workbook.create') }}"
-               class="cbed-nav-link {{ request()->is('imports/cooperative-workbook*') ? 'active' : '' }}">
-                <i class="fa-solid fa-file-import"></i>
-                <span>Import Cooperative Excel</span>
-            </a>
-
             <p class="cbed-section-label mt-5">Animal Management</p>
 
             <a href="{{ route('admin.carabao-inventory') }}"
                class="cbed-nav-link {{ request()->is('admin/carabao-inventory*') ? 'active' : '' }}">
                 <i class="fa-solid fa-cow"></i>
-                <span>Carabao Inventory • BD_ALL</span>
+                <span>Carabao Inventory</span>
             </a>
 
             <a href="{{ url('/mating') }}"
                class="cbed-nav-link {{ request()->is('mating*') ? 'active' : '' }}">
                 <i class="fa-solid fa-dna"></i>
-                <span>Mating Attempts</span>
+                <span>Mating</span>
             </a>
 
             <a href="{{ url('/fhpr') }}" class="cbed-nav-link {{ request()->is('fhpr*') ? 'active' : '' }}">
-                <i class="fa-solid fa-heart-pulse"></i><span>FHPR Breeding Summary</span>
+                <i class="fa-solid fa-heart-pulse"></i><span>Breeding Summary (FHPR)</span>
             </a>
 
             <a href="{{ url('/calves') }}"
                class="cbed-nav-link {{ request()->is('calves*', 'calf-drop*') ? 'active' : '' }}">
                 <i class="fa-solid fa-baby"></i>
-                <span>Calf Records</span>
+                <span>Calf Drop</span>
             </a>
 
             <a href="{{ url('/health') }}"
@@ -240,7 +234,7 @@
             <a href="{{ route('ui.bcs') }}"
                class="cbed-nav-link {{ request()->is('bcs*') ? 'active' : '' }}">
                 <i class="fa-solid fa-scale-balanced"></i>
-                <span>Body Condition Score • BCS</span>
+                <span>Body Condition Score (BCS)</span>
             </a>
 
             <a href="{{ url('/milk') }}"
@@ -264,27 +258,33 @@
             <a href="{{ url('/mtd') }}"
                class="cbed-nav-link {{ request()->is('mtd*') ? 'active' : '' }}">
                 <i class="fa-solid fa-flask"></i>
-                <span>Milk Test Day • MTD</span>
+                <span>Milk Test Day (MTD)</span>
             </a>
-
-            <p class="cbed-section-label mt-5">System</p>
 
             <a href="{{ url('/exits') }}"
                class="cbed-nav-link {{ request()->is('exits*') ? 'active' : '' }}">
                 <i class="fa-solid fa-right-from-bracket"></i>
-                <span>Nature of Exit • BD_Out</span>
+                <span>Nature of Exit</span>
             </a>
 
             <a href="{{ url('/admin/semen-bulls') }}"
                 class="cbed-nav-link {{ request()->is('admin/semen-bulls*') ? 'active' : '' }}">
                 <i class="fa-solid fa-vials"></i>
-                <span>Semen Bull Management</span>
+                <span>Semen Bull</span>
             </a>
+
+            <p class="cbed-section-label mt-5">System</p>
 
             <a href="{{ route('ui.monitoring') }}"
                class="cbed-nav-link {{ request()->is('monitoring*') ? 'active' : '' }}">
                 <i class="fa-solid fa-notes-medical"></i>
                 <span>Monitoring</span>
+            </a>
+
+            <a href="{{ route('imports.cooperative-workbook.create') }}"
+               class="cbed-nav-link {{ request()->is('imports/cooperative-workbook*') ? 'active' : '' }}">
+                <i class="fa-solid fa-file-import"></i>
+                <span>Import Cooperative Excel</span>
             </a>
         </nav>
 

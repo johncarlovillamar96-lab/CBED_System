@@ -96,9 +96,9 @@
                 Calf Drop
             </a>
 
-            <a href="{{ url('/health-nutrition') }}"
+            <a href="{{ url('/health') }}"
                 class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition hover:bg-white/10
-                {{ request()->is('health-nutrition') ? 'bg-white/10 text-white' : 'text-slate-300' }}">
+                {{ request()->is('health', 'health-nutrition') ? 'bg-white/10 text-white' : 'text-slate-300' }}">
                 <i class="fa-solid fa-heart-pulse w-5 text-center"></i>
                 Health & Nutrition
             </a>

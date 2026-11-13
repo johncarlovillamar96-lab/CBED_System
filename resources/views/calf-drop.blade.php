@@ -24,8 +24,8 @@
         <div class="flex items-start gap-3">
             <i class="fa-solid mt-0.5" :class="inventoryLoaded ? 'fa-circle-check' : (inventoryLoading ? 'fa-spinner fa-spin' : 'fa-circle-info')"></i>
             <div>
-                <p class="font-semibold" x-text="inventoryLoaded ? 'Calves loaded from Carabao Inventory' : (inventoryLoading ? 'Loading calves from Carabao Inventory...' : 'Carabao Inventory not connected')"></p>
-                <p class="mt-1" x-text="inventoryLoaded ? (inventoryCalves.length + ' animal(s) with a Dam ID are listed here automatically. Live births added here are saved to Carabao Inventory; stillbirth and abortion records are stored in this browser.') : (inventoryError || 'Check /admin/carabao-inventory-api. Only records added on this page are shown.')"></p>
+                <p class="font-semibold" x-text="inventoryLoaded ? 'Calf records loaded from MySQL' : (inventoryLoading ? 'Loading calf records from MySQL...' : 'Calf database not connected')"></p>
+                <p class="mt-1" x-text="inventoryLoaded ? (inventoryCalves.length + ' calf record(s) from Calf Drop and Carabao Inventory are listed here automatically.') : (inventoryError || 'Check /admin/carabao-inventory-api and /admin/calf-drop-api.')"></p>
             </div>
         </div>
         <button type="button" @click="loadInventoryCalves()" :disabled="inventoryLoading" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><i class="fa-solid fa-rotate"></i> Refresh</button>
@@ -179,10 +179,12 @@ function calfDropPage() {
             const readList = async url => { const res = await fetch(url, {headers:{Accept:'application/json'}}); if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`); const p = await res.json(); const list = Array.isArray(p) ? p : (p?.data ?? p?.records ?? p?.farmers ?? p?.cooperatives ?? []); if (!Array.isArray(list)) throw new Error(`${url} did not return a list.`); return list; };
             try {
                 const animals = await readList('/admin/carabao-inventory-api');
+                const databaseCalves = await readList('/admin/calf-drop-api').catch(e=>{console.warn('Calf Drop database history unavailable:',e);return [];});
                 let coops = [], farmers = [];
                 try { [coops, farmers] = await Promise.all([readList('/admin/cooperatives/data'), readList('/admin/farmers/data')]); } catch (e) { console.warn('Farmer/cooperative names unavailable:', e); }
                 const seenCalfIds=new Set();
-                this.inventoryCalves=animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers))
+                const calfRows=databaseCalves.map(c=>({...c,id:'db-calf-'+c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
+                this.inventoryCalves=calfRows
                     .filter(calf=>{
                         const id=String(calf.calf_id||'').trim().toLowerCase();
                         if(!id||seenCalfIds.has(id))return false;

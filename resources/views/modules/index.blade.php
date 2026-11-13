@@ -11,7 +11,7 @@
     $isPaginator = method_exists($rows, 'total');
     $totalRecords = $isPaginator ? $rows->total() : $rows->count();
     $currentPageRows = $rows->count();
-    $totalFields = count($columns ?? []);
+    $totalFields = count($columns ?? []) + (($module ?? null) === 'bcs' ? 1 : 0);
     $currentPage = method_exists($rows, 'currentPage') ? $rows->currentPage() : 1;
     $lastPage = method_exists($rows, 'lastPage') ? $rows->lastPage() : 1;
     $firstItem = method_exists($rows, 'firstItem') ? ($rows->firstItem() ?? 0) : ($currentPageRows ? 1 : 0);
@@ -65,9 +65,11 @@
             <a href="{{ route('modules.export', $module) }}" class="action-secondary">
                 <i class="fa-solid fa-file-export"></i> Export CSV
             </a>
-            <a href="{{ route('modules.template', $module) }}" class="action-primary">
-                <i class="fa-solid fa-download"></i> Download Template
-            </a>
+            @unless($module === 'fhpr')
+                <a href="{{ route('modules.template', $module) }}" class="action-primary">
+                    <i class="fa-solid fa-download"></i> Download Template
+                </a>
+            @endunless
         </div>
     </div>
 
@@ -79,6 +81,20 @@
             <p class="mt-1">Records displayed below are retrieved from the CBED database.</p>
         </div>
     </div>
+
+    @if($module === 'bcs')
+        <section class="mb-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 class="text-lg font-bold text-[#12345a]">Existing BCS score values</h2>
+            <p class="mt-1 text-sm text-slate-500">These choices come from distinct values already stored in <code>bcs_records.body_condition_score</code>. The existing table has no score-classification or interpretation columns.</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+                @forelse($bcsScores as $score)
+                    <span class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">{{ $score }}</span>
+                @empty
+                    <span class="text-sm text-slate-500">No BCS scores have been recorded yet.</span>
+                @endforelse
+            </div>
+        </section>
+    @endif
 
     {{-- SUCCESS / ERROR MESSAGES --}}
     @if(session('success'))
@@ -107,6 +123,13 @@
     @endif
 
     {{-- SUMMARY CARDS --}}
+    @if($module === 'health')
+        <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            @php $healthCards=[['Total Animals Monitored',$healthSummary['animals']],['Total Visits / Monitored',$healthSummary['visits']],['Total Treatments',$healthSummary['treatments']]]; @endphp
+            @foreach($healthCards as [$title,$value])<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $title }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($value) }}</p></div>@endforeach
+            @foreach($healthSummary['services'] as $service=>$count)<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $service }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($count) }}</p><p class="mt-1 text-xs text-slate-500">Service entries</p></div>@endforeach
+        </div>
+    @else
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         @foreach($summaryCards as $card)
             <div class="pcc-stat-card rounded-xl bg-white p-5">
@@ -123,6 +146,7 @@
             </div>
         @endforeach
     </div>
+    @endif
 
     {{-- RECORDS TABLE --}}
     <section class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -130,9 +154,12 @@
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-bold text-[#12345a]">{{ $pageTitle }} Records</h2>
-                <p class="mt-1 text-sm text-slate-500">View, search, import, and manage your records.</p>
+                <p class="mt-1 text-sm text-slate-500">{{ $module === 'fhpr' ? 'View and search breeding summary records.' : 'View, search, import, and manage your records.' }}</p>
             </div>
             <div class="flex gap-2">
+                @if($module === 'health')
+                    <button type="button" onclick="openHealthEditor()" class="action-primary"><i class="fa-solid fa-plus"></i> Add Activity</button>
+                @endif
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     {{ number_format($totalRecords) }} records
                 </span>
@@ -162,6 +189,7 @@
             </div>
         </form>
 
+        @unless($module === 'fhpr')
         {{-- IMPORT --}}
         <div class="border-b bg-slate-50 p-5">
             <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -186,6 +214,7 @@
                 </form>
             </div>
         </div>
+        @endunless
 
         {{-- TABLE --}}
         <div class="overflow-x-auto">
@@ -204,10 +233,26 @@
                                     : $column;
 
                                 $columnLabel = match ($columnKey) {
-                                    'registry_id' => 'Registry ID',
-                                    'cooperative_name' => 'Cooperative',
-                                    'farmer_name' => 'Farmer',
-                                    'monitoring_date' => 'Date',
+                                    'animal_identifier' => 'Registry ID / Animal ID',
+                                    'cooperative_name_display' => 'Cooperative Name',
+                                    'registry_id' => $module === 'health' ? 'Animal Registry ID' : 'Registry ID',
+                                    'tag_number' => 'Tag Number',
+                                    'cooperative_name' => in_array($module,['health','bcs'],true) ? 'Cooperative Name' : 'Cooperative',
+                                    'breed' => 'Breed',
+                                    'date_of_birth' => 'Date of Birth',
+                                    'farmer_name' => $module === 'bcs' ? 'Farmer Name' : 'Farmer',
+                                    'monitoring_date' => $module === 'health' ? 'Monitoring Date' : 'Date',
+                                    'services' => 'Type of Service',
+                                    'dosage_ml' => 'Dosage (mL)',
+                                    'no_of_visits_monitored' => 'No. of Visits / Monitored',
+                                    'no_of_treatments' => 'No. of Treatments',
+                                    'actions' => 'Actions',
+                                    'body_condition_score' => $module === 'bcs' ? 'BCS Remain' : 'Body Condition Score (BCS)',
+                                    'record_date' => 'BCS Record Date',
+                                    'source_data' => 'Source Worksheet Data',
+                                    'carabao_id' => 'Carabao ID',
+                                    'cooperative_id' => 'Cooperative ID',
+                                    'monitoring_report_detail_id' => 'Monitoring Detail ID',
                                     default => ucwords(str_replace(['_', '-'], ' ', $columnLabel)),
                                 };
                             @endphp
@@ -232,8 +277,17 @@
                                     $value = data_get($row, $columnKey);
                                 @endphp
 
-                                <td class="td max-w-xs whitespace-nowrap">
-                                    @if(is_null($value) || $value === '')
+                                <td class="td max-w-xs {{ $module === 'health' && in_array($columnKey,['services','dosage_ml','remarks','actions'],true) ? 'whitespace-normal' : 'whitespace-nowrap' }}">
+                                    @if($module === 'health' && $columnKey === 'services')
+                                        @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'] }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                    @elseif($module === 'health' && $columnKey === 'dosage_ml')
+                                        @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['dosage_display'] ?: '—' }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                    @elseif($module === 'health' && $columnKey === 'actions')
+                                        <div class="flex gap-2"><button type="button" class="rounded border px-2 py-1 text-slate-700 hover:bg-slate-50" onclick="openHealthEditor({{ $row->id }},true)">View</button><button type="button" class="rounded border px-2 py-1 text-blue-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }})">Edit</button><button type="button" class="rounded border px-2 py-1 text-red-700 hover:bg-red-50" onclick="deleteHealthActivity({{ $row->id }})">Delete</button></div>
+                                    @elseif($module === 'health' && $columnKey === 'remarks')
+                                        @foreach($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['remarks'] ?: '—' }}</div>@endforeach
+                                        @if($row->remarks)<div class="mt-1 border-t pt-1 text-slate-600">{{ $row->remarks }}</div>@endif
+                                    @elseif(is_null($value) || $value === '')
                                         <span class="text-slate-400">—</span>
                                     @elseif(is_bool($value))
                                         <span class="rounded-full px-2 py-1 text-xs font-semibold {{ $value ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
@@ -292,11 +346,46 @@
         </div>
     </section>
 
+    @if($module === 'health')
+        <div id="health-editor" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="health-editor-title">
+            <div class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+                <div class="sticky top-0 flex items-center justify-between border-b bg-white px-6 py-4"><div><h2 id="health-editor-title" class="text-xl font-bold text-[#12345a]">Add Health and Nutrition Activity</h2><p class="text-sm text-slate-500">One activity can include multiple services.</p></div><button type="button" onclick="closeHealthEditor()" class="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">✕</button></div>
+                <form id="health-editor-form" class="space-y-5 p-6" onsubmit="saveHealthActivity(event)">
+                    <input type="hidden" id="health-record-id">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label class="block text-sm font-semibold">Animal Registry ID<select id="health-carabao-id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Select animal</option>@foreach($healthAnimals as $animal)<option value="{{ $animal['id'] }}">{{ $animal['registry_id'] ?: 'N/A' }} · Tag {{ $animal['tag_number'] ?: '—' }} · {{ $animal['cooperative_name'] ?: 'No cooperative' }}</option>@endforeach</select></label>
+                        <label class="block text-sm font-semibold">Monitoring Date<input id="health-monitoring-date" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
+                        <label class="block text-sm font-semibold">No. of Visits / Monitored<input id="health-visits" type="number" min="0" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
+                        <label class="block text-sm font-semibold">No. of Treatments<input id="health-treatments" type="number" min="0" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
+                    </div>
+                    <datalist id="health-service-options"><option value="Deworming"><option value="Vitamins"><option value="Vaccination"><option value="Uterine Flushing"><option value="Fecalysis"><option value="Ear Tagging"><option value="Recruitment"><option value="Hands-on Milking"><option value="Forage Demo"></datalist>
+                    <div class="rounded-xl border border-slate-200 p-4"><div class="mb-3 flex items-center justify-between gap-2"><div><h3 class="font-bold text-slate-800">Type of Service</h3><p class="text-xs text-slate-500">Each service has its own optional dosage and remarks. Add custom service types as needed.</p></div><button id="health-add-service-button" type="button" onclick="addHealthServiceRow()" class="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"><i class="fa-solid fa-plus mr-1"></i>Add Service</button></div><div id="health-service-rows" class="space-y-3"></div></div>
+                    <label class="block text-sm font-semibold">Activity Remarks<textarea id="health-activity-remarks" rows="2" maxlength="2000" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></textarea></label>
+                    <div class="flex justify-end gap-2"><button type="button" onclick="closeHealthEditor()" class="rounded-lg border px-4 py-2">Close</button><button id="health-save-button" type="submit" class="action-primary bg-blue-700 text-white">Save Activity</button></div>
+                </form>
+            </div>
+        </div>
+    @endif
+
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · {{ $pageTitle }}</footer>
 
 </div>
 
 @endsection
+
+@if($module === 'health')
+@push('scripts')
+<script>
+const healthRecordsUrl=@json(url('/admin/health-records'));
+let healthServiceRowKey=0;
+function closeHealthEditor(){document.getElementById('health-editor').classList.add('hidden');document.getElementById('health-editor').classList.remove('flex');}
+function addHealthServiceRow(service={}){const index=healthServiceRowKey++,row=document.createElement('div');row.className='health-service-row grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1.4fr_.7fr_1.4fr_auto]';row.innerHTML=`<label class="text-xs font-semibold">Service Type<input list="health-service-options" data-service="type" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Choose or enter a type" required></label><label class="text-xs font-semibold">Dosage (mL)<input data-service="dosage_ml" type="number" min="0" step="0.01" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Not applicable"></label><label class="text-xs font-semibold">Service Remarks<input data-service="remarks" maxlength="2000" class="mt-1 w-full rounded border px-2 py-2 text-sm"></label><button type="button" class="self-end rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" aria-label="Remove service" onclick="this.closest('.health-service-row').remove()">Remove</button>`;row.querySelector('[data-service="type"]').value=service.type==='Other Services'?(service.other_service_name||'Other Services'):(service.type||'');row.querySelector('[data-service="dosage_ml"]').value=service.dosage_ml??'';row.querySelector('[data-service="remarks"]').value=service.remarks??'';document.getElementById('health-service-rows').appendChild(row);}
+function openHealthEditor(id=null,readOnly=false){const form=document.getElementById('health-editor-form');form.reset();form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=false);document.getElementById('health-record-id').value='';document.getElementById('health-service-rows').replaceChildren();document.getElementById('health-monitoring-date').value=new Date().toISOString().slice(0,10);document.getElementById('health-editor-title').textContent=!id?'Add Health and Nutrition Activity':readOnly?'View Health and Nutrition Activity':'Edit Health and Nutrition Activity';document.getElementById('health-save-button').hidden=readOnly;document.getElementById('health-add-service-button').hidden=readOnly;if(!id)addHealthServiceRow();const modal=document.getElementById('health-editor');modal.classList.remove('hidden');modal.classList.add('flex');if(id){fetch(`${healthRecordsUrl}/${id}`,{headers:{Accept:'application/json'}}).then(async response=>{const record=await response.json();if(!response.ok)throw new Error(record.message||'Could not load this activity.');document.getElementById('health-record-id').value=record.id;document.getElementById('health-carabao-id').value=record.carabao_id;document.getElementById('health-monitoring-date').value=String(record.monitoring_date||'').slice(0,10);document.getElementById('health-visits').value=record.no_of_visits_monitored??'';document.getElementById('health-treatments').value=record.no_of_treatments??'';document.getElementById('health-activity-remarks').value=record.remarks||'';document.getElementById('health-service-rows').replaceChildren();(record.services||[]).forEach(service=>addHealthServiceRow(service));if(!(record.services||[]).length)addHealthServiceRow();if(readOnly)form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=true);}).catch(error=>{alert(error.message);closeHealthEditor();});}else if(readOnly){form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=true);}}
+async function saveHealthActivity(event){event.preventDefault();const services=[...document.querySelectorAll('#health-service-rows .health-service-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-service]')].map(input=>[input.dataset.service,input.value.trim()]))).filter(service=>service.type);if(!services.length){alert('Add at least one service.');return;}const payload={carabao_id:Number(document.getElementById('health-carabao-id').value),monitoring_date:document.getElementById('health-monitoring-date').value,no_of_visits_monitored:Number(document.getElementById('health-visits').value),no_of_treatments:Number(document.getElementById('health-treatments').value),remarks:document.getElementById('health-activity-remarks').value,services};const id=document.getElementById('health-record-id').value,token=document.querySelector('meta[name="csrf-token"]')?.content;const response=await fetch(id?`${healthRecordsUrl}/${id}`:healthRecordsUrl,{method:id?'PUT':'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':token},body:JSON.stringify(payload)});const result=await response.json().catch(()=>({}));if(!response.ok){alert(result.message||'Could not save the activity.');return;}location.reload();}
+async function deleteHealthActivity(id){if(!confirm('Delete this Health and Nutrition activity and its service entries?'))return;const token=document.querySelector('meta[name="csrf-token"]')?.content;const response=await fetch(`${healthRecordsUrl}/${id}`,{method:'DELETE',headers:{Accept:'application/json','X-CSRF-TOKEN':token}});const result=await response.json().catch(()=>({}));if(!response.ok){alert(result.message||'Could not delete the activity.');return;}location.reload();}
+</script>
+@endpush
+@endif
 
 @push('styles')
 <style>

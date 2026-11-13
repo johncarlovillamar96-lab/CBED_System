@@ -147,6 +147,29 @@
                     @foreach ($errors->all() as $error)<p>{{ $error }}</p>@endforeach
                 </div>
             @endif
+            <div x-data="{
+                pageSize: 10,
+                currentPage: 1,
+                total: {{ $cooperatives->count() }},
+                get pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)); },
+                get firstVisible() { return this.total === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; },
+                get lastVisible() { return Math.min(this.currentPage * this.pageSize, this.total); },
+                setPageSize(value) { this.pageSize = Number(value); this.currentPage = 1; },
+                isRowVisible(index) { return index >= (this.currentPage - 1) * this.pageSize && index < this.currentPage * this.pageSize; }
+            }">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+                <label class="flex items-center gap-2 text-slate-600">
+                    <span>View</span>
+                    <select x-model.number="pageSize" @change="currentPage = 1" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" aria-label="Cooperatives per page">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                    </select>
+                    <span>cooperatives per page</span>
+                </label>
+                <span class="text-slate-500" x-text="`Showing ${firstVisible}–${lastVisible} of ${total} cooperatives`"></span>
+            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="min-w-[2200px] w-full text-left text-xs">
                     <thead class="bg-slate-50 uppercase text-slate-500">
@@ -158,8 +181,8 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        @foreach ($cooperatives as $cooperative)
-                            <tr class="align-top hover:bg-slate-50/70">
+                        @foreach ($cooperatives as $index => $cooperative)
+                            <tr x-cloak x-show="isRowVisible({{ $index }})" class="align-top hover:bg-slate-50/70">
                                 <th scope="row" class="sticky left-0 z-10 bg-white px-3 py-4 text-left font-semibold text-slate-800">{{ $cooperative->cooperative_name }}</th>
                                 @foreach ($sheets as $sheet)
                                     @php($latest = $latestByCooperative[$cooperative->id][$sheet['key']] ?? null)
@@ -184,6 +207,12 @@
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+            <div class="mt-3 flex items-center justify-end gap-2">
+                <button type="button" @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage <= 1" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous page">Previous</button>
+                <span class="px-2 text-sm tabular-nums text-slate-600" x-text="`Page ${currentPage} of ${pageCount}`"></span>
+                <button type="button" @click="currentPage = Math.min(pageCount, currentPage + 1)" :disabled="currentPage >= pageCount" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next page">Next</button>
+            </div>
             </div>
         @endif
 
