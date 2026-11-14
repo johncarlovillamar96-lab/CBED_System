@@ -520,12 +520,12 @@ class CooperativeWorkbookImportController extends Controller
             foreach ($rows as $rowIndex => $row) {
                 foreach ($row as $columnIndex => $header) {
                     $name = $this->normalizeHeaderName((string) $header);
-                    if (in_array($name, ['cooperative_code', 'coop_code', 'association_code'], true)) {
+                    if (in_array($name, ['cooperative_code', 'coop_code', 'association_code', 'herd_code'], true)) {
                         $identifierColumns[$columnIndex] = 'code';
                     } elseif (in_array($name, [
                         'association_coop_institution', 'name_of_association_coop_institution',
                         'association_coop_module', 'cooperative_name', 'coop_name',
-                        'association_name', 'name_of_cooperative',
+                        'association_name', 'name_of_cooperative', 'name_of_coop_association',
                     ], true)) {
                         $identifierColumns[$columnIndex] = 'name';
                     }
@@ -656,6 +656,11 @@ class CooperativeWorkbookImportController extends Controller
                     }
                     if (in_array($definition['key'], ['bcs', 'fhpr_breeding'], true)) {
                         $isValid = $isValid && in_array('registry_number', $fieldMap, true);
+                    }
+                    if (in_array($definition['key'], ['milk', 'milk_2'], true)) {
+                        foreach (['farmer_name', 'collection_period', 'total_liters', 'number_of_cows', 'price_per_kg', 'milk_traded'] as $requiredField) {
+                            $isValid = $isValid && in_array($requiredField, $fieldMap, true);
+                        }
                     }
                     if ($isValid) {
                         $validRows++;
@@ -1109,7 +1114,11 @@ class CooperativeWorkbookImportController extends Controller
                     continue;
                 }
                 if (in_array($field, $columns, true)) {
-                    $data[$field] = $this->databaseValue($value, $field);
+                    $databaseValue = $this->databaseValue($value, $field);
+                    if ($field === 'collection_period') {
+                        $databaseValue = $this->normalizeCollectionPeriod($value);
+                    }
+                    $data[$field] = $databaseValue;
                 }
             }
 
@@ -1135,10 +1144,26 @@ class CooperativeWorkbookImportController extends Controller
             $sourceCooperativeLabel = $this->sourceDataValue($sourceData, [
                 'association_coop_institution', 'name_of_association_coop_institution',
                 'association_coop_module', 'cooperative_name', 'coop_name', 'association_name',
+                'name_of_coop_association', 'name_of_cooperative',
             ]);
+            $sourceCooperativeCode = $this->sourceDataValue($sourceData, [
+                'herd_code', 'cooperative_code', 'coop_code', 'association_code',
+            ]);
+            if ($sourceCooperativeCode !== null) {
+                [$matchedCodeId, $unmappedIdentifierId] = $this->resolveCooperativeLabel($sourceCooperativeCode);
+                if ($matchedCodeId !== null) {
+                    $rowCooperativeId = $matchedCodeId;
+                }
+            }
             if ($sourceCooperativeLabel !== null) {
-                [$rowCooperativeId, $unmappedIdentifierId] = $this->resolveCooperativeLabel($sourceCooperativeLabel);
+                [$matchedLabelId, $labelIdentifierId] = $this->resolveCooperativeLabel($sourceCooperativeLabel);
+                if ($matchedLabelId !== null || $rowCooperativeId === null) {
+                    $rowCooperativeId = $matchedLabelId;
+                    $unmappedIdentifierId = $labelIdentifierId;
+                }
                 $sourceData['_cooperative_source_label'] = $sourceCooperativeLabel;
+            } elseif ($sourceCooperativeCode !== null) {
+                $sourceData['_cooperative_source_label'] = $sourceCooperativeCode;
             }
 
             if ($sheetKey === 'bd_out') {
@@ -1286,6 +1311,13 @@ class CooperativeWorkbookImportController extends Controller
             if ($requiredDate && empty($data[$requiredDate]) && ! $hasPregnancyCheckWithoutServiceDate) {
                 $skipRow('missing required date');
                 continue;
+            }
+            if (in_array($sheetKey, ['milk', 'milk_2'], true)) {
+                $requiredMilkFields = ['farmer_name', 'collection_period', 'total_liters', 'number_of_cows', 'price_per_kg', 'milk_traded'];
+                if (collect($requiredMilkFields)->contains(fn ($field) => ! isset($data[$field]) || $data[$field] === '')) {
+                    $skipRow('missing or invalid milk production data');
+                    continue;
+                }
             }
 
             $recordKey = $this->recordKey($sheetKey, $data);
@@ -1555,7 +1587,7 @@ class CooperativeWorkbookImportController extends Controller
             ],
             'health_nutrition' => ['cooperative_id', 'registry_number', 'monitoring_date', 'health_status'],
             'milk', 'milk_2' => [
-                'cooperative_id', 'record_date', 'registry_number', 'farmer_id',
+                'cooperative_id', 'record_date', 'collection_period', 'registry_number', 'farmer_id',
                 'farmer_name', '_source_cooperative_label',
             ],
             'bcs' => ['cooperative_id', 'registry_number', 'record_date', 'body_condition_score'],
@@ -1670,6 +1702,10 @@ class CooperativeWorkbookImportController extends Controller
             'production_date' => 'record_date',
             'milk_production_date' => 'record_date',
             'actual_date_of_collection' => in_array($sheetKey, ['meat', 'manure'], true) ? 'actual_date' : 'record_date',
+            'name_of_coop_association' => null,
+            'cooperative_code' => null,
+            'coop_code' => null,
+            'herd_code' => null,
             'date_monitored' => 'record_date',
             'reported_date' => 'reported_date',
             'date_reported' => 'reported_date',
@@ -1678,12 +1714,20 @@ class CooperativeWorkbookImportController extends Controller
             'milk_yield' => 'milk_yield_liters',
             'milk_yield_liters' => 'milk_yield_liters',
             'milk_volume' => 'total_liters',
-            'am' => 'morning_liters',
+            'am' => in_array($sheetKey, ['milk', 'milk_2'], true) ? 'collection_period' : 'morning_liters',
+            'am_pm' => 'collection_period',
+            'collection_period_am' => 'collection_period',
             'total_milk' => 'total_liters',
+            'total_milk_production' => 'total_liters',
+            'total_milk_production_kg' => 'total_liters',
             'total' => 'total_liters',
             'morning_milk' => 'morning_liters',
             'morning_yield' => 'morning_liters',
-            'pm' => 'afternoon_liters',
+            'pm' => in_array($sheetKey, ['milk', 'milk_2'], true) ? 'collection_period' : 'afternoon_liters',
+            'no_of_cows' => 'number_of_cows',
+            'price_per_kg_raw_milk' => 'price_per_kg',
+            'price_per_kilogram' => 'price_per_kg',
+            'milk_traded_kg' => 'milk_traded',
             'evening_liters' => 'afternoon_liters',
             'afternoon_milk' => 'afternoon_liters',
             'afternoon_yield' => 'afternoon_liters',
@@ -1822,6 +1866,12 @@ class CooperativeWorkbookImportController extends Controller
         if (in_array($sheetKey, ['milk', 'milk_2'], true) && ! empty($record['record_date'])) {
             $query = DB::table($table)->where('cooperative_id', $cooperativeId)
                 ->where('record_date', $record['record_date']);
+            if (! empty($record['collection_period'])) {
+                $query->where(function ($periodQuery) use ($record) {
+                    $periodQuery->where('collection_period', $record['collection_period'])
+                        ->orWhereNull('collection_period');
+                });
+            }
             if ($cooperativeId === null && $sourceCooperativeLabel !== null) {
                 $query->where(function ($sourceQuery) use ($sourceCooperativeLabel) {
                     foreach ([
@@ -1954,7 +2004,34 @@ class CooperativeWorkbookImportController extends Controller
             return null;
         }
 
+        if (in_array($field, ['total_liters', 'number_of_cows', 'price_per_kg', 'milk_traded'], true)) {
+            $numeric = is_string($value)
+                ? preg_replace('/[,\s₱]/u', '', trim($value))
+                : $value;
+            if (! is_numeric($numeric) || (float) $numeric < 0) {
+                return null;
+            }
+            if ($field === 'number_of_cows') {
+                return floor((float) $numeric) === (float) $numeric ? (int) $numeric : null;
+            }
+
+            return (string) $numeric;
+        }
+
         return is_string($value) ? trim($value) : $value;
+    }
+
+    private function normalizeCollectionPeriod(mixed $value): ?string
+    {
+        $period = Str::upper(trim((string) $value));
+        if (in_array($period, ['AM', '1', 'MORNING'], true)) {
+            return 'AM';
+        }
+        if (in_array($period, ['PM', '2', 'AFTERNOON', 'EVENING'], true)) {
+            return 'PM';
+        }
+
+        return null;
     }
 
     private function normalizeSheetName(string $name): string

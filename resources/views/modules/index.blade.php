@@ -21,6 +21,7 @@
 
     $moduleDescriptions = [
         'bcs' => 'Review dated body condition score measurements and their animal registry references.',
+        'milk' => 'Review milk production by cooperative, farmer, actual collection date, and AM/PM period.',
         'fhpr' => 'Manage and monitor farm health and production records.',
         'mtd' => 'Manage milk test day records and production information.',
         'exits' => 'Monitor animal exits, transfers, and disposal records.',
@@ -122,6 +123,71 @@
         </div>
     @endif
 
+    @if($module === 'milk')
+        <section class="mb-6">
+            <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+                <div><h2 class="text-xl font-bold text-[#12345a]">Annual Milk Production</h2><p class="mt-1 text-sm text-slate-500">Yearly totals from dated milk production records; select a year to view its quarters.</p></div>
+                <span class="rounded-lg bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">Selected year: {{ $selectedYear }}</span>
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                @forelse($milkYearlySummaries as $yearSummary)
+                    <a href="{{ request()->fullUrlWithQuery(['year' => $yearSummary->collected_year, 'quarter' => null]) }}"
+                       class="rounded-xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md {{ (int)$yearSummary->collected_year === $selectedYear ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200' }}">
+                        <p class="text-sm font-semibold text-slate-500">{{ $yearSummary->collected_year }}</p>
+                        <p class="mt-2 text-2xl font-bold text-slate-900">{{ number_format((float)$yearSummary->total_production, 2) }} <span class="text-sm font-semibold text-slate-500">kg produced</span></p>
+                        <div class="mt-3 space-y-1 text-sm text-slate-600">
+                            <p>Milk traded: <b class="text-slate-800">{{ number_format((float)$yearSummary->total_traded, 2) }} kg</b></p>
+                            <p>Production value: <b class="text-slate-800">₱{{ number_format((float)$yearSummary->total_value, 2) }}</b></p>
+                        </div>
+                    </a>
+                @empty
+                    <p class="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">No dated milk production records are available for the active filters.</p>
+                @endforelse
+            </div>
+        </section>
+
+        <section class="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div><h2 class="text-xl font-bold text-[#12345a]">Quarterly Production — {{ $selectedYear }}</h2><p class="mt-1 text-sm text-slate-500">Totals use each record's actual collection date.</p></div>
+                <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">Selected year: {{ $selectedYear }}</span>
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                @foreach($milkQuarterSummaries as $quarter)
+                    <a href="{{ request()->fullUrlWithQuery(['year' => $selectedYear, 'quarter' => $quarter['name']]) }}"
+                       class="rounded-xl border p-4 transition hover:shadow-md {{ $quarter['selected'] ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white' }}">
+                        <div class="flex items-start justify-between gap-2"><h3 class="text-lg font-bold text-slate-900">{{ $quarter['name'] }}</h3><span class="text-xs font-medium text-slate-500">{{ $quarter['months'] }}</span></div>
+                        <p class="mt-3 text-2xl font-bold text-slate-900">{{ number_format($quarter['total_production'], 2) }} <span class="text-sm font-semibold text-slate-500">kg</span></p>
+                        <div class="mt-3 space-y-1 text-sm text-slate-600">
+                            <p>Milk traded: <b class="text-slate-800">{{ number_format($quarter['total_traded'], 2) }} kg</b></p>
+                            <p>Production value: <b class="text-slate-800">₱{{ number_format($quarter['total_value'], 2) }}</b></p>
+                            <p>Collection records: <b class="text-slate-800">{{ number_format($quarter['record_count']) }}</b></p>
+                        </div>
+                    </a>
+                @endforeach
+            </div>
+
+            <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="font-bold text-slate-800">Production by Quarter (kg)</h3>
+                    <span class="text-xs text-slate-500">Q1–Q4 · {{ $selectedYear }}</span>
+                </div>
+                <div class="grid h-52 grid-cols-4 items-end gap-3 border-b border-slate-300 px-2">
+                    @foreach($milkQuarterSummaries as $quarter)
+                        <div class="flex h-full flex-col items-center justify-end">
+                            <span class="mb-2 text-center text-xs font-semibold tabular-nums text-slate-700">{{ number_format($quarter['total_production'], 2) }}</span>
+                            <div class="flex h-36 w-full items-end justify-center">
+                                <div class="w-10 rounded-t-md {{ $quarter['selected'] ? 'bg-blue-800' : 'bg-blue-600' }} transition-all"
+                                     style="height: {{ $maxQuarterProduction > 0 ? max(4, ($quarter['total_production'] / $maxQuarterProduction) * 144) : 4 }}px"
+                                     title="{{ $quarter['name'] }}: {{ number_format($quarter['total_production'], 2) }} kg"></div>
+                            </div>
+                            <span class="mb-2 mt-2 text-sm font-bold text-slate-700">{{ $quarter['name'] }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
+
     {{-- SUMMARY CARDS --}}
     @if($module === 'health')
         <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -129,6 +195,21 @@
             @foreach($healthCards as [$title,$value])<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $title }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($value) }}</p></div>@endforeach
             @foreach($healthSummary['services'] as $service=>$count)<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $service }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($count) }}</p><p class="mt-1 text-xs text-slate-500">Service entries</p></div>@endforeach
         </div>
+    @elseif($module === 'milk')
+    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        @foreach([
+            ['Total Milk Production', number_format($milkSummary['total_production'], 2).' kg', 'Filtered collection records', 'fa-droplet'],
+            ['Total Milk Traded', number_format($milkSummary['total_traded'], 2).' kg', 'Filtered collection records', 'fa-truck-ramp-box'],
+            ['Total Value of Milk Production', '₱'.number_format($milkSummary['total_value'], 2), 'Production × price per kilogram', 'fa-peso-sign'],
+        ] as [$title, $value, $description, $icon])
+            <div class="pcc-stat-card rounded-xl bg-white p-5">
+                <div class="flex items-center justify-between gap-3">
+                    <div><p class="text-sm text-slate-500">{{ $title }}</p><p class="mt-2 text-2xl font-bold">{{ $value }}</p><p class="mt-1 text-xs text-slate-500">{{ $description }}</p></div>
+                    <div class="pcc-stat-icon flex h-12 w-12 items-center justify-center rounded-xl"><i class="fa-solid {{ $icon }} text-xl"></i></div>
+                </div>
+            </div>
+        @endforeach
+    </div>
     @else
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         @foreach($summaryCards as $card)
@@ -153,7 +234,7 @@
 
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <h2 class="text-lg font-bold text-[#12345a]">{{ $pageTitle }} Records</h2>
+                <h2 class="text-lg font-bold text-[#12345a]">{{ $module === 'milk' ? 'Milk Production Records' : $pageTitle.' Records' }}</h2>
                 <p class="mt-1 text-sm text-slate-500">{{ $module === 'fhpr' ? 'View and search breeding summary records.' : 'View, search, import, and manage your records.' }}</p>
             </div>
             <div class="flex gap-2">
@@ -163,7 +244,7 @@
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     {{ number_format($totalRecords) }} records
                 </span>
-                @if($searchValue !== '')
+                @if($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->contains(fn($value)=>$value!=='')))
                     <a href="{{ url()->current() }}" class="action-secondary">Reset Filters</a>
                 @endif
             </div>
@@ -175,13 +256,58 @@
             <div class="sm:col-span-2 xl:col-span-4">
                 <label for="search" class="filter-label">Search</label>
                 <input id="search" type="text" name="search" value="{{ $searchValue }}"
-                       class="filter-input" placeholder="Search records...">
+                       class="filter-input" placeholder="{{ $module === 'milk' ? 'Cooperative or farmer name...' : 'Search records...' }}">
             </div>
+            @if($module === 'milk')
+                <div>
+                    <label for="cooperative_id" class="filter-label">Cooperative</label>
+                    <select id="cooperative_id" name="cooperative_id" class="filter-input">
+                        <option value="">All Cooperatives</option>
+                        @foreach($milkCooperatives as $cooperative)
+                            <option value="{{ $cooperative->id }}" @selected($milkFilters['cooperative_id'] === (string)$cooperative->id)>{{ $cooperative->cooperative_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="farmer" class="filter-label">Farmer</label>
+                    <input id="farmer" type="search" name="farmer" value="{{ $milkFilters['farmer'] }}" class="filter-input" placeholder="Filter by farmer">
+                </div>
+                <div>
+                    <label for="year" class="filter-label">Year Collected</label>
+                    <select id="year" name="year" class="filter-input">
+                        <option value="">All Years</option>
+                        @foreach($milkYears as $year)
+                            <option value="{{ $year }}" @selected($milkFilters['year'] === (string)$year)>{{ $year }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="quarter" class="filter-label">Quarter</label>
+                    <select id="quarter" name="quarter" class="filter-input">
+                        <option value="">All Quarters</option>
+                        @foreach(['Q1','Q2','Q3','Q4'] as $quarter)
+                            <option value="{{ $quarter }}" @selected($milkFilters['quarter'] === $quarter)>{{ $quarter }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="date" class="filter-label">Actual Collection Date</label>
+                    <input id="date" type="date" name="date" value="{{ $milkFilters['date'] }}" class="filter-input">
+                </div>
+                <div>
+                    <label for="period" class="filter-label">AM / PM</label>
+                    <select id="period" name="period" class="filter-input">
+                        <option value="">All Periods</option>
+                        <option value="AM" @selected($milkFilters['period'] === 'AM')>AM</option>
+                        <option value="PM" @selected($milkFilters['period'] === 'PM')>PM</option>
+                    </select>
+                </div>
+            @endif
             <div class="flex items-end gap-2 xl:col-span-2">
                 <button type="submit" class="action-primary">
                     <i class="fa-solid fa-magnifying-glass"></i> Search
                 </button>
-                @if($searchValue !== '')
+                @if($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->except('search')->contains(fn($value)=>$value!=='')))
                     <a href="{{ url()->current() }}" class="action-secondary">
                         <i class="fa-solid fa-xmark"></i> Clear
                     </a>
@@ -233,6 +359,14 @@
                                     : $column;
 
                                 $columnLabel = match ($columnKey) {
+                                    'cooperative_name_display' => 'Cooperative Name',
+                                    'year_collected' => 'Year Collected',
+                                    'collection_period' => 'AM / PM',
+                                    'total_liters' => 'Total Milk Production (kg)',
+                                    'number_of_cows' => 'Number of Cows',
+                                    'price_per_kg' => 'Price per Kilogram (₱)',
+                                    'milk_traded' => 'Milk Traded (kg)',
+                                    'value_total' => 'Value of Total Milk Production (₱)',
                                     'animal_identifier' => 'Registry ID / Animal ID',
                                     'cooperative_name_display' => 'Cooperative Name',
                                     'registry_id' => $module === 'health' ? 'Animal Registry ID' : 'Registry ID',
@@ -240,7 +374,7 @@
                                     'cooperative_name' => in_array($module,['health','bcs'],true) ? 'Cooperative Name' : 'Cooperative',
                                     'breed' => 'Breed',
                                     'date_of_birth' => 'Date of Birth',
-                                    'farmer_name' => $module === 'bcs' ? 'Farmer Name' : 'Farmer',
+                                    'farmer_name' => in_array($module, ['bcs','milk'], true) ? 'Farmer Name' : 'Farmer',
                                     'monitoring_date' => $module === 'health' ? 'Monitoring Date' : 'Date',
                                     'services' => 'Type of Service',
                                     'dosage_ml' => 'Dosage (mL)',
@@ -248,7 +382,7 @@
                                     'no_of_treatments' => 'No. of Treatments',
                                     'actions' => 'Actions',
                                     'body_condition_score' => $module === 'bcs' ? 'BCS Remain' : 'Body Condition Score (BCS)',
-                                    'record_date' => 'BCS Record Date',
+                                    'record_date' => $module === 'milk' ? 'Actual Date of Collection' : 'BCS Record Date',
                                     'source_data' => 'Source Worksheet Data',
                                     'carabao_id' => 'Carabao ID',
                                     'cooperative_id' => 'Cooperative ID',
@@ -287,6 +421,12 @@
                                     @elseif($module === 'health' && $columnKey === 'remarks')
                                         @foreach($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['remarks'] ?: '—' }}</div>@endforeach
                                         @if($row->remarks)<div class="mt-1 border-t pt-1 text-slate-600">{{ $row->remarks }}</div>@endif
+                                    @elseif($module === 'milk' && $columnKey === 'record_date')
+                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('F j, Y') : '—' }}
+                                    @elseif($module === 'milk' && in_array($columnKey, ['price_per_kg','value_total'], true))
+                                        {{ $value !== null ? '₱'.number_format((float)$value, 2) : '—' }}
+                                    @elseif($module === 'milk' && in_array($columnKey, ['total_liters','milk_traded'], true))
+                                        {{ $value !== null ? number_format((float)$value, 2) : '—' }}
                                     @elseif(is_null($value) || $value === '')
                                         <span class="text-slate-400">—</span>
                                     @elseif(is_bool($value))

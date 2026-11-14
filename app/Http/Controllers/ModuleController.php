@@ -112,6 +112,34 @@ class ModuleController extends Controller {
          ->get();
      return view('nature-of-exit-records',compact('rows','search','summaryCards'));
  }
+ private function milkRecordsQuery(){
+     return DB::table('milk_records as record')
+         ->leftJoin('carabaos as animal','animal.id','=','record.carabao_id')
+         ->leftJoin('farmers as farmer','farmer.id','=',DB::raw('COALESCE(record.farmer_id, animal.farmer_id)'))
+         ->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(record.cooperative_id, farmer.cooperative_id, animal.cooperative_id)'))
+         ->select(
+             'record.id','record.record_date','record.collection_period','record.total_liters',
+             'record.number_of_cows','record.price_per_kg','record.milk_traded',
+             'record.source_data'
+         )
+         ->selectRaw("COALESCE(NULLIF(record.farmer_name, ''), NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), ''))), '')) as farmer_name")
+         ->addSelect(DB::raw("COALESCE(NULLIF(cooperative.cooperative_name, ''), '') as cooperative_name_display"));
+ }
+
+ private function decorateMilkRecord($row){
+     if(empty($row->cooperative_name_display)){
+         $source=is_string($row->source_data??null)?json_decode($row->source_data,true):[];
+         foreach(['_cooperative_source_label','Name of Coop/Association','cooperative_name','coop_name','association_name'] as $key){
+             if(is_array($source)&&!empty($source[$key])){
+                 $row->cooperative_name_display=trim((string)$source[$key]);
+                 break;
+             }
+         }
+     }
+     unset($row->source_data);
+     return $row;
+ }
+
  public function index(\Illuminate\Http\Request $request, $module){
      $table=$this->table($module);$allColumns=Schema::getColumnListing($table);$columns=$module==='bcs'?['cooperative_name','farmer_name','record_date','body_condition_score']:collect($allColumns)->reject(fn($column)=>in_array($column,['id','created_at','updated_at']))->values()->all();$search=trim((string)$request->query('search',$request->query('q','')));
      if($module==='health'){
@@ -141,6 +169,92 @@ class ModuleController extends Controller {
          if($search!=='')$query->where(function($builder)use($search){$builder->where('record_cooperative.cooperative_name','like','%'.$search.'%')->orWhere('animal_cooperative.cooperative_name','like','%'.$search.'%')->orWhere('farmer_cooperative.cooperative_name','like','%'.$search.'%')->orWhereRaw("CONCAT_WS(' ', farmer.first_name, farmer.middle_name, farmer.last_name) LIKE ?",['%'.$search.'%'])->orWhere('bcs.record_date','like','%'.$search.'%')->orWhere('bcs.body_condition_score','like','%'.$search.'%')->orWhere('bcs.registry_number','like','%'.$search.'%')->orWhere('animal.animal_id','like','%'.$search.'%');});
          $rows=$query->orderByDesc('bcs.record_date')->orderByDesc('bcs.id')->paginate(25)->withQueryString();
          $rows->getCollection()->transform(function($row){$row->record_date=$row->record_date?Carbon::parse($row->record_date)->format('d-M-Y'):'-';$row->body_condition_score=$row->body_condition_score??'-';return $row;});
+     }elseif($module==='milk'){
+         $filters=$request->validate([
+             'search'=>['nullable','string','max:255'],
+             'farmer'=>['nullable','string','max:255'],
+             'cooperative_id'=>['nullable','integer','exists:cooperatives,id'],
+             'year'=>['nullable','digits:4'],
+             'quarter'=>['nullable','in:Q1,Q2,Q3,Q4'],
+             'date'=>['nullable','date_format:Y-m-d'],
+             'period'=>['nullable','in:AM,PM'],
+         ]);
+         $columns=['cooperative_name_display','farmer_name','record_date','year_collected','collection_period','total_liters','number_of_cows','price_per_kg','milk_traded','value_total'];
+         $milkYears=DB::table('milk_records')->whereNotNull('record_date')->selectRaw('YEAR(record_date) as collected_year')->distinct()->orderByDesc('collected_year')->pluck('collected_year');
+         $milkFilters=[
+             'search'=>$search,
+             'farmer'=>(string)($filters['farmer']??''),
+             'cooperative_id'=>(string)($filters['cooperative_id']??''),
+             'year'=>(string)($filters['year']??''),
+             'quarter'=>(string)($filters['quarter']??''),
+             'date'=>(string)($filters['date']??''),
+             'period'=>(string)($filters['period']??''),
+         ];
+         $milkCooperatives=DB::table('cooperatives')->orderBy('cooperative_name')->get(['id','cooperative_name']);
+         $baseQuery=$this->milkRecordsQuery();
+         if($search!=='')$baseQuery->where(function($builder)use($search){
+             $like='%'.$search.'%';
+             $builder->where('cooperative.cooperative_name','like',$like)
+                 ->orWhere('record.farmer_name','like',$like)
+                 ->orWhereRaw("CONCAT_WS(' ', farmer.first_name, farmer.middle_name, farmer.last_name) LIKE ?",[$like])
+                 ->orWhere('record.source_data','like',$like);
+         });
+         if($milkFilters['farmer']!=='')$baseQuery->where(function($builder)use($milkFilters){
+             $like='%'.$milkFilters['farmer'].'%';
+             $builder->where('record.farmer_name','like',$like)
+                 ->orWhereRaw("CONCAT_WS(' ', farmer.first_name, farmer.middle_name, farmer.last_name) LIKE ?",[$like]);
+         });
+         if($milkFilters['cooperative_id']!=='')$baseQuery->where('cooperative.id',(int)$milkFilters['cooperative_id']);
+         if($milkFilters['date']!=='')$baseQuery->whereDate('record.record_date',$milkFilters['date']);
+         if($milkFilters['period']!=='')$baseQuery->where('record.collection_period',$milkFilters['period']);
+         $milkYearlySummaries=(clone $baseQuery)->reorder()->whereNotNull('record.record_date')->select([])->selectRaw(
+             'YEAR(record.record_date) as collected_year, COALESCE(SUM(record.total_liters), 0) as total_production, COALESCE(SUM(record.milk_traded), 0) as total_traded, COALESCE(SUM(record.total_liters * record.price_per_kg), 0) as total_value'
+         )->groupByRaw('YEAR(record.record_date)')->orderByDesc('collected_year')->get();
+         $latestFilteredYear=$milkYearlySummaries->first()?->collected_year??$milkYears->first()??now()->year;
+         $selectedYear=(int)($filters['year']??$latestFilteredYear);
+         $milkFilters['year']=(string)$selectedYear;
+         $quarterDefinitions=[
+             'Q1'=>['number'=>1,'months'=>'January - March'],
+             'Q2'=>['number'=>2,'months'=>'April - June'],
+             'Q3'=>['number'=>3,'months'=>'July - September'],
+             'Q4'=>['number'=>4,'months'=>'October - December'],
+         ];
+         $quarterRows=(clone $baseQuery)->reorder()->whereYear('record.record_date',$selectedYear)->select([])->selectRaw(
+             'QUARTER(record.record_date) as quarter_number, COALESCE(SUM(record.total_liters), 0) as total_production, COALESCE(SUM(record.milk_traded), 0) as total_traded, COALESCE(SUM(record.total_liters * record.price_per_kg), 0) as total_value, COUNT(*) as record_count'
+         )->groupByRaw('QUARTER(record.record_date)')->get()->keyBy('quarter_number');
+         $milkQuarterSummaries=[];
+         foreach($quarterDefinitions as $name=>$definition){
+             $row=$quarterRows->get($definition['number']);
+             $milkQuarterSummaries[]=[
+                 'name'=>$name,
+                 'months'=>$definition['months'],
+                 'total_production'=>(float)($row->total_production??0),
+                 'total_traded'=>(float)($row->total_traded??0),
+                 'total_value'=>(float)($row->total_value??0),
+                 'record_count'=>(int)($row->record_count??0),
+                 'selected'=>$milkFilters['quarter']===$name,
+             ];
+         }
+         $maxQuarterProduction=max(array_column($milkQuarterSummaries,'total_production'));
+         foreach($milkQuarterSummaries as &$quarterSummary){
+             $quarterSummary['percent']=$maxQuarterProduction>0?$quarterSummary['total_production']/$maxQuarterProduction*100:0;
+         }
+         unset($quarterSummary);
+         $query=(clone $baseQuery)
+             ->whereYear('record.record_date',$selectedYear)
+             ->selectRaw('YEAR(record.record_date) as year_collected')
+             ->selectRaw('CASE WHEN record.total_liters IS NULL OR record.price_per_kg IS NULL THEN NULL ELSE record.total_liters * record.price_per_kg END as value_total');
+         if($milkFilters['quarter']!=='')$query->whereRaw('QUARTER(record.record_date) = ?',[(int)substr($milkFilters['quarter'],1)]);
+         $summary=(clone $query)->reorder()->select([])->selectRaw(
+             'COALESCE(SUM(record.total_liters), 0) as total_production, COALESCE(SUM(record.milk_traded), 0) as total_traded, COALESCE(SUM(record.total_liters * record.price_per_kg), 0) as total_value'
+         )->first();
+         $milkSummary=[
+             'total_production'=>(float)$summary->total_production,
+             'total_traded'=>(float)$summary->total_traded,
+             'total_value'=>(float)$summary->total_value,
+         ];
+         $rows=$query->orderByDesc('record.record_date')->orderByDesc('record.id')->paginate(25)->withQueryString();
+         $rows->getCollection()->transform(fn($row)=>$this->decorateMilkRecord($row));
      }elseif($module==='fhpr'){
          $columns=$this->fhprDisplayColumns();
          $records=$this->fhprRecords();
@@ -157,9 +271,9 @@ class ModuleController extends Controller {
      }else{
          $query=DB::table($table);if(in_array($module,['meat','manure'],true))$query->where('product_type',$module);if($search!=='')$query->where(function($builder)use($columns,$search){foreach($columns as $column)$builder->orWhere($column,'like','%'.$search.'%');});$rows=$query->orderByDesc('id')->paginate(25)->withQueryString();
      }
-     $moduleTitle=$module==='bcs'?'Body Condition Score Records':null;
+     $moduleTitle=$module==='bcs'?'Body Condition Score Records':($module==='milk'?'Milk Production Records':null);
      $bcsScores=$module==='bcs'?DB::table('bcs_records')->whereNotNull('body_condition_score')->distinct()->orderBy('body_condition_score')->pluck('body_condition_score')->map(fn($score)=>number_format((float)$score,2,'.',''))->values():collect();
-     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals'):[]));
+     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals'):[])+($module==='milk'?compact('milkSummary','milkCooperatives','milkYears','milkFilters','selectedYear','milkYearlySummaries','milkQuarterSummaries','maxQuarterProduction'):[]));
  }
 
  private function decodeHealthSource(?string $sourceData): array
@@ -320,14 +434,160 @@ class ModuleController extends Controller {
      return $tagNumber===''||(is_numeric($tagNumber)&&(float)$tagNumber===0.0)?'-':$tagNumber;
  }
 
- public function template($module){abort_if($module==='fhpr',404);$cols=collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
+ public function template($module){abort_if($module==='fhpr',404);if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
  public function export($module){
      $table=$this->table($module);
      if($module==='fhpr'){$cols=$this->fhprDisplayColumns();$rows=$this->fhprRecords();$labels=['animal_identifier'=>'Registry ID / Animal ID','cooperative_name_display'=>'Cooperative Name','date_of_birth'=>'Date of Birth'];return response()->streamDownload(function()use($cols,$rows,$labels){$file=fopen('php://output','w');fputcsv($file,array_map(fn($column)=>$labels[$column]??ucwords(str_replace('_',' ',$column)),$cols));foreach($rows as $row)fputcsv($file,array_map(fn($column)=>data_get($row,$column,''),$cols));fclose($file);},'fhpr_export.csv');}
      if($module==='health')return response()->streamDownload(function(){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['Monitoring Date','Animal Registry ID','Tag Number','Cooperative Name','Breed','Type of Service','Dosage (mL)','No. of Visits / Monitored','No. of Treatments','Service Remarks','Activity Remarks']);DB::table('health_records as record')->leftJoin('carabaos as animal','animal.id','=','record.carabao_id')->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(record.cooperative_id, animal.cooperative_id, farmer.cooperative_id)'))->select('record.*','animal.registry_number as animal_registry_number','animal.animal_id','animal.tag_number','animal.breed','cooperative.cooperative_name')->orderBy('record.id')->chunk(500,function($rows)use($file){foreach($rows as $row){$source=$this->decodeHealthSource($row->source_data);$services=$this->healthServicesArray($source);if(!$services)$services=[['type'=>'','other_service_name'=>'','dosage_ml'=>null,'remarks'=>'']];foreach($services as $index=>$service){$type=$service['type']==='Other Services'?($service['other_service_name']?:'Other Services'):$service['type'];fputcsv($file,[$row->monitoring_date?Carbon::parse($row->monitoring_date)->format('F j, Y'):'-',$row->animal_registry_number?:($row->registry_number?:$row->animal_id),$row->tag_number,$row->cooperative_name,$row->breed,$type,$service['dosage_ml']!==null&&$service['dosage_ml']!==''?$service['dosage_ml']:'-',$index===0?$this->healthActivityCount($source,'no_of_visits_monitored'):'',$index===0?$this->healthActivityCount($source,'no_of_treatments'):'',$service['remarks'],$row->remarks]);}}});fclose($file);},'health_export.csv');
+     if($module==='milk')return response()->streamDownload(function(){
+         if(ob_get_level()>0)ob_clean();
+         $file=fopen('php://output','w');
+         fwrite($file,"\xEF\xBB\xBF");
+         fputcsv($file,['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','Year Collected','AM / PM','Total Milk Production (kg)','Number of Cows','Price per Kilogram (₱)','Milk Traded (kg)','Value of Total Milk Production (₱)']);
+         $this->milkRecordsQuery()->addSelect('cooperative.cooperative_code')->orderBy('record.id')->chunk(500,function($rows)use($file){
+             foreach($rows as $row){
+                 $row=$this->decorateMilkRecord($row);
+                 $date=$row->record_date?Carbon::parse($row->record_date):null;
+                 $value=$row->total_liters!==null&&$row->price_per_kg!==null?(float)$row->total_liters*(float)$row->price_per_kg:'';
+                 fputcsv($file,[$row->cooperative_code??'',$row->cooperative_name_display??'',$row->farmer_name??'',$date?$date->format('Y-m-d'):'',$date?$date->year:'',$row->collection_period??'',$row->total_liters??'',$row->number_of_cows??'',$row->price_per_kg!==null?number_format((float)$row->price_per_kg,2,'.',''):'',$row->milk_traded??'',$value!==''?number_format((float)$value,2,'.',''):'']);
+             }
+         });
+         fclose($file);
+     },'milk_production_export.csv');
      $cols=collect(Schema::getColumnListing($table))->reject(fn($column)=>$column==='id'||($module==='health'&&in_array($column,['source_data','remarks'])))->values()->all();
      if($module==='health')$cols[]='services';
      return response()->streamDownload(function()use($table,$cols,$module){$file=fopen('php://output','w');fputcsv($file,$cols);$select=$module==='health'?array_merge(array_diff($cols,['services']),['source_data']):$cols;DB::table($table)->select($select)->orderBy('id')->chunk(500,function($rows)use($file,$cols,$module){foreach($rows as $row){$values=(array)$row;if($module==='health')$values['services']=$this->healthServicesSummary($values['source_data']??null);fputcsv($file,array_map(fn($column)=>$values[$column]??'',$cols));}});fclose($file);},$module.'_export.csv');
  }
- public function import(Request $r,$module){abort_if($module==='fhpr',404);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
+ private function importMilkCsv(Request $request){
+     $request->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);
+     $file=fopen($request->file('file')->getRealPath(),'r');
+     $headers=fgetcsv($file);
+     if(!$headers){fclose($file);abort(422,'CSV header is missing.');}
+     $headers[0]=preg_replace('/^\xEF\xBB\xBF/','',(string)$headers[0]);
+     $normalize=fn($value)=>trim(preg_replace('/[^a-z0-9]+/','_',Str::lower(Str::ascii(trim((string)$value)))),'_');
+     $aliases=[
+         'herd_code'=>'cooperative_code','coop_code'=>'cooperative_code',
+         'name_of_coop_association'=>'cooperative_name','name_of_cooperative'=>'cooperative_name','coop_name'=>'cooperative_name',
+         'name_of_farmer'=>'farmer_name','farmer'=>'farmer_name',
+         'actual_date_of_collection'=>'record_date','actual_collection_date'=>'record_date',
+         'am'=>'collection_period','pm'=>'collection_period','am_pm'=>'collection_period','collection_period_am'=>'collection_period',
+         'total'=>'total_liters','total_milk_production'=>'total_liters','total_milk_production_kg'=>'total_liters','milk_production'=>'total_liters',
+         'no_of_cows'=>'number_of_cows','price_per_kg_raw_milk'=>'price_per_kg','price_per_kilogram'=>'price_per_kg',
+         'milk_traded_kg'=>'milk_traded',
+     ];
+     $mapped=[];
+     foreach($headers as $index=>$header){
+         $name=$normalize($header);
+         if(str_starts_with($name,'value_of_total_milk_production'))continue;
+         $mapped[$index]=$aliases[$name]??$name;
+     }
+     $required=['cooperative_name','farmer_name','record_date','collection_period','total_liters','number_of_cows','price_per_kg','milk_traded'];
+     foreach($required as $field){
+         if(!in_array($field,$mapped,true)&&!($field==='cooperative_name'&&in_array('cooperative_code',$mapped,true))){
+             fclose($file);
+             throw \Illuminate\Validation\ValidationException::withMessages(['file'=>"The CSV is missing the required {$field} column."]);
+         }
+     }
+     $cooperatives=DB::table('cooperatives')->get(['id','cooperative_name','cooperative_code']);
+     $normalText=fn($value)=>trim(preg_replace('/\s+/',' ',Str::lower(Str::ascii(trim((string)$value)))));
+     $parseNumber=function($value,$integer=false){
+         $value=preg_replace('/[,\s₱]/u','',trim((string)$value));
+         if($value===''||!is_numeric($value)||(float)$value<0)return null;
+         if($integer&&floor((float)$value)!==(float)$value)return null;
+         return $integer?(int)$value:(string)$value;
+     };
+     $parsePeriod=function($value){
+         $period=Str::upper(trim((string)$value));
+         if(in_array($period,['AM','1','MORNING'],true))return 'AM';
+         if(in_array($period,['PM','2','AFTERNOON','EVENING'],true))return 'PM';
+         return null;
+     };
+     $errors=[];$records=[];$farmersByCooperative=[];$line=1;
+     while(($row=fgetcsv($file))!==false){
+         $line++;
+         if(count(array_filter($row,fn($value)=>trim((string)$value)!==''))===0)continue;
+         if(count($row)!==count($headers)){$errors[]="Row {$line}: column count does not match the header.";continue;}
+         $source=[];$data=[];
+         foreach($mapped as $index=>$field){
+             $value=trim((string)($row[$index]??''));
+             $source[(string)$headers[$index]]=$value;
+             $data[$field]=$value;
+         }
+         $cooperativeName=trim((string)($data['cooperative_name']??''));
+         $cooperativeCode=trim((string)($data['cooperative_code']??''));
+         $matches=$cooperatives->filter(function($cooperative)use($cooperativeName,$cooperativeCode,$normalText){
+             $codeMatch=$cooperativeCode!==''&&$normalText($cooperative->cooperative_code)===$normalText($cooperativeCode);
+             $nameMatch=$cooperativeName!==''&&$normalText($cooperative->cooperative_name)===$normalText($cooperativeName);
+             return ($cooperativeCode===''||$codeMatch)&&($cooperativeName===''||$nameMatch);
+         })->values();
+         if(($cooperativeName===''&&$cooperativeCode==='')||$matches->count()!==1){
+             $errors[]="Row {$line}: cooperative name/code is missing, unmatched, or ambiguous.";
+             continue;
+         }
+         $dateValue=trim((string)($data['record_date']??''));
+         try{
+             if($dateValue==='')throw new \RuntimeException('Missing actual collection date.');
+             if(is_numeric($dateValue)){
+                 if((float)$dateValue<20000||(float)$dateValue>80000)throw new \RuntimeException('Invalid Excel date serial.');
+                 $date=\PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$dateValue)->format('Y-m-d');
+             }else{
+                 $date=Carbon::parse($dateValue)->format('Y-m-d');
+             }
+         }catch(\Throwable){
+             $errors[]="Row {$line}: actual collection date is missing or invalid.";
+             continue;
+         }
+         $period=$parsePeriod($data['collection_period']??'');
+         $total=$parseNumber($data['total_liters']??'');
+         $cows=$parseNumber($data['number_of_cows']??'',true);
+         $price=$parseNumber($data['price_per_kg']??'');
+         $traded=$parseNumber($data['milk_traded']??'');
+         $farmerName=trim((string)($data['farmer_name']??''));
+         if($period===null||$total===null||$cows===null||$price===null||$traded===null||$farmerName===''){
+             $errors[]="Row {$line}: farmer, AM/PM period, milk production, cow count, price, and traded quantity are required and must be valid.";
+             continue;
+         }
+         $cooperative=$matches->first();
+         $farmerId=null;
+         if(!array_key_exists($cooperative->id,$farmersByCooperative)){
+             $farmersByCooperative[$cooperative->id]=DB::table('farmers')->where('cooperative_id',$cooperative->id)->get(['id','first_name','middle_name','last_name']);
+         }
+         $farmerMatches=$farmersByCooperative[$cooperative->id];
+         $farmerNeedle=$normalText(str_replace(',',' ',$farmerName));
+         $farmerCandidates=$farmerMatches->filter(function($farmer)use($normalText,$farmerNeedle){
+             $full=$normalText(implode(' ',array_filter([$farmer->first_name,$farmer->middle_name,$farmer->last_name])));
+             $parts=explode(' ',$farmerNeedle);
+             $reversed=count($parts)>1?$normalText(implode(' ',array_merge(array_slice($parts,1),[$parts[0]]))):$farmerNeedle;
+             return $full===$farmerNeedle||$full===$reversed;
+         });
+         if($farmerCandidates->count()===1)$farmerId=(int)$farmerCandidates->first()->id;
+         $records[]=[
+             'cooperative_id'=>(int)$cooperative->id,'farmer_id'=>$farmerId,'farmer_name'=>$farmerName,
+             'record_date'=>$date,'collection_period'=>$period,'total_liters'=>$total,
+             'number_of_cows'=>$cows,'price_per_kg'=>$price,'milk_traded'=>$traded,
+             'source_data'=>json_encode($source,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),
+         ];
+     }
+     fclose($file);
+     if($errors!==[]) throw \Illuminate\Validation\ValidationException::withMessages(['file'=>implode(' ',$errors)]);
+     if($records===[]) abort(422,'The CSV contains no milk production records.');
+     DB::transaction(function()use($records){
+         foreach($records as $record){
+             $query=DB::table('milk_records')->where('cooperative_id',$record['cooperative_id'])
+                 ->where('record_date',$record['record_date'])
+                 ->where(function($builder)use($record){$builder->where('collection_period',$record['collection_period'])->orWhereNull('collection_period');})
+                 ->where(function($builder)use($record){
+                     $builder->where('farmer_name',$record['farmer_name']);
+                     if($record['farmer_id']!==null)$builder->orWhere('farmer_id',$record['farmer_id']);
+                 });
+             $existing=$query->first();
+             $record['updated_at']=now();
+             if($existing)DB::table('milk_records')->where('id',$existing->id)->update($record);
+             else{$record['created_at']=now();DB::table('milk_records')->insert($record);}
+         }
+     });
+     return back()->with('success','Imported or updated '.count($records).' milk production record(s).');
+ }
+
+ public function import(Request $r,$module){abort_if($module==='fhpr',404);if($module==='milk')return $this->importMilkCsv($r);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
 }
