@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Support\AnimalClassification;
 
 class MonitoringReportController extends Controller
 {
@@ -13,6 +15,7 @@ class MonitoringReportController extends Controller
         'calf_monitoring' => 'Calf Drop',
         'breeding' => 'Mating',
         'health_nutrition' => 'Health & Nutrition',
+        'dry_off' => 'MTD',
     ];
 
     public function bcsScores()
@@ -31,20 +34,81 @@ class MonitoringReportController extends Controller
     {
         abort_unless(DB::table('cooperatives')->where('id', $cooperative)->exists(), 404);
 
+        $exitedAnimalIds = DB::table('nature_of_exits')
+            ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
+            ->pluck('carabao_id')->all();
+
         $animals = DB::table('carabaos as animal')
             ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
             ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperative])
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
+            ->whereNull('animal.death_date')
+            ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
+            ->whereNotIn('animal.id', $exitedAnimalIds)
             ->orderBy('animal.registry_number')
             ->orderBy('animal.bolus_id')
             ->orderBy('animal.id')
             ->get([
                 'animal.id as carabao_id', 'animal.animal_id', 'animal.bolus_id', 'animal.registry_number',
                 'animal.tag_number', 'animal.animal_name', 'animal.sex', 'animal.birth_date', 'animal.breed',
+                'animal.classification', 'animal.reproductive_status', 'animal.lactation_status',
                 'animal.status as inventory_status', 'animal.cooperative_id', 'animal.farmer_id',
                 'farmer.cooperative_id as farmer_cooperative_id', 'farmer.first_name', 'farmer.middle_name', 'farmer.last_name',
             ]);
 
-        return response()->json($animals->map(function ($animal) {
+        $ids = $animals->pluck('carabao_id')->map(fn ($id) => (int) $id)->all();
+        $asOf = now()->toDateString();
+        $latestBcs = DB::table('bcs_records')->whereIn('carabao_id', $ids)->whereNotNull('body_condition_score')
+            ->orderByDesc('record_date')->orderByDesc('id')->get(['carabao_id', 'record_date', 'body_condition_score'])->unique('carabao_id')->keyBy('carabao_id');
+        $lastCalving = [];
+        foreach (DB::table('calves')->whereIn('dam_id', $ids)->whereDate('birth_date', '<=', $asOf)
+            ->where(fn ($query) => $query->whereNull('birth_outcome')->orWhere('birth_outcome', '<>', 'Abortion'))
+            ->orderByDesc('birth_date')->get(['dam_id', 'birth_date']) as $calf) {
+            $lastCalving[(int) $calf->dam_id] ??= $calf->birth_date;
+        }
+        foreach (DB::table('mating_records')->whereIn('carabao_id', $ids)->whereNotNull('actual_calving_date')
+            ->whereDate('actual_calving_date', '<=', $asOf)->get(['carabao_id', 'actual_calving_date']) as $record) {
+            $key = (int) $record->carabao_id;
+            if (! isset($lastCalving[$key]) || $record->actual_calving_date > $lastCalving[$key]) $lastCalving[$key] = $record->actual_calving_date;
+        }
+        if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'present_calving_date')) {
+            foreach (DB::table('fhpr_records')->whereIn('carabao_id', $ids)->whereNotNull('present_calving_date')
+                ->whereDate('present_calving_date', '<=', $asOf)->get(['carabao_id', 'present_calving_date']) as $record) {
+                $key = (int) $record->carabao_id;
+                if (! isset($lastCalving[$key]) || $record->present_calving_date > $lastCalving[$key]) $lastCalving[$key] = $record->present_calving_date;
+            }
+        }
+        $dryOffDates = DB::table('mtd_records')->whereIn('carabao_id', $ids)->whereNotNull('dryoff_date')->whereDate('dryoff_date', '<=', $asOf)
+            ->selectRaw('carabao_id, MAX(dryoff_date) as dry_off_date')->groupBy('carabao_id')->pluck('dry_off_date', 'carabao_id');
+        if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'dry_off_date')) {
+            foreach (DB::table('fhpr_records')->whereIn('carabao_id', $ids)->whereNotNull('dry_off_date')->whereDate('dry_off_date', '<=', $asOf)
+                ->selectRaw('carabao_id, MAX(dry_off_date) as dry_off_date')->groupBy('carabao_id')->get() as $record) {
+                $key = (int) $record->carabao_id;
+                if (! isset($dryOffDates[$key]) || $record->dry_off_date > $dryOffDates[$key]) $dryOffDates[$key] = $record->dry_off_date;
+            }
+        }
+        $pregnancyChecks = [];
+        foreach (DB::table('mating_records')->whereIn('carabao_id', $ids)->whereNotNull('pregnancy_check_date')
+            ->whereIn('pregnancy_result', ['Positive', 'Negative', 'Pregnant', 'Not Pregnant'])
+            ->whereDate('pregnancy_check_date', '<=', $asOf)->orderBy('pregnancy_check_date')->orderBy('id')
+            ->get(['carabao_id', 'pregnancy_check_date', 'pregnancy_result']) as $record) {
+            $pregnancyChecks[(int) $record->carabao_id] = $record;
+        }
+
+        return response()->json($animals->map(function ($animal) use ($latestBcs, $lastCalving, $dryOffDates, $pregnancyChecks, $asOf) {
+            $id = (int) $animal->carabao_id;
+            $pregnancyCheck = $pregnancyChecks[$id] ?? null;
+            $classification = AnimalClassification::classify([
+                'sex' => $animal->sex, 'birth_date' => $animal->birth_date,
+                'inventory_classification' => $animal->classification,
+                'last_calving_date' => $lastCalving[$id] ?? null,
+                'dry_off_date' => $dryOffDates[$id] ?? null,
+                'pregnancy_result' => $pregnancyCheck?->pregnancy_result,
+                'pregnancy_date' => $pregnancyCheck?->pregnancy_check_date,
+                'as_of' => $asOf, 'dryoff_review_dim' => config('cbed.dry_off_review_dim', 280),
+            ]);
+            $bcs = $latestBcs->get($id);
             return [
                 'carabao_id' => (int) $animal->carabao_id,
                 'animal_id' => $animal->animal_id,
@@ -55,6 +119,15 @@ class MonitoringReportController extends Controller
                 'sex' => $animal->sex,
                 'birth_date' => $animal->birth_date,
                 'breed' => $animal->breed,
+                'classification' => $classification['classification'],
+                'last_calving_date' => $classification['last_calving_date'],
+                'days_in_milk' => $classification['dim'],
+                'dry_off_date' => $classification['dry_off_date'],
+                'dry_off_review' => $classification['dry_off_review'],
+                'pregnancy_status' => $classification['pregnancy'],
+                'latest_bcs' => $bcs?->body_condition_score,
+                'bcs_date' => $bcs?->record_date,
+                'lactation_status' => $animal->lactation_status,
                 'inventory_status' => $animal->inventory_status,
                 'farmer_id' => $animal->farmer_id,
                 'farmer_name' => trim(implode(' ', array_filter([$animal->first_name, $animal->middle_name, $animal->last_name]))),
@@ -233,7 +306,7 @@ class MonitoringReportController extends Controller
             'rows.*.body_condition_score' => ['nullable', 'numeric', 'min:0', 'max:10'],
             'rows.*.availability_status' => ['required', 'in:available,unavailable'],
             'rows.*.unavailability_reason' => ['nullable', 'in:Not Present,Transferred,Sick,Dead,Sold,Other'],
-            'rows.*.monitoring_specification' => ['nullable', 'in:calf_monitoring,breeding,health_nutrition'],
+            'rows.*.monitoring_specification' => ['nullable', 'in:calf_monitoring,breeding,health_nutrition,dry_off'],
             'rows.*.monitoring_data' => ['nullable', 'array'],
             'rows.*.remarks' => ['nullable', 'string', 'max:2000'],
         ];
@@ -252,9 +325,17 @@ class MonitoringReportController extends Controller
         $cooperativeId = $creating
             ? (int) $validated['cooperative_id']
             : (int) DB::table('monitoring_reports')->where('id', (int) $request->route('report'))->value('cooperative_id');
+        $excludedAnimalIds = DB::table('nature_of_exits')
+            ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
+            ->pluck('carabao_id')->all();
         $expectedIds = DB::table('carabaos as animal')
             ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
             ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
+            ->whereNull('animal.death_date')
+            ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
+            ->whereNotIn('animal.id', $excludedAnimalIds)
             ->pluck('animal.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
         $submittedIds = collect($validated['rows'])->pluck('carabao_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
 
@@ -290,7 +371,7 @@ class MonitoringReportController extends Controller
             'breeding' => [
                 'breeding_date' => ['nullable', 'date'], 'method' => ['nullable', 'in:AI,NM'], 'semen_bull_id' => ['nullable', 'integer', 'exists:semen_bulls,id'],
                 'bull_id' => ['nullable', 'string', 'max:255'], 'semen_used' => ['nullable', 'integer', 'min:0'], 'pd_date' => ['nullable', 'date'],
-                'record_date' => ['nullable', 'date'], 'pregnancy_status' => ['nullable', 'in:Pregnant,Not Pregnant'],
+                'record_date' => ['nullable', 'date'], 'pregnancy_status' => ['nullable', 'in:Pregnant,Not Pregnant,Inconclusive'],
                 'estrus_type' => ['nullable', 'in:ES,NH,FTAI'], 'technician' => ['nullable', 'string', 'max:255'], 'pregnancy_months' => ['nullable', 'integer', 'min:0', 'max:11'],
                 'expected_calving' => ['nullable', 'date'], 'natural_mating_details' => ['nullable', 'string', 'max:2000'], 'findings' => ['nullable', 'string', 'max:2000'], 'remarks' => ['nullable', 'string', 'max:2000'],
             ],
@@ -305,6 +386,11 @@ class MonitoringReportController extends Controller
                 'services.*.other_service_name' => ['nullable', 'string', 'max:255'],
                 'services.*.dosage_ml' => ['nullable', 'numeric', 'min:0', 'max:100000'],
                 'services.*.remarks' => ['nullable', 'string', 'max:2000'],
+            ],
+            'dry_off' => [
+                'dry_off_confirmed' => ['required', 'in:Yes,No'], 'dry_off_date' => ['nullable', 'date'],
+                'days_in_milk' => ['nullable', 'integer', 'min:0', 'max:10000'],
+                'findings' => ['nullable', 'string', 'max:2000'], 'remarks' => ['nullable', 'string', 'max:2000'],
             ],
             default => [],
         };
@@ -342,6 +428,9 @@ class MonitoringReportController extends Controller
                 abort(422, 'Animal row '.($index + 1).': each Health and Nutrition service may only be selected once.');
             }
         }
+        if ($specification === 'dry_off' && ($data['dry_off_confirmed'] ?? null) === 'Yes' && empty($data['dry_off_date'])) {
+            abort(422, 'Animal row '.($index + 1).': enter the actual dry-off date to confirm dry-off.');
+        }
     }
 
     private function selectedHealthServices(array $services): array
@@ -363,6 +452,15 @@ class MonitoringReportController extends Controller
                 ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
                 ->first(['animal.*', 'farmer.cooperative_id as farmer_cooperative_id', 'farmer.first_name', 'farmer.middle_name', 'farmer.last_name']);
             abort_unless($animal, 422, 'An animal is no longer assigned to this cooperative. Reload the report.');
+            if (! $updating) {
+                $isLiveFemale = in_array(mb_strtolower(trim((string) $animal->sex)), ['female', 'f'], true)
+                    && in_array(mb_strtolower(trim((string) $animal->status)), ['live', 'alive', 'active'], true)
+                    && empty($animal->death_date)
+                    && ! preg_match('/out|dead|deceas|culled|sold|transfer|dispos|exit/i', (string) ($animal->exit_reason ?? '').' '.(string) ($animal->nature_of_exit ?? ''))
+                    && ! DB::table('nature_of_exits')->where('carabao_id', $animal->id)
+                        ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])->exists();
+                abort_unless($isLiveFemale, 422, 'Only live female animals can be added to a reproductive monitoring report.');
+            }
 
             $existing = $updating ? DB::table('monitoring_report_details')->where('monitoring_report_id', $reportId)->where('carabao_id', $animal->id)->first() : null;
             $availability = $row['availability_status'] ?? 'available';
@@ -408,6 +506,52 @@ class MonitoringReportController extends Controller
                 ? ['monitoring_status' => 'unavailable']
                 : $this->syncDestination($detail, $animal, $specification, $details, $monitoringDate, $reportId);
             DB::table('monitoring_report_details')->where('id', $detailId)->update($result + ['updated_at' => now()]);
+            $this->syncInventoryClassification($animal);
+        }
+    }
+
+    private function syncInventoryClassification(object $animal): void
+    {
+        $asOf = now()->toDateString();
+        $lastCalving = DB::table('calves')->where('dam_id', $animal->id)->whereDate('birth_date', '<=', $asOf)
+            ->where(fn ($query) => $query->whereNull('birth_outcome')->orWhere('birth_outcome', '<>', 'Abortion'))->max('birth_date');
+        $recordedCalving = DB::table('mating_records')->where('carabao_id', $animal->id)->whereNotNull('actual_calving_date')->whereDate('actual_calving_date', '<=', $asOf)->max('actual_calving_date');
+        if ($recordedCalving && (! $lastCalving || $recordedCalving > $lastCalving)) $lastCalving = $recordedCalving;
+        if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'present_calving_date')) {
+            $fhprCalving = DB::table('fhpr_records')->where('carabao_id', $animal->id)->whereNotNull('present_calving_date')
+                ->whereDate('present_calving_date', '<=', $asOf)->max('present_calving_date');
+            if ($fhprCalving && (! $lastCalving || $fhprCalving > $lastCalving)) $lastCalving = $fhprCalving;
+        }
+
+        $dryOff = null;
+        if (Schema::hasTable('mtd_records') && Schema::hasColumn('mtd_records', 'dryoff_date')) {
+            $dryOff = DB::table('mtd_records')->where('carabao_id', $animal->id)->whereNotNull('dryoff_date')->whereDate('dryoff_date', '<=', $asOf)->max('dryoff_date');
+        }
+        if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'dry_off_date')) {
+            $fhprDryOff = DB::table('fhpr_records')->where('carabao_id', $animal->id)->whereNotNull('dry_off_date')->whereDate('dry_off_date', '<=', $asOf)->max('dry_off_date');
+            if ($fhprDryOff && (! $dryOff || $fhprDryOff > $dryOff)) $dryOff = $fhprDryOff;
+        }
+
+        $pregnancyCheck = DB::table('mating_records')->where('carabao_id', $animal->id)
+            ->whereNotNull('pregnancy_check_date')->whereIn('pregnancy_result', ['Positive', 'Negative', 'Pregnant', 'Not Pregnant'])->whereDate('pregnancy_check_date', '<=', $asOf)
+            ->orderByDesc('pregnancy_check_date')->orderByDesc('id')->first(['pregnancy_check_date', 'pregnancy_result']);
+        $classification = AnimalClassification::classify([
+            'sex' => $animal->sex,
+            'birth_date' => $animal->birth_date,
+            'inventory_classification' => $animal->classification,
+            'last_calving_date' => $lastCalving,
+            'dry_off_date' => $dryOff,
+            'pregnancy_result' => $pregnancyCheck?->pregnancy_result,
+            'pregnancy_date' => $pregnancyCheck?->pregnancy_check_date,
+            'as_of' => $asOf,
+            'dryoff_review_dim' => config('cbed.dry_off_review_dim', 280),
+        ]);
+
+        if ($classification['classification'] !== 'Unknown / Needs Verification') {
+            DB::table('carabaos')->where('id', $animal->id)->update([
+                'classification' => $classification['classification'],
+                'updated_at' => now(),
+            ]);
         }
     }
 
@@ -478,6 +622,45 @@ class MonitoringReportController extends Controller
         ];
         if (! $specification || ! $module) return $pending;
         $sourceData = ['monitoring_report_id' => $reportId, 'monitoring_detail_id' => $detail->id, 'monitoring_specification' => $specification, 'monitoring_fields' => $data];
+
+        if ($specification === 'dry_off') {
+            if (($data['dry_off_confirmed'] ?? null) !== 'Yes' || empty($data['dry_off_date'])) return $pending;
+            $data['service_type'] = 'Dry-off Confirmed';
+            DB::table('monitoring_report_details')->where('id', $detail->id)->update([
+                'monitoring_data' => json_encode($data, JSON_UNESCAPED_UNICODE), 'updated_at' => now(),
+            ]);
+            $lastCalving = DB::table('calves')->where('dam_id', $animal->id)->whereDate('birth_date', '<=', $data['dry_off_date'])
+                ->where(fn ($query) => $query->whereNull('birth_outcome')->orWhere('birth_outcome', '<>', 'Abortion'))->max('birth_date');
+            $recordedCalving = DB::table('mating_records')->where('carabao_id', $animal->id)->whereNotNull('actual_calving_date')
+                ->whereDate('actual_calving_date', '<=', $data['dry_off_date'])->max('actual_calving_date');
+            if ($recordedCalving && (! $lastCalving || $recordedCalving > $lastCalving)) $lastCalving = $recordedCalving;
+            if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'present_calving_date')) {
+                $fhprCalving = DB::table('fhpr_records')->where('carabao_id', $animal->id)->whereNotNull('present_calving_date')
+                    ->whereDate('present_calving_date', '<=', $data['dry_off_date'])->max('present_calving_date');
+                if ($fhprCalving && (! $lastCalving || $fhprCalving > $lastCalving)) $lastCalving = $fhprCalving;
+            }
+            $daysInMilk = $lastCalving
+                ? (int) max(0, \Carbon\Carbon::parse($lastCalving)->startOfDay()->diffInDays(\Carbon\Carbon::parse($data['dry_off_date'])->startOfDay(), false))
+                : null;
+            $fields = [
+                'carabao_id' => $animal->id,
+                'test_date' => $monitoringDate,
+                'dryoff_date' => $data['dry_off_date'],
+                'days_in_milk' => $daysInMilk,
+                'registry_number' => $animal->registry_number,
+                'remarks' => trim(implode(' · ', array_filter([$data['findings'] ?? null, $data['remarks'] ?? $detail->remarks]))) ?: null,
+                'source_data' => json_encode($sourceData + ['dry_off_confirmed' => true], JSON_UNESCAPED_UNICODE),
+                'updated_at' => now(),
+            ];
+            $existingId = $detail->destination_module === 'MTD' ? $detail->destination_record_id : null;
+            if ($existingId && DB::table('mtd_records')->where('id', $existingId)->exists()) {
+                DB::table('mtd_records')->where('id', $existingId)->update($fields);
+                $recordId = (int) $existingId;
+            } else {
+                $recordId = (int) DB::table('mtd_records')->insertGetId($fields + ['created_at' => now()]);
+            }
+            return ['destination_module' => 'MTD', 'destination_record_id' => $recordId, 'destination_inventory_id' => null, 'monitoring_status' => 'completed'];
+        }
 
         if ($specification === 'calf_monitoring') {
             $birthDate = $data['date_of_birth'] ?? null;
@@ -561,7 +744,7 @@ class MonitoringReportController extends Controller
                 'mating_type' => $method === 'AI' ? 'AI' : 'NM', 'bull_id' => $bull?->bull_id ?: ($data['bull_id'] ?? null),
                 'semen_bull_id' => $bull?->id, 'technician' => $method === 'AI' ? ($data['technician'] ?? null) : null,
                 'pregnancy_check_date' => $data['pd_date'] ?? null,
-                'pregnancy_result' => ($data['pregnancy_status'] ?? null) === 'Pregnant' ? 'Positive' : (($data['pregnancy_status'] ?? null) === 'Not Pregnant' ? 'Negative' : null),
+                'pregnancy_result' => match ($data['pregnancy_status'] ?? null) {'Pregnant' => 'Positive', 'Not Pregnant' => 'Negative', 'Inconclusive' => 'Inconclusive', default => null},
                 'expected_calving_date' => $data['expected_calving'] ?? null,
                 'remarks' => trim(implode(' · ', array_filter([$data['natural_mating_details'] ?? null, $data['findings'] ?? null, $data['remarks'] ?? $detail->remarks]))) ?: null,
                 'source_data' => json_encode($sourceData + ['semen_used' => $data['semen_used'] ?? null, 'pregnancy_months' => $data['pregnancy_months'] ?? null], JSON_UNESCAPED_UNICODE),

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\SpreadsheetWorksheetReader;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -212,6 +213,7 @@ class CooperativeImportController extends Controller
                     $existing = $query->where('farmer_id', $farmer?->id)->where('status', $status)->first();
                 }
 
+                $birthDate = $this->date($this->value($row, 'birthday'));
                 $animalData = [
                     'farmer_id' => $farmer?->id,
                     'cooperative_id' => $coopId,
@@ -221,11 +223,12 @@ class CooperativeImportController extends Controller
                     'bolus_id' => $bolus,
                     'sex' => $this->value($row, 'sex'),
                     'breed' => $this->value($row, 'breed'),
+                    'classification' => $this->value($row, 'classification') ?: $this->inferInventoryClassification($row, $birthDate),
                     'sire_id' => $this->value($row, 'sire_id'),
                     'sire_name' => $this->value($row, 'sire_name'),
                     'dam_id' => $this->value($row, 'dam_id'),
                     'dam_name' => $this->value($row, 'dam_name'),
-                    'birth_date' => $this->date($this->value($row, 'birthday')),
+                    'birth_date' => $birthDate,
                     'birth_place' => $this->value($row, 'birth_place'),
                     'breeder' => $this->value($row, 'breeder'),
                     'association_coop_institution' => $this->value($row, 'association_coop_institution'),
@@ -289,6 +292,38 @@ class CooperativeImportController extends Controller
             $this->normalize(trim(($farmer->last_name ?? '').' '.$given)),
             $this->normalize($farmer->last_name ?? ''),
         ]);
+    }
+
+    private function inferInventoryClassification(array $row, ?string $birthDate): ?string
+    {
+        $sex = mb_strtolower(trim((string) ($row['sex'] ?? '')));
+        if (! in_array($sex, ['f', 'female', 'm', 'male'], true) || ! $birthDate) {
+            return null;
+        }
+
+        try {
+            $age = Carbon::parse($birthDate)->age;
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (in_array($sex, ['m', 'male'], true)) {
+            return $age < 1 ? 'Male Calf' : ($age < 2 ? 'Yearling Bull' : ($age < 4 ? 'Junior Bull' : 'Senior Bull'));
+        }
+
+        $pregnant = str_contains(mb_strtolower(trim((string) ($row['reproductive'] ?? ''))), 'pregnant');
+        $lactation = mb_strtolower(trim((string) ($row['lactation'] ?? '')));
+        if (str_contains($lactation, 'lactat')) {
+            return $pregnant ? 'CowLactatingPregnant' : 'CowLactating';
+        }
+        if (str_contains($lactation, 'dry')) {
+            return $pregnant ? 'CowDryPregnant' : 'CowDry';
+        }
+        if ($pregnant) {
+            return 'HeiferPregnant';
+        }
+
+        return $age < 1 ? 'Female Calf' : ($age < 2 ? 'Yearling Heifer' : 'Heifer');
     }
 
     private function readInventory(string $path): array
@@ -373,6 +408,7 @@ class CooperativeImportController extends Controller
                     $breedingByRegistry[$this->normalize($registry)] = [
                         'reproductive' => $pregnancy === '+' ? 'Pregnant' : ($pregnancy !== '' && is_numeric($pregnancy) && (float) $pregnancy > 0 ? 'Pregnant' : null),
                         'lactation' => str_contains(strtolower($status), 'lactat') ? 'Lactating' : (str_contains(strtolower($status), 'dry') ? 'Dry' : null),
+                    'classification' => $status !== '' ? $status : null,
                         'parity' => $parityCol !== null && is_numeric($values[$parityCol] ?? null) ? (int) $values[$parityCol] : null,
                     ];
                 }
@@ -381,6 +417,7 @@ class CooperativeImportController extends Controller
                     if ($key !== '' && isset($breedingByRegistry[$key])) {
                         $record['reproductive'] = $breedingByRegistry[$key]['reproductive'];
                         $record['lactation'] = $breedingByRegistry[$key]['lactation'];
+                        $record['classification'] = $breedingByRegistry[$key]['classification'];
                         $record['parity'] = $breedingByRegistry[$key]['parity'];
                     }
                 }

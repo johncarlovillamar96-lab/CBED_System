@@ -700,7 +700,7 @@ class CooperativeWorkbookImportController extends Controller
         return trim(preg_replace('/\s+/', ' ', Str::lower(Str::ascii(trim($value)))));
     }
 
-    private function resolveCooperativeLabel(string $label): array
+    private function resolveCooperativeLabel(string $label, bool $recordUnmapped = true): array
     {
         $normalized = $this->normalizeIdentifier($label);
         if ($normalized === '') {
@@ -733,6 +733,9 @@ class CooperativeWorkbookImportController extends Controller
         $identifier = DB::table('unmapped_cooperative_identifiers')->where('normalized_label', $normalized)->first();
         if ($identifier && $identifier->status === 'mapped' && $identifier->mapped_cooperative_id) {
             return [(int) $identifier->mapped_cooperative_id, null];
+        }
+        if (! $recordUnmapped) {
+            return [null, null];
         }
         if (! $identifier) {
             $id = DB::table('unmapped_cooperative_identifiers')->insertGetId([
@@ -894,13 +897,23 @@ class CooperativeWorkbookImportController extends Controller
                         $breedingWorksheet ? SpreadsheetWorksheetReader::rows($breedingWorksheet) : null,
                         $cooperativeId,
                         function (array $record) use ($cooperativeId) {
-                            $label = trim((string) ($record['association_coop_institution'] ?? ''));
-                            if ($label === '') {
-                                return ['cooperative_id' => $cooperativeId, 'identifier_id' => null];
+                            $herdCode = trim((string) ($record['herd_code'] ?? ''));
+                            if ($herdCode !== '') {
+                                [$codeCooperativeId] = $this->resolveCooperativeLabel($herdCode, false);
+                                if ($codeCooperativeId !== null) {
+                                    return ['cooperative_id' => $codeCooperativeId, 'identifier_id' => null];
+                                }
                             }
-                            [$rowCooperativeId, $identifierId] = $this->resolveCooperativeLabel($label);
 
-                            return ['cooperative_id' => $rowCooperativeId, 'identifier_id' => $identifierId];
+                            $label = trim((string) ($record['association_coop_institution'] ?? ''));
+                            if ($label !== '') {
+                                [$rowCooperativeId] = $this->resolveCooperativeLabel($label, false);
+                                if ($rowCooperativeId !== null) {
+                                    return ['cooperative_id' => $rowCooperativeId, 'identifier_id' => null];
+                                }
+                            }
+
+                            return ['cooperative_id' => $cooperativeId, 'identifier_id' => null];
                         },
                         function (array $record, ?int $identifierId) use ($batchFileId, $importId, $sheetId) {
                             if ($identifierId !== null) {
@@ -1150,16 +1163,15 @@ class CooperativeWorkbookImportController extends Controller
                 'herd_code', 'cooperative_code', 'coop_code', 'association_code',
             ]);
             if ($sourceCooperativeCode !== null) {
-                [$matchedCodeId, $unmappedIdentifierId] = $this->resolveCooperativeLabel($sourceCooperativeCode);
+                [$matchedCodeId] = $this->resolveCooperativeLabel($sourceCooperativeCode, false);
                 if ($matchedCodeId !== null) {
                     $rowCooperativeId = $matchedCodeId;
                 }
             }
             if ($sourceCooperativeLabel !== null) {
-                [$matchedLabelId, $labelIdentifierId] = $this->resolveCooperativeLabel($sourceCooperativeLabel);
+                [$matchedLabelId] = $this->resolveCooperativeLabel($sourceCooperativeLabel, false);
                 if ($matchedLabelId !== null || $rowCooperativeId === null) {
                     $rowCooperativeId = $matchedLabelId;
-                    $unmappedIdentifierId = $labelIdentifierId;
                 }
                 $sourceData['_cooperative_source_label'] = $sourceCooperativeLabel;
             } elseif ($sourceCooperativeCode !== null) {

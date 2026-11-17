@@ -286,7 +286,45 @@ Route::post('/admin/carabaos', fn () => response()->json(['message' => 'Carabao 
 Route::post('/admin/carabaos/bulk', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.bulk');
 Route::post('/admin/carabaos/import', fn () => response()->json(['message' => 'Use the cooperative workbook import.'], 501))->name('admin.carabaos.import');
 Route::get('/admin/cooperatives/data', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.cooperatives.data');
-Route::post('/admin/cooperatives', fn () => response()->json(['message' => 'Cooperative API is not connected yet.'], 501))->name('admin.cooperatives.store');
+Route::post('/admin/cooperatives', function (Request $request) {
+    $data = $request->validate([
+        'cooperative_code' => ['required', 'string', 'max:255', 'unique:cooperatives,cooperative_code'],
+        'cooperative_name' => ['required', 'string', 'max:255'],
+        'cda_registration_no' => ['nullable', 'string', 'max:255'],
+        'accreditation_status' => ['nullable', 'string', 'max:255'],
+        'coop_type' => ['nullable', 'string', 'max:255'],
+        'category' => ['nullable', 'string', 'max:255'],
+        'date_established' => ['nullable', 'date'],
+        'region' => ['nullable', 'string', 'max:255'],
+        'province' => ['nullable', 'string', 'max:255'],
+        'municipality' => ['nullable', 'string', 'max:255'],
+        'barangay' => ['nullable', 'string', 'max:255'],
+        'year_enrolled' => ['nullable', 'integer', 'min:1900', 'max:2200'],
+    ]);
+
+    $now = now();
+    $id = DB::table('cooperatives')->insertGetId([
+        'cooperative_code' => trim($data['cooperative_code']),
+        'cooperative_name' => trim($data['cooperative_name']),
+        'cda_registration_no' => $data['cda_registration_no'] ?? null,
+        'accreditation_status' => $data['accreditation_status'] ?? null,
+        'coop_type' => $data['coop_type'] ?? null,
+        'category' => $data['category'] ?? null,
+        'date_established' => $data['date_established'] ?? null,
+        'region' => $data['region'] ?? null,
+        'province' => $data['province'] ?? null,
+        'municipality' => $data['municipality'] ?? null,
+        'barangay' => $data['barangay'] ?? null,
+        'year_enrolled' => $data['year_enrolled'] ?? null,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    return response()->json([
+        'message' => 'Cooperative added and saved to database.',
+        'data' => DB::table('cooperatives')->find($id),
+    ], 201);
+})->name('admin.cooperatives.store');
 Route::put('/cooperatives/{id}', function (Request $request, $id) {
     $data = $request->all();
 

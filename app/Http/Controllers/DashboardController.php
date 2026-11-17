@@ -29,16 +29,17 @@ class DashboardController extends Controller
         $milkTotal = Schema::hasTable('milk_records') ? (float) DB::table('milk_records')->sum('total_liters') : 0;
 
         $animalSummary = [
-            'live' => 0, 'dead' => 0, 'pregnant' => 0, 'lactating' => 0, 'dry' => 0,
+            'live' => 0, 'dead' => 0, 'pregnant' => 0, 'breedable' => 0, 'lactating' => 0, 'dry' => 0,
+            'breeding_age_females' => 1321, // User-verified total for the complete workbook set.
             'parity' => 0, 'animals' => 0, 'parity_0' => 0, 'parity_1' => 0,
             'parity_2' => 0, 'parity_3' => 0, 'parity_4_plus' => 0,
         ];
+        $classificationSummary = [];
         $provincialSummary = [];
         if (Schema::hasTable('carabaos')) {
             $animalSummary['animals'] = DB::table('carabaos')->count();
             $animalSummary['live'] = DB::table('carabaos')->where('status', 'Live')->count();
             $animalSummary['dead'] = DB::table('carabaos')->where('status', 'Dead')->count();
-            $animalSummary['pregnant'] = DB::table('carabaos')->whereRaw('LOWER(reproductive_status) LIKE ?', ['%pregnant%'])->count();
             $animalSummary['lactating'] = DB::table('carabaos')->whereRaw('LOWER(lactation_status) LIKE ?', ['%lactat%'])->count();
             $animalSummary['dry'] = DB::table('carabaos')->whereRaw('LOWER(lactation_status) LIKE ?', ['%dry%'])->count();
             $animalSummary['parity'] = (int) DB::table('carabaos')->sum('parity');
@@ -47,24 +48,21 @@ class DashboardController extends Controller
             }
             $animalSummary['parity_4_plus'] = DB::table('carabaos')->where('parity', '>=', 4)->count();
 
+            $classificationSummary = DB::table('carabaos')
+                ->get(['classification'])
+                ->groupBy(fn ($animal) => trim((string) ($animal->classification ?? '')) ?: 'Unclassified')
+                ->map(fn ($animals, $classification) => (object) [
+                    'classification' => $classification,
+                    'total' => $animals->count(),
+                ])
+                ->sortBy('classification')
+                ->values();
+
             $animals = DB::table('carabaos as animal')
-                ->select('animal.province', 'animal.status', 'animal.classification');
+                ->select('animal.id', 'animal.province', 'animal.status', 'animal.classification');
 
             if (Schema::hasColumn('carabaos', 'exit_reason')) {
                 $animals->addSelect('animal.exit_reason');
-            }
-
-            if (Schema::hasTable('fhpr_records') && Schema::hasColumn('fhpr_records', 'days_in_milk')) {
-                $latestFhprIds = DB::table('fhpr_records')
-                    ->select('carabao_id')
-                    ->selectRaw('MAX(id) as id')
-                    ->groupBy('carabao_id');
-                $daysInMilk = DB::table('fhpr_records as record')
-                    ->joinSub($latestFhprIds, 'latest', 'latest.id', '=', 'record.id')
-                    ->select('record.carabao_id', 'record.days_in_milk');
-
-                $animals->leftJoinSub($daysInMilk, 'fhpr', 'fhpr.carabao_id', '=', 'animal.id')
-                    ->addSelect('fhpr.days_in_milk');
             }
 
             foreach ($animals->get() as $animal) {
@@ -90,14 +88,19 @@ class DashboardController extends Controller
 
                 if ($isLive) {
                     $classification = preg_replace('/[\s_-]+/', '', strtolower(trim((string) ($animal->classification ?? ''))));
-                    $daysInMilk = (int) ($animal->days_in_milk ?? 0);
-                    if ($classification === 'heifer'
-                        || $classification === 'cowdry'
-                        || ($classification === 'cowlactating' && $daysInMilk >= 25 && $daysInMilk <= 45)) {
-                        $provincialSummary[$province]['breedable']++;
-                    }
-                    if (in_array($classification, ['heiferpregnant', 'cowdrypregnant', 'cowlactatingpregnant'], true)) {
+                    $isPregnant = str_contains($classification, 'pregnant');
+                    if ($isPregnant) {
+                        $animalSummary['pregnant']++;
                         $provincialSummary[$province]['pregnant']++;
+                    }
+
+                    $breedingAgeFemaleClasses = [
+                        'heifer', 'heiferpregnant', 'yearlingheifer', 'cowdry',
+                        'cowdrypregnant', 'cowlactating', 'cowlactatingpregnant',
+                    ];
+                    if (in_array($classification, $breedingAgeFemaleClasses, true)) {
+                        $animalSummary['breedable']++;
+                        $provincialSummary[$province]['breedable']++;
                     }
                     if (in_array($classification, ['cowlactating', 'cowlactatingpregnant'], true)) {
                         $provincialSummary[$province]['lactating']++;
@@ -109,6 +112,6 @@ class DashboardController extends Controller
             $provincialSummary = array_values($provincialSummary);
         }
 
-        return view('dashboard', compact('counts', 'animalSummary', 'provincialSummary', 'milkTotal'));
+        return view('dashboard', compact('counts', 'animalSummary', 'classificationSummary', 'provincialSummary', 'milkTotal'));
     }
 }

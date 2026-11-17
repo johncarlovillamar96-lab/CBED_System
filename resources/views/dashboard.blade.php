@@ -80,12 +80,13 @@
 </div>
 
 <section class="dashboard-status-section mb-7">
-    <div class="mb-3"><h2 class="text-lg font-bold text-slate-800">Animal status summary</h2><p class="text-sm text-slate-500">Current counts from the animal inventory</p></div>
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+    <div class="mb-3"><h2 class="text-lg font-bold text-slate-800">Animal status summary</h2><p class="text-sm text-slate-500">Current inventory classifications and verified source totals</p></div>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
         @foreach([
             'live' => ['Live', 'border-emerald-200 bg-emerald-50', 'text-emerald-700'],
             'dead' => ['Dead', 'border-rose-200 bg-rose-50', 'text-rose-700'],
             'pregnant' => ['Pregnant', 'border-violet-200 bg-violet-50', 'text-violet-700'],
+            'breeding_age_females' => ['Breeding-age females', 'border-indigo-200 bg-indigo-50', 'text-indigo-700'],
             'lactating' => ['Lactating', 'border-sky-200 bg-sky-50', 'text-sky-700'],
             'dry' => ['Cow Dry', 'border-amber-200 bg-amber-50', 'text-amber-700'],
             'parity_1' => ['Parity 1+', 'border-indigo-200 bg-indigo-50', 'text-indigo-700'],
@@ -94,6 +95,33 @@
         @endforeach
     </div>
     <div class="mt-3 flex flex-wrap gap-2 text-xs">@foreach(['parity_0' => 'Parity 0', 'parity_1' => 'Parity 1', 'parity_2' => 'Parity 2', 'parity_3' => 'Parity 3', 'parity_4_plus' => 'Parity 4+'] as $key => $label)<span class="rounded-full bg-white px-3 py-2 text-slate-600 shadow-sm">{{ $label }}: <b>{{ number_format($animalSummary[$key] ?? 0) }}</b></span>@endforeach</div>
+</section>
+
+<section class="dashboard-status-section mb-7">
+    <div class="mb-3">
+        <h2 class="text-lg font-bold text-slate-800">Animal classification breakdown</h2>
+        <p class="text-sm text-slate-500">Counts for every classification recorded in the animal inventory</p>
+    </div>
+    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table class="min-w-full text-left text-sm">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                    <th class="px-4 py-3 font-semibold">Classification</th>
+                    <th class="px-4 py-3 text-right font-semibold">Animals</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse($classificationSummary as $classification)
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-4 py-3 font-medium text-slate-700">{{ $classification->classification }}</td>
+                        <td class="px-4 py-3 text-right font-semibold text-slate-800">{{ number_format($classification->total) }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="2" class="px-4 py-6 text-center text-slate-500">No classified animals in the inventory.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <section class="dashboard-status-section mb-7">

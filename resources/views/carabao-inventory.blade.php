@@ -239,6 +239,7 @@
                         <th class="whitespace-nowrap px-4 py-3">Region</th>
                         <th class="whitespace-nowrap px-4 py-3">Date of Acquisition</th>
                         <th class="whitespace-nowrap px-4 py-3">Acquisition Cost</th>
+                        <th class="whitespace-nowrap px-4 py-3">Status</th>
                         <th class="whitespace-nowrap px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
@@ -269,6 +270,11 @@
                             <td class="px-4 py-3" x-text="formatRegion(animal.region)"></td>
                             <td class="px-4 py-3" x-text="formatDateValue(animal.acquisition_date || animal.date_of_acquisition)"></td>
                             <td class="whitespace-nowrap px-4 py-3 text-right" x-text="animal.acquisition_cost !== null && animal.acquisition_cost !== '' && animal.acquisition_cost !== undefined ? Number(animal.acquisition_cost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'"></td>
+                            <td class="whitespace-nowrap px-4 py-3">
+                                <span class="rounded-full px-2.5 py-1 text-xs font-semibold"
+                                    :class="String(animal.status || (animal.nature_of_exit ? 'Out' : 'Live')).toLowerCase() === 'live' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'"
+                                    x-text="animal.status || (animal.nature_of_exit ? 'Out' : 'Live')"></span>
+                            </td>
                             <td class="px-4 py-3">
                                 <div class="flex justify-end gap-1">
                                     <button type="button" @click="viewAnimal(animal)" title="View" class="rounded p-2 text-slate-600 hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
@@ -279,7 +285,7 @@
                         </tr>
                     </template>
                     <tr x-show="filteredRecords.length===0">
-                        <td colspan="25" class="px-4 py-14 text-center text-slate-500">No carabao records found. Import your Excel inventory or add records to begin.</td>
+                        <td colspan="26" class="px-4 py-14 text-center text-slate-500">No carabao records found. Import your Excel inventory or add records to begin.</td>
                     </tr>
                 </tbody>
             </table>
