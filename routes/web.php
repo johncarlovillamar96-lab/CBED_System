@@ -116,6 +116,50 @@ Route::get('/admin/calf-drop-api', function () {
             'remarks' => trim(implode(' · ', array_filter([$row->calf_findings, $row->remarks]))),
         ]);
 })->name('admin.calf-drop.records');
+Route::patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, int $id) {
+    $data = $request->validate([
+        'date_of_birth' => ['required', 'date'],
+        'sex' => ['required', 'in:Male,Female'],
+        'animal_status' => ['required', 'in:Live,Out,Dead,Not Applicable'],
+        'breed' => ['nullable', 'string', 'max:255'],
+        'sire_id' => ['nullable', 'string', 'max:255'],
+    ]);
+    $animal = DB::table('carabaos')->where('id', $id)->first();
+    abort_if(! $animal || empty($animal->dam_id), 404, 'Calf inventory record was not found.');
+    DB::table('carabaos')->where('id', $id)->update([
+        'birth_date' => $data['date_of_birth'],
+        'sex' => $data['sex'],
+        'breed' => $data['breed'] ?? null,
+        'sire_id' => $data['sire_id'] ?? null,
+        'status' => $data['animal_status'],
+        'updated_at' => now(),
+    ]);
+    return response()->json(['message' => 'Calf inventory record updated.']);
+})->whereNumber('id')->name('admin.calf-drop.inventory.update');
+Route::put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
+    $data = $request->validate([
+        'date_of_birth' => ['required', 'date'],
+        'sex' => ['required', 'in:Male,Female'],
+        'animal_status' => ['required', 'in:Live,Out,Dead,Not Applicable'],
+        'birth_outcome' => ['required', 'in:Live Birth,Stillbirth,Abortion'],
+        'monitored_date' => ['nullable', 'date'],
+        'breed' => ['nullable', 'string', 'max:255'],
+        'sire_id' => ['nullable', 'string', 'max:255'],
+        'remarks' => ['nullable', 'string'],
+    ]);
+    abort_unless(DB::table('calves')->where('id', $id)->exists(), 404, 'Calf Drop record was not found.');
+    DB::table('calves')->where('id', $id)->update([
+        'birth_date' => $data['date_of_birth'],
+        'sex' => $data['sex'],
+        'birth_outcome' => $data['birth_outcome'],
+        'animal_status' => $data['animal_status'],
+        'monitoring_date' => $data['monitored_date'] ?? null,
+        'sire_id' => $data['sire_id'] ?? null,
+        'remarks' => $data['remarks'] ?? null,
+        'updated_at' => now(),
+    ]);
+    return response()->json(['message' => 'Calf Drop record updated.']);
+})->whereNumber('id')->name('admin.calf-drop.database.update');
 Route::post('/admin/calf-drop-api', function (Request $request) {
     $data = $request->validate([
         'calf_id' => ['nullable', 'string', 'max:255'],
