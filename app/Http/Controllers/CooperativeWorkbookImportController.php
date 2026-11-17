@@ -1152,6 +1152,20 @@ class CooperativeWorkbookImportController extends Controller
                 }
             }
 
+            if (in_array($sheetKey, ['mating', 'mating_2'], true)
+                && \App\Support\MatingWorksheetMapping::matchesHeaders($headerRows[$headerIndex], $sheetKey)) {
+                $mapped = \App\Support\MatingWorksheetMapping::fromRow($values, $sheetKey);
+                $data = array_replace($data, array_intersect_key($mapped, array_flip($columns)));
+                $sourceData['mating_column_mapping'] = $mapped;
+                $sourceData['mating_api_fields']['estrus_type'] = $mapped['estrus_type'];
+                if ($mapped['pd_technician'] !== null) {
+                    $sourceData['mating_api_fields']['pd_technician'] = $mapped['pd_technician'];
+                }
+                if ($mapped['pregnancy_months'] !== null) {
+                    $sourceData['mating_api_fields']['pregnancy_months'] = $mapped['pregnancy_months'];
+                }
+            }
+
             $rowCooperativeId = $cooperativeId;
             $unmappedIdentifierId = null;
             $sourceCooperativeLabel = $this->sourceDataValue($sourceData, [
@@ -1389,10 +1403,18 @@ class CooperativeWorkbookImportController extends Controller
                 $sourceCooperativeLabel = $record['_source_cooperative_label'] ?? null;
                 unset($record['_unmapped_identifier_id']);
                 unset($record['_source_cooperative_label']);
+                if ($sheetKey === 'fhpr_breeding' && ! empty($record['dry_off_date'])) {
+                    $record['status_updated'] = 'CowDry';
+                }
                 $record['updated_at'] = now();
                 $recordCooperativeId = isset($record['cooperative_id']) ? (int) $record['cooperative_id'] : null;
                 $match = $this->matchingRecord($table, $sheetKey, $record, $recordCooperativeId, $sourceCooperativeLabel);
                 if ($match) {
+                    if (in_array($sheetKey, ['mating', 'mating_2'], true)) {
+                        $oldSource = json_decode((string) ($match->source_data ?? ''), true) ?: [];
+                        $newSource = json_decode((string) ($record['source_data'] ?? ''), true) ?: [];
+                        $record['source_data'] = json_encode(array_replace_recursive($oldSource, $newSource), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    }
                     DB::table($table)->where('id', $match->id)->update($record);
                     $recordId = (int) $match->id;
                     $updated++;
@@ -1412,13 +1434,23 @@ class CooperativeWorkbookImportController extends Controller
                     ]);
                 }
                 if ($sheetKey === 'fhpr_breeding' && ! empty($record['registry_number']) && ! empty($record['status_updated'])) {
-                    DB::table('carabaos')
+                    $animals = DB::table('carabaos')
                         ->where('cooperative_id', $recordCooperativeId)
                         ->where('registry_number', $record['registry_number'])
-                        ->update(['classification' => $record['status_updated'], 'updated_at' => now()]);
+                        ->get(['id', 'status', 'nature_of_exit']);
+                    foreach ($animals as $animal) {
+                        $classification = \App\Support\InventoryClassification::isExcluded($animal->status, $animal->nature_of_exit)
+                            ? null : $record['status_updated'];
+                        DB::table('carabaos')->where('id', $animal->id)->update(['classification' => $classification, 'updated_at' => now()]);
+                    }
                 }
             }
 
+            if (in_array($sheetKey, ['fhpr_breeding', 'mating', 'mating_2'], true)) {
+                foreach (collect($records)->pluck('carabao_id')->filter()->unique() as $animalId) {
+                    \App\Support\FhprClassification::syncAnimal((int)$animalId);
+                }
+            }
             return ['inserted' => $inserted, 'updated' => $updated];
         });
     }

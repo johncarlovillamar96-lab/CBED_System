@@ -66,6 +66,7 @@ Route::view('/mapping', 'mapping')->name('ui.mapping');
 Route::view('/admin/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
 Route::view('/admin/semen-bulls', 'semen-bull')->name('admin.semen-bulls');
 Route::get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
+Route::patch('/fhpr/{id}/dry-off-date', [ModuleController::class, 'updateFhprDryOffDate'])->whereNumber('id')->name('fhpr.dry-off.update');
 Route::get('/bcs', [ModuleController::class, 'index'])->defaults('module', 'bcs')->name('ui.bcs');
 Route::get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
 Route::get('/mtd', [ModuleController::class, 'index'])->defaults('module', 'mtd')->name('ui.mtd');
@@ -233,8 +234,10 @@ Route::post('/admin/calf-drop-api', function (Request $request) {
 })->name('admin.calf-drop.store');
 Route::patch('/admin/carabao-inventory-api/{id}/classification', function (\Illuminate\Http\Request $request, int $id) {
     $data = $request->validate(['classification' => ['nullable', 'string', 'max:255']]);
+    $animal = DB::table('carabaos')->where('id', $id)->first();
+    abort_unless($animal, 404, 'Carabao record not found.');
     $updated = DB::table('carabaos')->where('id', $id)->update([
-        'classification' => $data['classification'] ?? null,
+        'classification' => \App\Support\InventoryClassification::isExcluded($animal->status, $animal->nature_of_exit) ? null : ($data['classification'] ?? null),
         'updated_at' => now(),
     ]);
     abort_if($updated === 0 && ! DB::table('carabaos')->where('id', $id)->exists(), 404, 'Carabao record not found.');
@@ -358,21 +361,24 @@ Route::get('/admin/breeding-api/records', fn () => DB::table('mating_records as 
     ->leftJoin('farmers as f', 'f.id', '=', 'a.farmer_id')
     ->leftJoin('cooperatives as c', 'c.id', '=', DB::raw('COALESCE(mr.cooperative_id, a.cooperative_id, f.cooperative_id)'))
     ->leftJoin('semen_bulls as sb', 'sb.id', '=', 'mr.semen_bull_id')
-    ->select('mr.*', 'c.cooperative_name', 'a.animal_name', 'a.animal_id as animal_registry_id', 'f.id as farmer_id', 'f.first_name as farmer_first_name', 'f.middle_name as farmer_middle_name', 'f.last_name as farmer_last_name', 'sb.bull_name as matched_bull_name')
+    ->select('mr.*', 'c.cooperative_name', 'a.animal_name', 'a.animal_id as animal_registry_id', 'a.status as inventory_status', 'a.nature_of_exit as inventory_exit', 'f.id as farmer_id', 'f.first_name as farmer_first_name', 'f.middle_name as farmer_middle_name', 'f.last_name as farmer_last_name', 'sb.bull_name as matched_bull_name')
     ->orderByDesc('mr.id')->get()->map(function ($record) {
         $source = json_decode((string) $record->source_data, true) ?: [];
         $fields = $source['mating_api_fields'] ?? $source['monitoring_fields'] ?? [];
         $record->straws_used = $fields['straws_used'] ?? $source['semen_used'] ?? null;
         $record->bull_name = $fields['bull_name'] ?? $record->matched_bull_name ?? null;
         $record->estrus_type = $record->estrus_type ?? $fields['estrus_type'] ?? null;
-        $record->pregnancy_months = $fields['pregnancy_months'] ?? $source['pregnancy_months'] ?? null;
-        $record->pd_technician = $fields['pd_technician'] ?? null;
+        $record->pregnancy_months = $fields['pregnancy_months'] ?? \App\Support\MatingWorksheetMapping::pregnancyMonthsFromSource($source);
+        $record->pd_technician = $fields['pd_technician'] ?? \App\Support\MatingWorksheetMapping::pdTechnicianFromSource($source);
         $record->record_date = $source['record_date'] ?? $source['monitoring_date'] ?? null;
         $record->pregnancy_status = $source['pregnancy_status'] ?? null;
         $record->farmer_id = $record->farmer_id ?? $fields['farmer_id'] ?? null;
         $record->animal_id = $record->animal_registry_id ?: $record->registry_number;
         return $record;
-    }))->name('admin.breeding-api.records');
+    })->pipe(fn ($records) => \App\Support\MatingCalfReports::annotate(
+        $records, DB::table('calves')->whereIn('dam_id', $records->pluck('carabao_id')->filter()->unique())->get(['dam_id', 'birth_date']),
+        DB::table('carabaos')->whereNotNull('dam_id')->get(['dam_id as mother_id', 'birth_date'])
+    ))->pipe(fn($records)=>\App\Support\OverdueCalfNotifications::annotate($records)))->name('admin.breeding-api.records');
 Route::get('/admin/breeding-api/cooperatives', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.breeding-api.cooperatives');
 Route::get('/admin/breeding-api/farmers', fn () => DB::table('farmers')->orderBy('last_name')->get())->name('admin.breeding-api.farmers');
 Route::get('/admin/breeding-api/carabaos', fn () => DB::table('carabaos')->orderBy('animal_name')->get())->name('admin.breeding-api.carabaos');
@@ -425,9 +431,12 @@ $persistMatingRecord = function (array $data, ?int $recordId = null) {
     ];
     if ($existing) {
         DB::table('mating_records')->where('id', $existing->id)->update($fields);
+        \App\Support\FhprClassification::syncAnimal((int)$animal->id);
         return (int) $existing->id;
     }
-    return (int) DB::table('mating_records')->insertGetId($fields + ['created_at' => now()]);
+    $id=(int) DB::table('mating_records')->insertGetId($fields + ['created_at' => now()]);
+    \App\Support\FhprClassification::syncAnimal((int)$animal->id);
+    return $id;
 };
 Route::post('/admin/breeding-api/records', function (Request $request) use ($matingApiRules, $persistMatingRecord) {
     $data = $request->validate($matingApiRules);
@@ -448,7 +457,7 @@ Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($
 })->name('admin.breeding-api.bulk');
 Route::put('/admin/breeding-api/records/{id}', function (Request $request, int $id) use ($matingApiRules, $persistMatingRecord) {
     $data = $request->validate($matingApiRules);
-    $persistMatingRecord($data, $id);
+    DB::transaction(fn()=>$persistMatingRecord($data, $id));
     return response()->json(['message' => 'Mating record updated.', 'id' => $id]);
 })->whereNumber('id')->name('admin.breeding-api.update');
 Route::delete('/admin/breeding-api/records/{id}', function (int $id) {

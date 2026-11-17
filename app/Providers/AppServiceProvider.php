@@ -16,6 +16,10 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        View::composer(['layouts.admin','mating'], function ($view) {
+            if ($view->name() === 'layouts.admin' && $view->getFactory()->hasSection('inlineCalfDropNotifications')) return;
+            $view->with('calfDropNotifications', \App\Support\OverdueCalfNotifications::groups());
+        });
         View::composer('layouts.app', function ($view) {
             $view->with('importCooperatives', Schema::hasTable('cooperatives')
                 ? DB::table('cooperatives')->orderBy('cooperative_name')->get()

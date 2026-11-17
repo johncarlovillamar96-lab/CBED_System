@@ -368,10 +368,10 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                  if(str_contains(Str::lower((string)data_get($row,$column,'')),Str::lower($search)))return true;
                  if($column==='date_of_birth'&&str_contains(Str::lower((string)($row->_date_of_birth_search??'')),Str::lower($search)))return true;
              }
-             return false;
+             return str_contains(Str::lower((string)($row->_date_search??'')),Str::lower($search));
          })->values();
-         $records->each(function($row){unset($row->_date_of_birth_search);});
-         $page=LengthAwarePaginator::resolveCurrentPage();$perPage=25;$total=$records->count();
+         $records->each(function($row){unset($row->_date_of_birth_search,$row->_date_search);});
+         $page=LengthAwarePaginator::resolveCurrentPage();$perPage=15;$total=$records->count();
          $rows=new LengthAwarePaginator($records->slice(($page-1)*$perPage,$perPage)->values(),$total,$perPage,$page,['path'=>$request->url(),'query'=>$request->query()]);
      }else{
          $query=DB::table($table);if(in_array($module,['meat','manure'],true))$query->where('product_type',$module);if($search!=='')$query->where(function($builder)use($columns,$search){foreach($columns as $column)$builder->orWhere($column,'like','%'.$search.'%');});$rows=$query->orderByDesc('id')->paginate(25)->withQueryString();
@@ -507,6 +507,38 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      if(!$birthDate)return '—';try{$age=Carbon::parse($birthDate)->diff(Carbon::now());return $age->y.'yrs '.$age->m.'mo';}catch(\Throwable){return '—';}
  }
 
+ public function updateFhprDryOffDate(Request $request,int $id)
+ {
+     $data=$request->validate(['dry_off_date'=>['nullable','date_format:Y-m-d']]);
+     return DB::transaction(function()use($data,$id){
+         $row=DB::table('fhpr_records')->where('id',$id)->lockForUpdate()->first();
+         abort_unless($row,404,'FHPR record not found.');
+         $date=$data['dry_off_date']??null;
+         $animal=DB::table('carabaos')->where('id',$row->carabao_id)->lockForUpdate()->first();
+         $classification=$animal->classification??null;
+         $start=\App\Support\FhprLactation::start($row);
+         $updates=['dry_off_date'=>$date,'updated_at'=>now()];
+         if($start){
+             $days=\App\Support\FhprLactation::days($start,$date);
+             if($days<0)throw \Illuminate\Validation\ValidationException::withMessages(['dry_off_date'=>'Dry Off Date cannot be before the lactation start date.']);
+             $source=json_decode((string)$row->source_data,true)?:[];
+             $source['fhpr_lactation_start_date']=$start->toDateString();
+             $updates['source_data']=json_encode($source,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+             $updates['days_in_milk']=$days;
+         }
+         if($animal&&!\App\Support\InventoryClassification::isExcluded($animal->status,$animal->nature_of_exit??null)){
+             $classification=\App\Support\FhprClassification::resolve($animal->classification,$updates['days_in_milk']??$row->days_in_milk,$date,\App\Support\FhprClassification::latestPdResult($animal->id));
+             $updates['status_updated']=$classification;
+             DB::table('carabaos')->where('id',$animal->id)->update(['classification'=>$classification,'updated_at'=>now()]);
+         }
+         DB::table('fhpr_records')->where('id',$id)->update($updates);
+         return response()->json(['dry_off_date'=>$date,'display_date'=>$this->formatFhprDate($date),
+             'days_in_milk'=>$updates['days_in_milk']??$row->days_in_milk,
+             'lactation_start_date'=>$start?->toDateString(),'lactation_start_display'=>$start?->format('F j,Y'),
+             'classification'=>$classification]);
+     });
+ }
+
  private function fhprDisplayColumns(): array
  {
      $hidden=['id','created_at','updated_at','carabao_id','cooperative_id','registry_number','source_data'];
@@ -517,40 +549,108 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      $dateOfBirthIndex=array_search('date_of_birth',$columns,true);
      array_splice($columns,$dateOfBirthIndex===false?count($columns):$dateOfBirthIndex,0,['sex','age']);
      $columns[]='record_source';
+     $columns=array_values(array_filter($columns,fn($column)=>$column!=='animal_identifier'));
+     $farmerIndex=array_search('farmer_name',$columns,true);
+     array_splice($columns,$farmerIndex===false?0:$farmerIndex+1,0,['animal_identifier']);
      return array_values(array_unique($columns));
  }
 
  private function fhprRecords(): \Illuminate\Support\Collection
  {
+     $dateColumns=collect(Schema::getColumns('fhpr_records'))
+         ->filter(fn($column)=>in_array($column['type_name'],['date','datetime','timestamp'],true)
+             &&!in_array($column['name'],['created_at','updated_at'],true))
+         ->pluck('name')->all();
+     $latestAi=DB::table('mating_records')
+         ->whereRaw("UPPER(TRIM(mating_type)) IN ('AI', 'ARTIFICIAL INSEMINATION')")
+         ->whereNotNull('carabao_id')->whereNotNull('mating_date')
+         ->select('carabao_id')->selectRaw('MAX(mating_date) as last_ai_date, COUNT(*) as ai_count')->groupBy('carabao_id');
+     $latestPd=DB::table('mating_records')
+         ->whereColumn('mating_records.carabao_id','inventory_animal.id')
+         ->whereNotNull('pregnancy_result')->whereRaw("TRIM(pregnancy_result) <> ''")
+         ->orderByDesc('pregnancy_check_date')->orderByDesc('mating_date')->orderByDesc('id')
+         ->select('pregnancy_result')->limit(1);
+     $latestMating=DB::table('mating_records')
+         ->whereColumn('mating_records.carabao_id','inventory_animal.id')
+         ->whereNotNull('mating_type')->whereRaw("TRIM(mating_type) <> ''")
+         ->orderByDesc('mating_date')->orderByDesc('pregnancy_check_date')->orderByDesc('id')
+         ->limit(1);
      $records=DB::table('fhpr_records')
          ->leftJoin('carabaos as inventory_animal','inventory_animal.id','=','fhpr_records.carabao_id')
+         ->leftJoinSub($latestAi,'latest_ai',fn($join)=>$join->on('latest_ai.carabao_id','=','inventory_animal.id'))
          ->leftJoin('farmers as inventory_farmer','inventory_farmer.id','=','inventory_animal.farmer_id')
          ->whereRaw("UPPER(TRIM(inventory_animal.sex)) IN ('F', 'FEMALE')")
+         ->whereRaw("NULLIF(TRIM(inventory_animal.classification), '') IS NOT NULL")
          ->leftJoin('cooperatives as cooperative',function($join){
              $join->on('cooperative.id','=',DB::raw('COALESCE(inventory_animal.cooperative_id, inventory_farmer.cooperative_id, fhpr_records.cooperative_id)'));
          })
-         ->select('fhpr_records.*','inventory_animal.sex as sex')
+         ->select('fhpr_records.*','inventory_animal.sex as sex','inventory_animal.classification as status_updated')
+         ->addSelect('latest_ai.last_ai_date as last_ai_date')
+         ->selectRaw('COALESCE(latest_ai.ai_count, 0) as ai_count')
+         ->selectSub($latestPd,'pregnancy_status')
+         ->selectSub((clone $latestPd)->select('mating_date'),'_pregnancy_mating_date')
+         ->selectSub((clone $latestPd)->select('pregnancy_check_date'),'actual_pd_date')
+         ->selectSub((clone $latestPd)->select('expected_calving_date'),'expected_calving_date')
+         ->selectSub((clone $latestMating)->select('mating_type'),'ai_or_n')
+         ->selectSub((clone $latestMating)->select('bull_id'),'sire_used')
+         ->selectSub((clone $latestMating)->select('source_data'),'_latest_mating_source')
          ->selectRaw("COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(inventory_animal.animal_id, ''), NULLIF(fhpr_records.registry_number, ''), 'N/A') as animal_identifier")
          ->selectRaw("COALESCE(NULLIF(TRIM(cooperative.cooperative_name), ''), 'N/A') as cooperative_name_display")
          ->get();
-     $records->each(function($row){
+     $records->each(function($row)use($dateColumns){
+         $lactationStart=\App\Support\FhprLactation::start($row);
+         $row->_lactation_start_date=$lactationStart?->toDateString();
+         $row->_lactation_start_display=$lactationStart?->format('F j,Y');
+         $lactationSource=json_decode((string)($row->source_data??''),true)?:[];
+         if($lactationStart&&!empty($lactationSource['fhpr_lactation_start_date'])){
+             $row->days_in_milk=max(0,\App\Support\FhprLactation::days($lactationStart,$row->dry_off_date??null));
+         }
+         $row->ai_or_n=match(strtoupper(trim((string)$row->ai_or_n))){
+             'AI','ARTIFICIAL INSEMINATION'=>'AI',
+             'N','NM','NS','NATURAL','NATURAL MATING','NATURAL SERVICE'=>'NM',
+             default=>$row->ai_or_n,
+         };
+         $matingSource=json_decode((string)$row->_latest_mating_source,true)?:[];
+         $matingFields=$matingSource['mating_api_fields']??$matingSource['monitoring_fields']??[];
+         $row->estrus_type=$row->ai_or_n==='AI'
+             ?(array_key_exists('estrus_type',$matingFields)?$matingFields['estrus_type']
+                 :($matingSource['mating_column_mapping']['estrus_type']??$matingSource['Type of estrus']??null))
+             :null;
+         $row->pregnancy_status=match(strtolower(trim((string)$row->pregnancy_status))){
+             '+','p','positive','pregnant','yes'=>'Positive',
+             '-','n','negative','not pregnant','non-pregnant','no'=>'Negative',
+             'pending','null','n/a','na','?'=>'Pending',
+             default=>$row->pregnancy_status,
+         };
+         $row->status_updated=\App\Support\FhprClassification::resolve($row->status_updated,$row->days_in_milk??null,$row->dry_off_date??null,$row->pregnancy_status);
+         $row->days_pregnant=$row->pregnancy_status==='Positive'
+             ?($row->_pregnancy_mating_date
+                 ?max(0,(int)Carbon::parse($row->_pregnancy_mating_date,'Asia/Singapore')->startOfDay()->diffInDays(Carbon::today('Asia/Singapore'),false))
+                 :0)
+             :null;
+         $row->expected_calving_date=$row->pregnancy_status==='Positive'
+             ?($row->expected_calving_date?:($row->_pregnancy_mating_date
+                 ?Carbon::parse($row->_pregnancy_mating_date)->addDays(310)->toDateString():null))
+             :null;
          $row->_date_of_birth_search=$row->date_of_birth??'';
+         $row->_dry_off_date=$row->dry_off_date??'';
+         $row->_date_search=implode(' ',array_map(fn($column)=>(string)($row->{$column}??''),$dateColumns));
          $row->age=$this->animalAge($row->date_of_birth);
          $row->record_source='FHPR Breeding';
      });
      $ordered=$records->sortByDesc('id')->values();
-     $ordered->each(function($row){
+     $ordered->each(function($row)use($dateColumns){
          $row->tag_number=$this->displayFhprTagNumber($row->tag_number??null);
-         $row->date_of_birth=$this->formatFhprDateOfBirth($row->date_of_birth??null);
-         unset($row->carabao_id,$row->cooperative_id,$row->registry_number,$row->source_data);
+         foreach($dateColumns as $column)$row->{$column}=$this->formatFhprDate($row->{$column}??null);
+         unset($row->carabao_id,$row->cooperative_id,$row->registry_number,$row->source_data,$row->_pregnancy_mating_date,$row->_latest_mating_source);
      });
      return $ordered;
  }
 
- private function formatFhprDateOfBirth($dateOfBirth): string
+ private function formatFhprDate($date): string
  {
-     if($dateOfBirth===null||trim((string)$dateOfBirth)==='')return '-';
-     try{return Carbon::parse($dateOfBirth)->format('F j, Y');}catch(\Throwable){return '-';}
+     if($date===null||trim((string)$date)==='')return '-';
+     try{return Carbon::parse($date)->format('F j,Y');}catch(\Throwable){return '-';}
  }
 
  private function displayFhprTagNumber($tagNumber): string
@@ -562,7 +662,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  public function template($module){abort_if($module==='fhpr',404);if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
  public function export($module){
      $table=$this->table($module);
-     if($module==='fhpr'){$cols=$this->fhprDisplayColumns();$rows=$this->fhprRecords();$labels=['animal_identifier'=>'Registry ID / Animal ID','cooperative_name_display'=>'Cooperative Name','date_of_birth'=>'Date of Birth'];return response()->streamDownload(function()use($cols,$rows,$labels){$file=fopen('php://output','w');fputcsv($file,array_map(fn($column)=>$labels[$column]??ucwords(str_replace('_',' ',$column)),$cols));foreach($rows as $row)fputcsv($file,array_map(fn($column)=>data_get($row,$column,''),$cols));fclose($file);},'fhpr_export.csv');}
+     if($module==='fhpr'){$cols=$this->fhprDisplayColumns();$rows=$this->fhprRecords();$labels=['animal_identifier'=>'Animal ID','cooperative_name_display'=>'Cooperative','farmer_name'=>'Farmer Name','date_of_birth'=>'Date of Birth','status_updated'=>'Classification'];return response()->streamDownload(function()use($cols,$rows,$labels){$file=fopen('php://output','w');fputcsv($file,array_map(fn($column)=>$labels[$column]??ucwords(str_replace('_',' ',$column)),$cols));foreach($rows as $row)fputcsv($file,array_map(fn($column)=>data_get($row,$column,''),$cols));fclose($file);},'fhpr_export.csv');}
      if($module==='health')return response()->streamDownload(function(){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['Monitoring Date','Animal Registry ID','Tag Number','Cooperative Name','Breed','Type of Service','Dosage (mL)','No. of Visits / Monitored','No. of Treatments','Service Remarks','Activity Remarks']);DB::table('health_records as record')->leftJoin('carabaos as animal','animal.id','=','record.carabao_id')->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(record.cooperative_id, animal.cooperative_id, farmer.cooperative_id)'))->select('record.*','animal.registry_number as animal_registry_number','animal.animal_id','animal.tag_number','animal.breed','cooperative.cooperative_name')->orderBy('record.id')->chunk(500,function($rows)use($file){foreach($rows as $row){$source=$this->decodeHealthSource($row->source_data);$services=$this->healthServicesArray($source);if(!$services)$services=[['type'=>'','other_service_name'=>'','dosage_ml'=>null,'remarks'=>'']];foreach($services as $index=>$service){$type=$service['type']==='Other Services'?($service['other_service_name']?:'Other Services'):$service['type'];fputcsv($file,[$row->monitoring_date?Carbon::parse($row->monitoring_date)->format('F j, Y'):'-',$row->animal_registry_number?:($row->registry_number?:$row->animal_id),$row->tag_number,$row->cooperative_name,$row->breed,$type,$service['dosage_ml']!==null&&$service['dosage_ml']!==''?$service['dosage_ml']:'-',$index===0?$this->healthActivityCount($source,'no_of_visits_monitored'):'',$index===0?$this->healthActivityCount($source,'no_of_treatments'):'',$service['remarks'],$row->remarks]);}}});fclose($file);},'health_export.csv');
      if($module==='milk')return response()->streamDownload(function(){
          if(ob_get_level()>0)ob_clean();

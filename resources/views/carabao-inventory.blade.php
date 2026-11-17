@@ -64,15 +64,29 @@
     </div>
 
     {{-- SUMMARY CARDS --}}
-    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <div class="pcc-stat-card rounded-xl bg-white p-5">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <p class="text-sm text-slate-500">Total Animals</p>
-                    <p class="mt-2 text-3xl font-bold" x-text="records.length"></p>
-                    <p class="mt-1 text-xs text-slate-500">Animals in the inventory</p>
+                    <p class="mt-2 text-3xl font-bold" x-text="summaryCounts.total"></p>
+                    <p class="mt-1 text-xs text-slate-500">Live animals in the inventory</p>
                 </div>
                 <div class="pcc-stat-icon flex h-12 w-12 items-center justify-center rounded-xl"><i class="fa-solid fa-cow text-xl"></i></div>
+            </div>
+        </div>
+        <div class="pcc-stat-card rounded-xl bg-white p-5">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm text-slate-500">Out Animals</p>
+                    <p class="mt-2 text-3xl font-bold" x-text="summaryCounts.out"></p>
+                    <div class="mt-2 space-y-1 text-xs text-slate-500">
+                        <p>Dead: <b class="text-slate-700" x-text="summaryCounts.dead"></b></p>
+                        <p>Culled: <b class="text-slate-700" x-text="summaryCounts.culled"></b></p>
+                        <p>Transfer: <b class="text-slate-700" x-text="summaryCounts.transfer"></b></p>
+                    </div>
+                </div>
+                <div class="pcc-stat-icon flex h-12 w-12 items-center justify-center rounded-xl"><i class="fa-solid fa-arrow-right-from-bracket text-xl"></i></div>
             </div>
         </div>
         <div class="pcc-stat-card rounded-xl bg-white p-5">
@@ -215,12 +229,11 @@
             <table class="inventory-data-table min-w-[2800px] w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
                     <tr>
-                        <th class="inventory-sticky-1 whitespace-nowrap px-4 py-3">Cooperative</th>
                         <th class="inventory-sticky-2 whitespace-nowrap px-4 py-3">Farmer</th>
                         <th class="inventory-sticky-3 whitespace-nowrap px-4 py-3">Bolus ID</th>
-                        <th class="whitespace-nowrap px-4 py-3">Registry Number</th>
-                        <th class="whitespace-nowrap px-4 py-3">Tag No.</th>
-                        <th class="whitespace-nowrap px-4 py-3">Sex</th>
+                        <th class="inventory-sticky-4 whitespace-nowrap px-4 py-3">Registry Number</th>
+                        <th class="inventory-sticky-5 whitespace-nowrap px-4 py-3">Tag No.</th>
+                        <th class="inventory-sticky-6 whitespace-nowrap px-4 py-3">Sex</th>
                         <th class="whitespace-nowrap px-4 py-3">Birthday</th>
                         <th class="whitespace-nowrap px-4 py-3">Age</th>
                         <th class="whitespace-nowrap px-4 py-3">Breed</th>
@@ -246,16 +259,15 @@
                 <tbody class="divide-y divide-slate-100">
                     <template x-for="animal in paginatedRecords" :key="animal.id">
                         <tr class="hover:bg-slate-50">
-                            <td class="inventory-sticky-1 px-4 py-3 font-medium text-slate-700" x-text="cooperativeNameForAnimal(animal) || '—'"></td>
                             <td class="inventory-sticky-2 px-4 py-3 font-medium text-slate-700" x-text="farmerNameForAnimal(animal) || '—'"></td>
                             <td class="inventory-sticky-3 px-4 py-3 font-mono text-xs font-semibold text-blue-800" x-text="animal.bolus_id || '—'"></td>
-                            <td class="px-4 py-3" x-text="animal.registry_number || '—'"></td>
-                            <td class="px-4 py-3" x-text="animal.tag_no || '—'"></td>
-                            <td class="px-4 py-3" x-text="animal.sex || '—'"></td>
+                            <td class="inventory-sticky-4 px-4 py-3" x-text="animal.registry_number || '—'"></td>
+                            <td class="inventory-sticky-5 px-4 py-3" x-text="animal.tag_no || '—'"></td>
+                            <td class="inventory-sticky-6 px-4 py-3" x-text="animal.sex || '—'"></td>
                             <td class="px-4 py-3" x-text="formatBirthday(animal)"></td>
                             <td class="whitespace-nowrap px-4 py-3" x-text="ageText(animal)"></td>
                             <td class="px-4 py-3" x-text="animal.breed || '—'"></td>
-                            <td class="px-2 py-2"><input type="text" :value="animal.classification || ''" @change="saveClassification(animal, $event.target.value)" class="w-40 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" placeholder="Set classification" :aria-label="'Classification for ' + (animal.registry_number || animal.animal_id || 'animal')"></td>
+                            <td class="px-4 py-3" x-text="hasNoClassification(animal)?'':(animal.classification||'')"></td>
                             <td class="px-4 py-3" x-text="animal.sire_id || '—'"></td>
                             <td class="px-4 py-3" x-text="animal.sire_name || '—'"></td>
                             <td class="px-4 py-3" x-text="animal.dam_id || '—'"></td>
@@ -272,8 +284,8 @@
                             <td class="whitespace-nowrap px-4 py-3 text-right" x-text="animal.acquisition_cost !== null && animal.acquisition_cost !== '' && animal.acquisition_cost !== undefined ? Number(animal.acquisition_cost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'"></td>
                             <td class="whitespace-nowrap px-4 py-3">
                                 <span class="rounded-full px-2.5 py-1 text-xs font-semibold"
-                                    :class="String(animal.status || (animal.nature_of_exit ? 'Out' : 'Live')).toLowerCase() === 'live' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'"
-                                    x-text="animal.status || (animal.nature_of_exit ? 'Out' : 'Live')"></span>
+                                    :class="statusLabel(animal) === 'Live' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'"
+                                    x-text="statusLabel(animal)"></span>
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex justify-end gap-1">
@@ -285,7 +297,7 @@
                         </tr>
                     </template>
                     <tr x-show="filteredRecords.length===0">
-                        <td colspan="26" class="px-4 py-14 text-center text-slate-500">No carabao records found. Import your Excel inventory or add records to begin.</td>
+                        <td colspan="25" class="px-4 py-14 text-center text-slate-500">No carabao records found. Import your Excel inventory or add records to begin.</td>
                     </tr>
                 </tbody>
             </table>
@@ -707,15 +719,18 @@ function carabaoInventoryPage() {
         },
 
         get summaryCounts() {
-            const live=this.records.filter(a=>{
-                const status=String(a.status??'').trim().toLowerCase();
-                return status ? status==='live' : !a.nature_of_exit;
-            });
+            const live=this.records.filter(a=>this.isLiveAnimal(a));
+            const out=this.records.filter(a=>!this.isLiveAnimal(a));
             const code=a=>String(a.classification??'').toLowerCase().replace(/[\s_-]+/g,'');
             const heifer=new Set(['heifer']);
             const pregnant=new Set(['heiferpregnant','cowlactatingpregnant','cowdrypregnant']);
             const lactating=new Set(['cowlactating','cowlactatingpregnant']);
             return {
+                total:live.length,
+                out:out.length,
+                dead:out.filter(a=>this.statusLabel(a)==='Dead').length,
+                culled:out.filter(a=>this.statusLabel(a)==='Culled').length,
+                transfer:out.filter(a=>this.statusLabel(a)==='Transfer').length,
                 breedable:live.filter(a=>{
                     const c=code(a);
                     return heifer.has(c)||c==='cowdry'||(c==='cowlactating'&&Number(a.days_in_milk)>=25&&Number(a.days_in_milk)<=45);
@@ -727,10 +742,7 @@ function carabaoInventoryPage() {
 
         get provincialSummary() {
             const groups=new Map();
-            const active=this.records.filter(a=>{
-                const status=String(a.status??'').trim().toLowerCase();
-                return status?status==='live':!a.nature_of_exit;
-            });
+            const active=this.records.filter(a=>this.isLiveAnimal(a));
             active.forEach(animal=>{
                 const province=normalizeProvince(animal.province)||'Unknown Province';
                 if(!groups.has(province))groups.set(province,{province,live:0,breedable:0,pregnant:0,lactating:0});
@@ -775,8 +787,24 @@ function carabaoInventoryPage() {
         },
 
         isLiveAnimal(animal) {
-            const status=String(animal.status??'').trim().toLowerCase();
-            return status ? status==='live' : !animal.nature_of_exit;
+            return this.statusLabel(animal).toLowerCase()==='live';
+        },
+
+        hasNoClassification(animal) {
+            return [animal.status,animal.nature_of_exit].some(value=>{
+                const normalized=String(value??'').trim().toLowerCase();
+                return normalized==='dead'||normalized.startsWith('cull')||normalized.startsWith('transf');
+            });
+        },
+
+        statusLabel(animal) {
+            const status=String(animal.status??'').trim();
+            const exit=String(animal.nature_of_exit??'').trim();
+            if(status.toLowerCase()==='dead'||exit.toLowerCase()==='dead') return 'Dead';
+            const value=(exit||status).toLowerCase();
+            if(value.startsWith('cull')) return 'Culled';
+            if(value.startsWith('transf')) return 'Transfer';
+            return exit||status||'Live';
         },
 
         animalIdentifiers(animal) {
@@ -987,6 +1015,7 @@ function carabaoInventoryPage() {
 
         detailValue(field, animal) {
             if(!animal) return '—';
+            if(field.key==='region') return this.formatRegion(animal.region);
             const dateValues={birthday:animal.birth_date||animal.birthday,date_of_acquisition:animal.acquisition_date||animal.date_of_acquisition,date_of_disposal_death:animal.death_date||animal.date_of_disposal_death};
             if(Object.prototype.hasOwnProperty.call(dateValues,field.key)) return this.formatDateValue(dateValues[field.key]);
             return animal[field.key]||'—';
@@ -994,7 +1023,7 @@ function carabaoInventoryPage() {
 
         formatRegion(value) {
             const region=String(value??'').trim();
-            if(!region||/^region\s*(iii|3)$/i.test(region)||/^iii$/i.test(region)||region==='3') return 'Region III';
+            if(!region||/^region[\s-]*(iii|3)$/i.test(region)||/^iii$/i.test(region)||region==='3') return 'III';
             return region;
         },
 
@@ -1010,7 +1039,10 @@ function carabaoInventoryPage() {
                 const payload=await response.json();
                 const rows=Array.isArray(payload)?payload:(payload.data||payload.records||[]);
                 if (!Array.isArray(rows)) throw new Error('The inventory API did not return a record list.');
-                this.records=rows.map(r=>({...emptyRecord(),...r,province:normalizeProvince(r.province)}));
+                this.records=rows.map(r=>({...emptyRecord(),...r,
+                    type_of_entrustment:r.type_of_entrustment||r.entrustment||'',
+                    reason_of_exit:r.reason_of_exit||r.exit_reason||'',
+                    province:normalizeProvince(r.province)}));
                 this.apiConnected=true;
                 this.page=1;
             } catch (e) {
@@ -1022,6 +1054,7 @@ function carabaoInventoryPage() {
         },
 
         async saveClassification(animal, value) {
+            if(this.hasNoClassification(animal)) return;
             const previous=animal.classification||'';
             animal.classification=value.trim();
             try {
@@ -1357,7 +1390,7 @@ function carabaoInventoryPage() {
             if(typeof XLSX==='undefined')return this.notify('Excel library did not load. Refresh the page.','error');
             const data=rows.map(r=>{
                 const item={};
-                this.fields.forEach(f=>item[f.label]=r[f.key]??'');
+                this.fields.forEach(f=>item[f.label]=f.key==='region'?this.formatRegion(r.region):(r[f.key]??''));
                 return item;
             });
             const headers=this.fields.map(f=>f.label);
@@ -1573,12 +1606,16 @@ function carabaoInventoryPage() {
 .inventory-data-table tbody tr:nth-child(even){background:#f8fafc}
 .inventory-data-table tbody tr:hover{background:#f0f8fb}
 .inventory-data-table tbody td{border-bottom:1px solid #e8edf3;vertical-align:middle}
-.inventory-data-table .inventory-sticky-1,.inventory-data-table .inventory-sticky-2,.inventory-data-table .inventory-sticky-3{position:sticky;background:#fff;box-shadow:1px 0 0 #e2e8f0}
-.inventory-data-table .inventory-sticky-1{left:0;width:220px;min-width:220px;max-width:220px}
-.inventory-data-table .inventory-sticky-2{left:220px;width:220px;min-width:220px;max-width:220px}
-.inventory-data-table .inventory-sticky-3{left:440px;width:160px;min-width:160px;max-width:160px}
-.inventory-data-table tbody .inventory-sticky-1,.inventory-data-table tbody .inventory-sticky-2,.inventory-data-table tbody .inventory-sticky-3{z-index:5}
-.inventory-data-table thead .inventory-sticky-1,.inventory-data-table thead .inventory-sticky-2,.inventory-data-table thead .inventory-sticky-3{z-index:30;background:#103c60;color:#fff;box-shadow:none}
+.inventory-data-table [class*="inventory-sticky-"]{position:sticky;box-sizing:border-box;background:#fff;box-shadow:1px 0 0 #e2e8f0;padding-left:.5rem;padding-right:.5rem;white-space:normal;overflow-wrap:anywhere}
+.inventory-data-table .inventory-sticky-2{left:0;width:170px;min-width:170px;max-width:170px}
+.inventory-data-table .inventory-sticky-3{left:170px;width:152px;min-width:152px;max-width:152px}
+.inventory-data-table .inventory-sticky-4{left:322px;width:136px;min-width:136px;max-width:136px}
+.inventory-data-table .inventory-sticky-5{left:458px;width:88px;min-width:88px;max-width:88px}
+.inventory-data-table .inventory-sticky-6{left:546px;width:64px;min-width:64px;max-width:64px;box-shadow:3px 0 5px -2px #94a3b8}
+.inventory-data-table tbody [class*="inventory-sticky-"]{z-index:5}
+.inventory-data-table tbody tr:nth-child(even) [class*="inventory-sticky-"]{background:#f8fafc}
+.inventory-data-table tbody tr:hover [class*="inventory-sticky-"]{background:#f0f8fb}
+.inventory-data-table thead [class*="inventory-sticky-"]{z-index:30;background:#103c60;color:#fff;box-shadow:none}
 .inventory-data-table input{min-height:36px}
 .inventory-data-table tbody td:last-child button{min-width:36px;min-height:36px}
 

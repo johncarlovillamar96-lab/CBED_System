@@ -57,7 +57,7 @@
                 <h1 class="text-2xl font-bold text-white sm:text-3xl">{{ $pageTitle }}</h1>
                 <p class="mt-1 text-sm text-blue-100">{{ $pageDescription }}</p>
                 <span class="pcc-program-tag">
-                    <i class="fa-regular fa-calendar"></i> {{ now()->format('F d, Y') }}
+                    <i class="fa-regular fa-calendar"></i> {{ now()->format($module === 'fhpr' ? 'F j,Y' : 'F d, Y') }}
                 </span>
             </div>
         </div>
@@ -235,7 +235,7 @@
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-bold text-[#12345a]">{{ $module === 'milk' ? 'Milk Production Records' : $pageTitle.' Records' }}</h2>
-                <p class="mt-1 text-sm text-slate-500">{{ $module === 'fhpr' ? 'View and search breeding summary records.' : 'View, search, import, and manage your records.' }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ $module === 'fhpr' ? 'View and search breeding summary records for female animals with a recorded classification.' : 'View, search, import, and manage your records.' }}</p>
             </div>
             <div class="flex gap-2">
                 @if($module === 'health')
@@ -343,8 +343,8 @@
         @endunless
 
         {{-- TABLE --}}
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-max text-left text-sm">
+        <div class="overflow-x-auto {{ $module === 'fhpr' ? 'fhpr-table-scroll' : '' }}" @if($module === 'fhpr') tabindex="0" role="region" aria-label="FHPR table with frozen animal details" @endif>
+            <table class="w-full min-w-max text-left text-sm {{ $module === 'fhpr' ? 'fhpr-data-table' : '' }}">
                 <thead class="bg-slate-100 text-xs uppercase text-slate-600">
                     <tr>
                         <th class="th whitespace-nowrap">No.</th>
@@ -359,7 +359,7 @@
                                     : $column;
 
                                 $columnLabel = match ($columnKey) {
-                                    'cooperative_name_display' => 'Cooperative Name',
+                                    'cooperative_name_display' => $module === 'fhpr' ? 'Cooperative' : 'Cooperative Name',
                                     'year_collected' => 'Year Collected',
                                     'collection_period' => 'AM / PM',
                                     'total_liters' => 'Total Milk Production (kg)',
@@ -367,14 +367,14 @@
                                     'price_per_kg' => 'Price per Kilogram (₱)',
                                     'milk_traded' => 'Milk Traded (kg)',
                                     'value_total' => 'Value of Total Milk Production (₱)',
-                                    'animal_identifier' => 'Registry ID / Animal ID',
-                                    'cooperative_name_display' => 'Cooperative Name',
+                                    'animal_identifier' => $module === 'fhpr' ? 'Animal ID' : 'Registry ID / Animal ID',
                                     'registry_id' => $module === 'health' ? 'Animal Registry ID' : 'Registry ID',
                                     'tag_number' => 'Tag Number',
                                     'cooperative_name' => in_array($module,['health','bcs'],true) ? 'Cooperative Name' : 'Cooperative',
                                     'breed' => 'Breed',
                                     'date_of_birth' => 'Date of Birth',
-                                    'farmer_name' => in_array($module, ['bcs','milk'], true) ? 'Farmer Name' : 'Farmer',
+                                    'status_updated' => $module === 'fhpr' ? 'Classification' : 'Status Updated',
+                                    'farmer_name' => in_array($module, ['bcs','milk','fhpr'], true) ? 'Farmer Name' : 'Farmer',
                                     'monitoring_date' => $module === 'health' ? 'Monitoring Date' : 'Date',
                                     'services' => 'Type of Service',
                                     'dosage_ml' => 'Dosage (mL)',
@@ -412,7 +412,30 @@
                                 @endphp
 
                                 <td class="td max-w-xs {{ $module === 'health' && in_array($columnKey,['services','dosage_ml','remarks','actions'],true) ? 'whitespace-normal' : 'whitespace-nowrap' }}">
-                                    @if($module === 'health' && $columnKey === 'services')
+                                    @if($module === 'fhpr' && $columnKey === 'days_in_milk')
+                                        <div x-data="fhprMilkDate(@js($row->id), @js($value), @js($row->_lactation_start_date), @js($row->_lactation_start_display))" @fhpr-dry-off-updated.window="update($event.detail)">
+                                            <div x-text="days===null||days===''?'—':days">{{ $value !== null && $value !== '' ? $value : '—' }}</div>
+                                            <div x-show="startDate" x-text="displayDate" title="Lactation start date" class="mt-1 text-xs text-slate-500">{{ $row->_lactation_start_display }}</div>
+                                        </div>
+                                    @elseif($module === 'fhpr' && $columnKey === 'status_updated')
+                                        <span x-data="{id:@js($row->id), classification:@js($value)}" @fhpr-dry-off-updated.window="if(Number($event.detail.id)===Number(id))classification=$event.detail.classification" x-text="classification||'—'">{{ $value ?: '—' }}</span>
+                                    @elseif($module === 'fhpr' && $columnKey === 'dry_off_date')
+                                        <div x-data="fhprDryOffEditor(@js(route('fhpr.dry-off.update', $row->id)), @js($row->_dry_off_date), @js($value), @js($row->id))">
+                                            <div x-show="!editing" class="flex items-center gap-3">
+                                                <span x-text="displayDate"></span>
+                                                <button type="button" @click="open()" class="rounded border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50" title="Update Dry Off Date" aria-label="Update Dry Off Date for {{ $row->animal_identifier }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                                            </div>
+                                            <form x-show="editing" x-cloak @submit.prevent="save()" class="space-y-2">
+                                                <input x-ref="input" type="date" x-model="draftDate" :disabled="saving" aria-label="Dry Off Date for {{ $row->animal_identifier }}" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
+                                                <div class="flex gap-2">
+                                                    <button type="submit" :disabled="saving" class="rounded bg-blue-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50" x-text="saving?'Saving…':'Save'"></button>
+                                                    <button type="button" @click="cancel()" :disabled="saving" class="rounded border px-2 py-1 text-xs text-slate-600">Cancel</button>
+                                                </div>
+                                            </form>
+                                            <p x-show="error" x-text="error" role="alert" class="mt-1 max-w-56 whitespace-normal text-xs text-red-700"></p>
+                                            <p x-show="saved" role="status" class="mt-1 text-xs text-emerald-700">Updated</p>
+                                        </div>
+                                    @elseif($module === 'health' && $columnKey === 'services')
                                         @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'] }}</div>@empty<span class="text-slate-400">—</span>@endforelse
                                     @elseif($module === 'health' && $columnKey === 'dosage_ml')
                                         @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['dosage_display'] ?: '—' }}</div>@empty<span class="text-slate-400">—</span>@endforelse
@@ -527,6 +550,59 @@ async function deleteHealthActivity(id){if(!confirm('Delete this Health and Nutr
 @endpush
 @endif
 
+@if($module === 'fhpr')
+@push('scripts')
+<script>
+function fhprMilkDate(id, days, startDate, displayDate) {
+    return {
+        id, days, startDate:startDate||'', displayDate:displayDate||'',
+        update(detail) {
+            if(Number(detail.id)!==Number(this.id))return;
+            this.days=detail.days_in_milk;
+            this.startDate=detail.lactation_start_date||'';
+            this.displayDate=detail.lactation_start_display||'';
+        }
+    };
+}
+function fhprDryOffEditor(url, date, displayDate, recordId) {
+    return {
+        date:date||'', draftDate:date||'', displayDate:displayDate||'-',
+        editing:false, saving:false, saved:false, error:'',
+        open() {
+            this.draftDate=this.date;
+            this.editing=true; this.saved=false; this.error='';
+            this.$nextTick(()=>this.$refs.input.focus());
+        },
+        cancel() {
+            this.draftDate=this.date; this.editing=false; this.error='';
+        },
+        async save() {
+            if(this.saving)return;
+            this.saving=true; this.error=''; this.saved=false;
+            try {
+                const response=await fetch(url,{
+                    method:'PATCH',
+                    headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''},
+                    body:JSON.stringify({dry_off_date:this.draftDate||null})
+                });
+                const result=await response.json().catch(()=>({}));
+                if(!response.ok)throw new Error(result.errors?.dry_off_date?.[0]||result.message||'Could not update Dry Off Date.');
+                this.date=result.dry_off_date||'';
+                this.displayDate=result.display_date||'-';
+                this.$dispatch('fhpr-dry-off-updated',{...result,id:recordId,date:this.date});
+                this.editing=false; this.saved=true;
+            }catch(error){
+                this.error=error.message||'Could not update Dry Off Date.';
+            }finally{
+                this.saving=false;
+            }
+        }
+    };
+}
+</script>
+@endpush
+@endif
+
 @push('styles')
 <style>
 .filter-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;padding:.625rem .75rem;font-size:.875rem;color:#1e293b;outline:none}
@@ -536,6 +612,19 @@ async function deleteHealthActivity(id){if(!confirm('Delete this Health and Nutr
 .action-primary{background:#0b1f3a;color:#fff}.action-primary:hover{background:#122b4d}
 .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.action-secondary:hover{background:#f1f5f9}
 .th{padding:1rem}.td{padding:1rem;vertical-align:top}
+.fhpr-table-scroll{max-height:70vh;overflow:auto;isolation:isolate;--fhpr-no:56px;--fhpr-cooperative:220px;--fhpr-farmer:200px;--fhpr-animal:170px}
+.fhpr-data-table{border-collapse:separate;border-spacing:0}
+.fhpr-data-table thead th{position:sticky;top:0;z-index:20;background:#103c60}
+.fhpr-data-table tr>:nth-child(-n+4){position:sticky;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere}
+.fhpr-data-table tr>:nth-child(1){left:0;width:var(--fhpr-no);min-width:var(--fhpr-no);max-width:var(--fhpr-no)}
+.fhpr-data-table tr>:nth-child(2){left:var(--fhpr-no);width:var(--fhpr-cooperative);min-width:var(--fhpr-cooperative);max-width:var(--fhpr-cooperative)}
+.fhpr-data-table tr>:nth-child(3){left:calc(var(--fhpr-no) + var(--fhpr-cooperative));width:var(--fhpr-farmer);min-width:var(--fhpr-farmer);max-width:var(--fhpr-farmer)}
+.fhpr-data-table tr>:nth-child(4){left:calc(var(--fhpr-no) + var(--fhpr-cooperative) + var(--fhpr-farmer));width:var(--fhpr-animal);min-width:var(--fhpr-animal);max-width:var(--fhpr-animal);box-shadow:3px 0 5px -2px #94a3b8}
+.fhpr-data-table tbody tr>td:nth-child(-n+4){z-index:10;background:#fff}
+.fhpr-data-table tbody tr:hover>td:nth-child(-n+4){background:#eff6ff}
+.fhpr-data-table thead th:nth-child(-n+4){z-index:30;background:#103c60}
+.fhpr-data-table tbody td[colspan]{position:static;width:auto;max-width:none;box-shadow:none}
+@media(max-width:640px){.fhpr-table-scroll{--fhpr-no:40px;--fhpr-cooperative:80px;--fhpr-farmer:80px;--fhpr-animal:96px}.fhpr-data-table tr>:nth-child(-n+4){padding:.75rem .375rem;font-size:.7rem}}
 .page-btn{display:inline-flex;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;font-weight:600;color:#334155;background:#fff}
 a.page-btn:hover{background:#f1f5f9}
 .pcc-mating-hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2)}

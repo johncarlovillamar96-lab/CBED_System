@@ -1,5 +1,6 @@
 ﻿{{-- resources/views/breeding.blade.php --}}
 @extends('layouts.admin')
+@section('inlineCalfDropNotifications', '1')
 
 
 
@@ -59,7 +60,7 @@
     </div>
 
     {{-- SUMMARY CARDS --}}
-    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <template x-for="c in summaryCards()" :key="c.title">
             <div class="pcc-stat-card rounded-xl bg-white p-5">
                 <div class="flex items-center justify-between gap-3">
@@ -67,6 +68,7 @@
                         <p class="text-sm text-slate-500" x-text="c.title"></p>
                         <p class="mt-2 text-3xl font-bold" x-text="c.value"></p>
                         <p class="mt-1 text-xs text-slate-500" x-text="c.description"></p>
+                        <button type="button" x-show="c.followup" @click="showUnreportedCalves()" class="mt-2 text-xs font-semibold text-blue-700 hover:underline">View animals</button>
                     </div>
                     <div class="pcc-stat-icon flex h-12 w-12 items-center justify-center rounded-xl" :class="c.bg">
                         <i :class="c.icon+' text-xl '+c.color"></i>
@@ -77,11 +79,11 @@
     </div>
 
     {{-- RECORDS TABLE --}}
-    <section class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section class="pcc-records-panel rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-bold text-[#12345a]">Mating Records</h2>
-                <p class="mt-1 text-sm text-slate-500">Search and review AI or natural service records by year.</p>
+                <p class="mt-1 text-sm text-slate-500">Positive records over 300 days leave the active list only when Calf Drop has a matching Mother ID and a calf born after that mating. Earlier calves do not close a later pregnancy.</p>
             </div>
             <div class="flex gap-2">
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
@@ -91,11 +93,18 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-6">
+        <div class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-7">
             <div class="xl:col-span-2">
                 <label class="filter-label">Search</label>
                 <input x-model="search" @input="page=1" class="filter-input"
                     placeholder="Animal, farmer, bull ID/name, technician">
+            </div>
+            <div>
+                <label class="filter-label">Cooperative</label>
+                <select x-model="filterCooperative" @change="page=1" class="filter-input">
+                    <option value="">All cooperatives</option>
+                    <template x-for="cooperative in cooperatives" :key="cooperative.id"><option :value="String(cooperative.id)" x-text="cooperative.name"></option></template>
+                </select>
             </div>
             <div>
                 <label class="filter-label">Mating Type</label>
@@ -127,6 +136,27 @@
             </div>
         </div>
 
+        <div class="flex flex-wrap items-center gap-4 border-b px-5 py-3">
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" x-model="unreportedCalvesOnly" @change="if(unreportedCalvesOnly)showUnreportedCalves();else page=1" class="rounded border-slate-300">
+                Positive PD with no calf-drop report
+            </label>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" x-model="overdueCalvesOnly" @change="if(overdueCalvesOnly)showOverdueCalves(filterCooperative);else page=1" class="rounded border-slate-300">
+                Over 300 days, calf drop not reported
+            </label>
+            <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" x-model="includeReportedPregnancies" @change="page=1" class="rounded border-slate-300">
+                Include reported pregnancies over 300 days (history)
+            </label>
+            @include('partials.calf-drop-notifications', ['inline' => true])
+        </div>
+
+        <div x-show="hiddenReportedCount()>0" x-cloak class="flex flex-col gap-2 border-b border-blue-100 bg-blue-50 px-5 py-3 text-sm text-blue-900 sm:flex-row sm:items-center sm:justify-between">
+            <p><b x-text="hiddenReportedCount()"></b> imported or saved mating record(s) match your filters but are hidden because their calf drop is already reported.</p>
+            <button type="button" @click="showReportedPregnancies()" class="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 font-semibold text-blue-800 hover:bg-blue-100">Show reported records</button>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full min-w-[2500px] text-left text-sm">
                 <thead class="bg-slate-100 text-xs uppercase text-slate-600">
@@ -146,6 +176,7 @@
                         <th class="th">Expected PD (90 Days)</th>
                         <th class="th">Mating Technician</th>
                         <th class="th">PD Date</th>
+                        <th class="th">Months of Pregnancy</th>
                         <th class="th">PD Result</th>
                         <th class="th">PD Technician</th>
                         <th class="th">Pregnancy Days</th>
@@ -166,12 +197,13 @@
                             <td class="td" x-text="r.bull_id||'—'"></td>
                             <td class="td" x-text="r.bull_name||'—'"></td>
                             <td class="td" x-text="r.mating_type==='AI'?(r.straws||'—'):'—'"></td>
-                            <td class="td" x-text="r.heat_status||'—'"></td>
+                            <td class="td" x-text="r.mating_type==='AI'?(r.heat_status||'—'):'—'"></td>
                             <td class="td" x-text="secondCycleRange(r.breeding_date)"></td>
                             <td class="td" x-text="expectedPDDate(r.breeding_date,60)"></td>
                             <td class="td" x-text="expectedPDDate(r.breeding_date,90)"></td>
                             <td class="td" x-text="r.mating_technician||'—'"></td>
                             <td class="td" x-text="displayDate(r.pd_date)"></td>
+                            <td class="td" x-text="r.pregnancy_months!==''&&r.pregnancy_months!==null&&r.pregnancy_months!==undefined?r.pregnancy_months:'—'"></td>
                             <td class="td">
                                 <span class="rounded-full px-2 py-1 text-xs font-semibold"
                                     :class="pdClass(r.pd_result)" x-text="r.pd_result||'Pending'"></span>
@@ -179,7 +211,7 @@
                             <td class="td" x-text="r.pd_technician||'—'"></td>
                             <td class="td" x-text="r.pd_result==='Positive'?pregnancyDays(r)+' days':'—'"></td>
                             <td class="td" x-text="r.pd_result==='Positive'?displayDate(r.expected_calving||calculateExpectedCalving(r.breeding_date)):'—'"></td>
-                            <td class="td" x-text="displayDate(r.actual_calving)"></td>
+                            <td class="td"><div x-text="displayDate(r.actual_calving)"></div><span x-show="isUnreportedCalf(r)" class="mt-1 inline-block rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Calf drop not reported</span><span x-show="r.pregnancy_followup_complete" class="mt-1 inline-block rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">Calf drop reported</span></td>
                             <td class="td whitespace-nowrap">
                                 <button type="button" @click="view(r)" class="mr-1 rounded-lg border px-3 py-2" title="View">
                                     <i class="fa-solid fa-eye"></i>
@@ -194,7 +226,7 @@
                         </tr>
                     </template>
                     <tr x-show="filteredRecords().length===0">
-                        <td colspan="21" class="px-5 py-12 text-center text-slate-500" x-text="filterYear?'No mating records for '+filterYear+' yet.':'No mating records found.'"></td>
+                        <td colspan="22" class="px-5 py-12 text-center text-slate-500" x-text="hiddenReportedCount()>0?'No active mating records match your filters. Use Show reported records to view the imported history.':(filterYear?'No mating records for '+filterYear+' yet.':'No mating records found.')"></td>
                     </tr>
                 </tbody>
             </table>
@@ -218,37 +250,38 @@
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Mating & Pregnancy Monitoring</footer>
 
     {{-- BULK ADD / EDIT MODAL --}}
-    <div x-show="showBulk" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
-        <div @click.outside="closeModal()" class="max-h-[95vh] w-full max-w-[98vw] overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div x-show="showBulk" x-cloak @keydown.escape.window="if(showBulk&&!saving)closeModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
+        <div @click.outside="closeModal()" role="dialog" aria-modal="true" aria-labelledby="mating-modal-title" class="max-h-[95vh] w-full overflow-hidden rounded-2xl bg-white shadow-2xl" :class="editingId?'max-w-3xl':'max-w-[98vw]'">
             <div class="flex items-start justify-between border-b p-5">
                 <div>
-                    <h3 class="text-xl font-bold" x-text="editingId?'Edit Mating Record':'Bulk Add Mating Records'"></h3>
-                    <p class="mt-1 text-sm text-slate-500">Choose the cooperative once. Farmer options are filtered to that cooperative.</p>
+                    <h3 id="mating-modal-title" class="text-xl font-bold" x-text="editingId?'Edit Mating Record':'Bulk Add Mating Records'"></h3>
+                    <p class="mt-1 text-sm text-slate-500" x-text="editingId?'Update mating and pregnancy details below.':'Choose the cooperative once. Farmer options are filtered to that cooperative.'"></p>
                 </div>
                 <div class="flex items-center gap-3">
-                    <b class="text-sm" x-text="bulkRows.length+' row(s)'"></b>
-                    <button type="button" @click="closeModal()" class="rounded-lg p-2 hover:bg-slate-100">
+                    <b x-show="!editingId" class="text-sm" x-text="bulkRows.length+' row(s)'"></b>
+                    <button type="button" @click="closeModal()" aria-label="Close mating form" class="rounded-lg p-2 hover:bg-slate-100">
                         <i class="fa-solid fa-xmark text-xl"></i>
                     </button>
                 </div>
             </div>
 
             <div class="max-h-[calc(95vh-90px)] overflow-auto p-4 sm:p-5">
-                <div class="mb-5 grid grid-cols-1 gap-4 rounded-xl border bg-slate-50 p-4 md:grid-cols-3">
+                <div class="mb-5 grid grid-cols-1 gap-4 rounded-xl border bg-slate-50 p-4" :class="editingId?'':'md:grid-cols-3'">
                     <div>
-                        <label class="form-label">Cooperative *</label>
-                        <select x-model="selectedCooperative" @change="cooperativeChanged()" class="form-input">
+                        <label class="form-label" x-text="editingId?'Cooperative':'Cooperative *'"></label>
+                        <input x-show="editingId" readonly aria-label="Cooperative" :value="bulkRows[0]?.cooperative || cooperatives.find(c=>String(c.id)===selectedCooperative)?.name || ''" class="form-input bg-slate-100">
+                        <select x-show="!editingId" :disabled="!!editingId" x-model="selectedCooperative" @change="cooperativeChanged()" class="form-input">
                             <option value="">Select cooperative</option>
                             <template x-for="c in cooperatives" :key="c.id">
                                 <option :value="String(c.id)" x-text="c.name"></option>
                             </template>
                         </select>
                     </div>
-                    <div>
+                    <div x-show="!editingId">
                         <label class="form-label">Filter Farmers</label>
                         <input x-model="farmerSearch" class="form-input" placeholder="Search farmer name">
                     </div>
-                    <div>
+                    <div x-show="!editingId">
                         <label class="form-label">Database Lookup Status</label>
                         <div class="rounded-lg border bg-white p-3">
                             <p class="text-sm" :class="lookupReady?'text-emerald-700':'text-amber-700'"
@@ -262,13 +295,15 @@
                     </div>
                 </div>
 
-                <div class="mb-4 flex flex-wrap justify-end gap-2">
+                @include('partials.mating-edit-form')
+
+                <div x-show="!editingId" class="mb-4 flex flex-wrap justify-end gap-2">
                     <button type="button" x-show="!editingId" @click="addRow()" class="action-primary">
                         <i class="fa-solid fa-plus"></i> Add Row
                     </button>
                 </div>
 
-                <div class="overflow-x-auto rounded-xl border">
+                <div x-show="!editingId" class="overflow-x-auto rounded-xl border">
                     <table class="w-full min-w-[3500px] text-left text-sm">
                         <thead class="bg-slate-100 text-xs uppercase text-slate-600">
                             <tr>
@@ -328,7 +363,7 @@
                                     <td class="min-w-48 p-2">
                                         <select x-model="r.mating_type" @change="typeChanged(r)" class="form-input">
                                             <option value="AI">Artificial Insemination (AI)</option>
-                                            <option value="Natural Mating">Natural Mating</option>
+                                            <option value="NM">Natural Mating (NM)</option>
                                         </select>
                                     </td>
 
@@ -355,7 +390,7 @@
                                     </td>
 
                                     <td class="min-w-36 p-2">
-                                        <select x-model="r.heat_status" class="form-input">
+                                        <select x-model="r.heat_status" :disabled="r.mating_type!=='AI'" class="form-input">
                                             <option value="">Select</option>
                                             <option value="ES">ES</option>
                                             <option value="NH">NH</option>
@@ -449,14 +484,14 @@
                     </table>
                 </div>
 
-                <div class="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
+                <div class="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center" :class="editingId?'sm:justify-end':'sm:justify-between'">
+                    <div x-show="!editingId">
                         <b class="text-sm">Batch total: <span x-text="bulkRows.length"></span> row(s)</b>
                         <p class="help-text">New records start Pending. Positive/Negative PD requires a PD date and confirming technician. Positive PD also requires pregnancy months.</p>
                     </div>
                     <div class="flex justify-end gap-2">
                         <button type="button" @click="closeModal()" class="action-secondary">Cancel</button>
-                        <button type="button" @click="saveBulk()" :disabled="saving" class="action-primary">
+                        <button type="button" @click="saveBulk()" :disabled="saving||(editingId&&!bulkRows.length)" class="action-primary">
                             <i class="fa-solid" :class="saving?'fa-spinner fa-spin':'fa-floppy-disk'"></i>
                             <span x-text="saving?'Saving...':(editingId?'Update Record':'Save to MySQL')"></span>
                         </button>
@@ -565,7 +600,7 @@ function breedingPage(){return {
     records:[],cooperatives:[],farmers:[],animals:[],semenBulls:[],
     totalActiveBulls:0,lookupReady:false,apiReady:false,
     apiMessage:'Loading data from the server...',loading:false,saving:false,
-    search:'',filterMatingType:'',filterPD:'',filterDate:'',filterYear:String(new Date().getFullYear()),
+    search:'',filterMatingType:'',filterCooperative:'',filterPD:'',filterDate:'',filterYear:'',unreportedCalvesOnly:false,overdueCalvesOnly:false,includeReportedPregnancies:false,
     selectedCooperative:'',farmerSearch:'',showBulk:false,showView:false,
     bulkRows:[],selected:null,editingId:null,notice:'',noticeType:'success',
     noticeTimer:null,rowKey:0,page:1,perPage:10,
@@ -581,6 +616,11 @@ function breedingPage(){return {
         try{
             await Promise.all([this.loadCooperatives(),this.loadSemenBulls()]);
             await this.loadRecords();
+            const notificationParams=new URLSearchParams(window.location.search);
+            if(notificationParams.get('overdue_calves')==='1'){
+                this.showOverdueCalves(notificationParams.get('cooperative_id')||'');
+                this.search=notificationParams.get('animal_id')||'';
+            }
             this.apiReady=true;
             this.apiMessage='Cooperatives, semen bulls, and mating records are connected to MySQL.';
         }catch(e){
@@ -633,7 +673,7 @@ function breedingPage(){return {
 
     async loadCooperatives(){
         const result=await this.request(this.api.cooperatives);
-        const data=Array.isArray(result.data)?result.data:(result.data?.data||[]);
+        const data=Array.isArray(result)?result:(Array.isArray(result.data)?result.data:(result.data?.data||[]));
 
         this.cooperatives=data.map(c=>({
             id:String(c.id),
@@ -644,7 +684,7 @@ function breedingPage(){return {
 
     async loadSemenBulls(){
         const result=await this.request(this.api.bulls);
-        const data=Array.isArray(result.data)?result.data:
+        const data=Array.isArray(result)?result:Array.isArray(result.data)?result.data:
             (Array.isArray(result.data?.data)?result.data.data:[]);
 
         this.semenBulls=data.map(b=>({
@@ -667,6 +707,18 @@ function breedingPage(){return {
                 (Array.isArray(payload?.data)?payload.data:[]);
 
             this.records=data.map(r=>this.normalizeRecord(r));
+            const localCalves=this.localCalfReports();
+            this.records.forEach(r=>{
+                const start=r.breeding_date||r.pd_date;
+                const next=this.records.filter(other=>other.pd_result==='Positive'&&other.carabao_id===r.carabao_id)
+                    .map(other=>other.breeding_date||other.pd_date).filter(date=>date>start).sort()[0];
+                if(r.pd_result==='Positive'&&this.pregnancyDays(r)>300&&localCalves.some(calf=>
+                    String(calf.mother_id).trim().toLowerCase()===String(r.animal_id??'').trim().toLowerCase()
+                    &&calf.date_of_birth>start&&(!next||calf.date_of_birth<next))){
+                    r.calf_drop_reported=true;
+                    r.pregnancy_followup_complete=true;
+                }
+            });
             this.page=Math.min(this.page,this.totalPages());
         }finally{
             this.loading=false;
@@ -693,7 +745,7 @@ function breedingPage(){return {
             bull_id:r.bull_id||b.bull_id||'',
             bull_name:r.bull_name||r.matched_bull_name||b.bull_name||'',
             straws:r.straws_used??'',
-            heat_status:r.estrus_type||source['type of estrus_7']||'',
+            heat_status:this.normalizeMatingType(r.mating_type)==='AI'?(r.estrus_type||source['type of estrus_7']||''):'',
             mating_technician:r.mating_technician||r.technician||source['technician_8']||'',
             pd_date:this.dateOnly(r.pd_date||r.pregnancy_check_date),
             pd_result:this.normalizePDResult(r.pd_result??r.pregnancy_result),
@@ -701,6 +753,9 @@ function breedingPage(){return {
             pd_technician:r.pd_technician||source['confirmed by_18']||'',
             expected_calving:this.dateOnly(r.expected_calving_date),
             actual_calving:this.dateOnly(r.actual_calving_date),
+            calf_drop_reported:r.calf_drop_reported===true||r.calf_drop_reported===1,
+            pregnancy_followup_complete:r.pregnancy_followup_complete===true||r.pregnancy_followup_complete===1,
+            calf_drop_overdue:r.calf_drop_overdue===true||r.calf_drop_overdue===1,
             remarks:source['remarks_19']||r.remarks||''
         };
     },
@@ -717,7 +772,7 @@ function breedingPage(){return {
 
     normalizeMatingType(v){
         const value=String(v||'').trim().toUpperCase();
-        return ['NM','NATURAL','NATURAL MATING','NATURAL SERVICE','NS'].includes(value)?'NM':'AI';
+        return ['N','NM','NATURAL','NATURAL MATING','NATURAL SERVICE','NS'].includes(value)?'NM':'AI';
     },
 
     normalizePDResult(v){
@@ -748,9 +803,9 @@ function breedingPage(){return {
             u.searchParams.set('cooperative_id',this.selectedCooperative);
 
             const res=await this.request(u.toString());
-            const data=Array.isArray(res.data)?res.data:(res.data?.data||[]);
+            const data=Array.isArray(res)?res:(Array.isArray(res.data)?res.data:(res.data?.data||[]));
 
-            this.farmers=data.map(f=>({
+            this.farmers=data.filter(f=>String(f.cooperative_id??'')===this.selectedCooperative).map(f=>({
                 id:String(f.id),
                 name:[f.first_name,f.middle_name,f.last_name].filter(Boolean).join(' ')
                     ||f.farmer_name||f.name||'',
@@ -783,11 +838,13 @@ function breedingPage(){return {
             u.searchParams.set('farmer_id',row.farmer_id);
 
             const res=await this.request(u.toString());
-            const data=Array.isArray(res.data)?res.data:(res.data?.data||[]);
+            const data=Array.isArray(res)?res:(Array.isArray(res.data)?res.data:(res.data?.data||[]));
 
             row._animals=data.filter(a=>{
                 const sex=String(a.sex||a.gender||'').toLowerCase();
-                return !sex||sex==='f'||sex==='female';
+                return String(a.farmer_id??'')===String(row.farmer_id)
+                    &&String(a.cooperative_id??'')===this.selectedCooperative
+                    &&(!sex||sex==='f'||sex==='female');
             }).map(a=>({
                 id:String(a.id),
                 animal_id:a.animal_id||a.bolus||'',
@@ -866,12 +923,12 @@ function breedingPage(){return {
     },
 
     typeChanged(r){
-        if(r.mating_type!=='AI')r.straws='';
+        if(r.mating_type!=='AI'){r.straws='';r.heat_status='';}
         else if(!r.straws)r.straws='1';
     },
 
     dateChanged(r){
-        if(r.pd_result==='Positive'&&!r.expected_calving){
+        if(r.pd_result==='Positive'){
             r.expected_calving=this.calculateExpectedCalving(r.breeding_date);
         }
     },
@@ -917,7 +974,7 @@ function breedingPage(){return {
     },
 
     calculateExpectedCalving(v){
-        if(!v)return '';
+        if(!v||Number(String(v).slice(0,4))<1900)return '';
         const d=new Date(v+'T12:00:00');
         if(isNaN(d.getTime()))return '';
         d.setDate(d.getDate()+310);
@@ -948,7 +1005,7 @@ function breedingPage(){return {
             bull_id:r.bull_id||null,
             bull_name:r.bull_name||null,
             straws_used:r.mating_type==='AI'&&r.straws!==''?Number(r.straws):null,
-            estrus_type:r.heat_status||null,
+            estrus_type:r.mating_type==='AI'?(r.heat_status||null):null,
             mating_technician:r.mating_technician||null,
             pd_date:r.pd_date||null,
             pd_result:r.pd_result||'Pending',
@@ -981,12 +1038,12 @@ function breedingPage(){return {
                 !r.carabao_id ||
                 !r.breeding_date ||
                 !r.mating_type ||
-                !r.heat_status ||
+                (r.mating_type==='AI'&&!r.heat_status) ||
                 !String(r.mating_technician || '').trim()
             ) {
                 this.msg(
                     'Row ' + row +
-                    ': Farmer, female animal, mating date, mating type, estrus/heat, and technician are required.',
+                    ': Farmer, female animal, mating date, mating type, technician, and estrus/heat for AI are required.',
                     'error'
                 );
                 return false;
@@ -1090,16 +1147,22 @@ function breedingPage(){return {
                 ...this.emptyRow(),
                 ...r,
                 _key:++this.rowKey,
-                farmer_id:String(r.farmer_id),
-                carabao_id:String(r.carabao_id),
+                farmer_id:String(r.farmer_id??''),
+                carabao_id:String(r.carabao_id??''),
                 semen_bull_id:r.semen_bull_id?String(r.semen_bull_id):'',
                 pregnancy_months:r.pregnancy_months??'',
                 bull_search:r.bull_id||''
             };
 
+            const farmerName=row.farmer;
             await this.farmerChanged(row);
-            row.carabao_id=String(r.carabao_id);
+            row.farmer=farmerName||row.farmer;
+            row.cooperative=r.cooperative||this.cooperatives.find(c=>String(c.id)===this.selectedCooperative)?.name||'';
+            row.carabao_id=String(r.carabao_id??'');
             row.animal_id=r.animal_id||'';
+            if(row.pd_result==='Positive'&&row.breeding_date&&row.expected_calving&&row.expected_calving<row.breeding_date){
+                row.expected_calving=this.calculateExpectedCalving(row.breeding_date);
+            }
             this.bulkRows=[row];
         }catch(e){
             this.msg(e.message,'error');
@@ -1129,15 +1192,68 @@ function breedingPage(){return {
         }
     },
 
-    filteredRecords(){
+    localCalfReports(){
+        try{
+            const saved=JSON.parse(localStorage.getItem('cbed_calfdrop_records')||'[]');
+            if(!Array.isArray(saved))return [];
+            return saved.filter(r=>{
+                const calf=String(r?.calf_id??'').trim(),mother=String(r?.mother_id??'').trim();
+                return mother&&!['-','--','n/a','na','none','unknown','0'].includes(mother.toLowerCase())
+                    &&!/^CALF-2026-00[1-5]$|^CALF-2025-005$|^6-(?:SB|AB)-26-CB-2024-00[34]$/i.test(calf)
+                    &&!/^CB-2024-00[1-5]$/i.test(mother)
+                    &&!/^Sample Cooperative(?:\s|$)/i.test(String(r?.cooperative??'').trim())
+                    &&!/Sample record/i.test(String(r?.remarks??''));
+            });
+        }catch(e){return [];}
+    },
+
+    isUnreportedCalf(r){
+        return r.pd_result==='Positive'&&!r.calf_drop_reported;
+    },
+
+    showUnreportedCalves(){
+        this.resetFilters();
+        this.filterPD='Positive';
+        this.unreportedCalvesOnly=true;
+    },
+
+    showOverdueCalves(cooperativeId=''){
+        this.resetFilters();
+        this.filterCooperative=String(cooperativeId);
+        this.filterPD='Positive';
+        this.unreportedCalvesOnly=true;
+        this.overdueCalvesOnly=true;
+    },
+
+    showReportedPregnancies(){
+        this.includeReportedPregnancies=true;
+        this.unreportedCalvesOnly=false;
+        this.overdueCalvesOnly=false;
+        this.page=1;
+    },
+
+    hiddenReportedCount(){
+        return this.includeReportedPregnancies?0:this.matchingRecords().filter(r=>r.pregnancy_followup_complete).length;
+    },
+
+    matchingRecords(){
         const q=this.search.toLowerCase().trim();
 
         return this.records.filter(r=>
             (!q||this.fields.some(f=>String(r[f]??'').toLowerCase().includes(q)))&&
             (!this.filterMatingType||r.mating_type===this.filterMatingType)&&
-            (!this.filterYear||String(r.breeding_date||'').slice(0,4)===this.filterYear)&&
+            (!this.filterCooperative||String(r.cooperative_id)===this.filterCooperative)&&
+            (!this.filterYear||String(r.breeding_date||r.pd_date||'').slice(0,4)===this.filterYear)&&
             (!this.filterPD||(r.pd_result||'Pending')===this.filterPD)&&
             (!this.filterDate||r.breeding_date===this.filterDate)
+        );
+    },
+
+    filteredRecords(){
+        return this.matchingRecords().filter(r=>
+            (this.includeReportedPregnancies||!r.pregnancy_followup_complete)&&
+            (!this.overdueCalvesOnly||r.calf_drop_overdue)&&
+            (!this.unreportedCalvesOnly||this.isUnreportedCalf(r))
         );
     },
 
@@ -1148,12 +1264,13 @@ function breedingPage(){return {
             {title:'Total Mating Records',value:a.length,description:'Records matching filters',icon:'fa-solid fa-list-check',bg:'bg-slate-100',color:'text-slate-700'},
             {title:'Artificial Insemination',value:a.filter(r=>r.mating_type==='AI').length,description:'AI records in selected year',icon:'fa-solid fa-syringe',bg:'bg-orange-50',color:'text-orange-700'},
             {title:'Natural Mating (NM)',value:a.filter(r=>r.mating_type==='NM').length,description:'Natural service records in selected year',icon:'fa-solid fa-horse',bg:'bg-emerald-50',color:'text-emerald-700'},
-            {title:'PD Positive',value:a.filter(r=>r.pd_result==='Positive').length,description:'Confirmed positive diagnoses',icon:'fa-solid fa-heart',bg:'bg-emerald-50',color:'text-emerald-700'}
+            {title:'PD Positive',value:a.filter(r=>r.pd_result==='Positive').length,description:'Confirmed positive diagnoses',icon:'fa-solid fa-heart',bg:'bg-emerald-50',color:'text-emerald-700'},
+            {title:'Calf Drop Not Reported',value:this.records.filter(r=>this.isUnreportedCalf(r)).length,description:'Positive PD records across all years',followup:true,icon:'fa-solid fa-clipboard-question',bg:'bg-amber-50',color:'text-amber-700'}
         ];
     },
 
     availableYears(){
-        const years=this.records.map(r=>Number(String(r.breeding_date||'').slice(0,4))).filter(Number.isInteger);
+        const years=this.records.map(r=>Number(String(r.breeding_date||r.pd_date||'').slice(0,4))).filter(year=>Number.isInteger(year)&&year>=1900);
         const first=years.length?Math.min(...years):new Date().getFullYear();
         const last=Math.max(new Date().getFullYear()+1,...years);
         return Array.from({length:last-first+1},(_,index)=>String(last-index));
@@ -1171,9 +1288,13 @@ function breedingPage(){return {
     resetFilters(){
         this.search='';
         this.filterMatingType='';
+        this.filterCooperative='';
         this.filterPD='';
         this.filterDate='';
-        this.filterYear=String(new Date().getFullYear());
+        this.filterYear='';
+        this.unreportedCalvesOnly=false;
+        this.overdueCalvesOnly=false;
+        this.includeReportedPregnancies=false;
         this.page=1;
     },
 

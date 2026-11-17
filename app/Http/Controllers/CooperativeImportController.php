@@ -63,6 +63,11 @@ class CooperativeImportController extends Controller
         return $this->importInventoryRecords($this->readInventory($path), $cooperativeId);
     }
 
+    public function fillMissingInventorySheet(string $path, int $cooperativeId, bool $apply = false): array
+    {
+        return (new \App\Support\InventoryMissingFields)->sync($this->readInventory($path), $cooperativeId, $apply);
+    }
+
     public function importInventoryWorksheet(
         array $rows,
         ?array $breedingRows,
@@ -214,6 +219,8 @@ class CooperativeImportController extends Controller
                 }
 
                 $birthDate = $this->date($this->value($row, 'birthday'));
+                $acquisitionCost = str_replace(',', '', $this->value($row, 'acquisition_cost') ?? '');
+                $noClassification = \App\Support\InventoryClassification::isExcluded($status, $this->value($row, 'nature_of_exit'));
                 $animalData = [
                     'farmer_id' => $farmer?->id,
                     'cooperative_id' => $coopId,
@@ -223,7 +230,7 @@ class CooperativeImportController extends Controller
                     'bolus_id' => $bolus,
                     'sex' => $this->value($row, 'sex'),
                     'breed' => $this->value($row, 'breed'),
-                    'classification' => $this->value($row, 'classification') ?: $this->inferInventoryClassification($row, $birthDate),
+                    'classification' => $noClassification ? null : ($this->value($row, 'classification') ?: $this->inferInventoryClassification($row, $birthDate)),
                     'sire_id' => $this->value($row, 'sire_id'),
                     'sire_name' => $this->value($row, 'sire_name'),
                     'dam_id' => $this->value($row, 'dam_id'),
@@ -238,6 +245,8 @@ class CooperativeImportController extends Controller
                     'district' => $this->value($row, 'district'),
                     'region' => $this->value($row, 'region') ?: 'Region III',
                     'acquisition_date' => $this->date($this->value($row, 'date_of_acquisition')),
+                    'acquisition_cost' => is_numeric($acquisitionCost) ? $acquisitionCost : null,
+                    ...$this->inventoryDetails($row),
                     'status' => $status,
                     'reproductive_status' => $this->value($row, 'reproductive'),
                     'lactation_status' => $this->value($row, 'lactation'),
@@ -248,6 +257,7 @@ class CooperativeImportController extends Controller
                 ];
                 if ($existing) {
                     $updates = array_filter($animalData, fn ($v) => $v !== null && $v !== '');
+                    if ($noClassification) $updates['classification'] = null;
                     DB::table('carabaos')->where('id', $existing->id)->update($updates);
                     foreach ($updates as $column => $value) {
                         $existing->{$column} = $value;
@@ -387,6 +397,14 @@ class CooperativeImportController extends Controller
                 'district' => $get(['district']),
                 'region' => $get(['region']),
                 'date_of_acquisition' => $get(['date of acquisition', 'acquisition date']),
+                'acquisition_cost' => $get(['acquisition cost', 'aquisition cost']),
+                'nature_of_exit' => $get(['nature for exit', 'nature of exit']),
+                'entrustment' => $get(['type of entrustment', 'entrustment']),
+                'ownership_status' => $get(['ownership status']),
+                'disposed_to' => $get(['animal sold or transferred to/disposed to', 'animal sold / transferred / disposed to', 'disposed to']),
+                'place_of_disposal' => $get(['place of disposal/transferred', 'place of disposal']),
+                'value_of_disposed_animals' => $get(['value of disposed animal (php)', 'value of disposed animals']),
+                'remarks' => $get(['remarks']),
                 'inventory_status' => $get(['inventory status']),
                 'exit_reason' => $get(['nature for exit', 'reason of exit']), 'death_date' => $get(['date of disposal/death']),
             ];
@@ -425,6 +443,18 @@ class CooperativeImportController extends Controller
             }
         }
         return $out;
+    }
+
+    private function inventoryDetails(array $row): array
+    {
+        $details = [];
+        foreach (['nature_of_exit', 'entrustment', 'ownership_status', 'disposed_to', 'place_of_disposal', 'remarks'] as $field) {
+            $details[$field] = $this->value($row, $field);
+        }
+        $value = str_replace(',', '', $this->value($row, 'value_of_disposed_animals') ?? '');
+        $details['value_of_disposed_animals'] = is_numeric($value) ? $value : null;
+
+        return $details;
     }
 
     private function normalize(mixed $name): string
