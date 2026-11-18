@@ -7,7 +7,7 @@
         </summary>
         <div class="absolute right-0 mt-2 max-h-[70vh] w-[min(90vw,28rem)] overflow-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
             <h2 class="font-bold text-slate-900">Calf drop not reported</h2>
-            <p class="mt-1 text-xs text-slate-500">Latest positive PD, more than 300 pregnancy days, and no matching calf report. Each animal is counted once.</p>
+            <p class="mt-1 text-xs text-slate-500">Latest positive PD, 280 pregnancy days or more, and no matching calf report. Each animal is counted once.</p>
             @forelse($calfDropNotifications as $notification)
                 <div class="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-3">
                     <a class="font-semibold text-blue-800 hover:underline" href="{{ url('/mating').'?'.http_build_query(['overdue_calves'=>1,'cooperative_id'=>$notification['cooperative_id']]) }}">{{ $notification['cooperative_name'] }}</a>

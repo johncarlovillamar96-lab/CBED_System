@@ -1,6 +1,7 @@
 ﻿@extends('layouts.admin')
 
 @section('title', 'CBED Mapping')
+@section('dataSource', 'sample')
 @section('page-heading', 'CBED Mapping')
 
 @section('content')
@@ -35,19 +36,14 @@
     }
 }" class="space-y-6">
 
-    <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-slate-800">CBED Mapping</h1>
-            <p class="mt-1 text-sm text-slate-500">View recorded farmer, cooperative, and animal locations.</p>
-        </div>
-
+    <x-admin-page-header title="CBED Mapping" description="View recorded farmer, cooperative, and animal locations.">
         <button @click="showAdd = true"
-            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+            class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-plus"></i> Add Record
         </button>
-    </div>
+    </x-admin-page-header>
 
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div class="cbed-card p-5">
             <p class="text-sm text-slate-500">Total Records</p>
             <p class="mt-2 text-2xl font-bold text-slate-800" x-text="records.length"></p>
@@ -55,11 +51,6 @@
         <div class="cbed-card p-5">
             <p class="text-sm text-slate-500">Matching Records</p>
             <p class="mt-2 text-2xl font-bold text-blue-600" x-text="filteredRecords.length"></p>
-        </div>
-        <div class="cbed-card p-5">
-            <p class="text-sm text-slate-500">Data Source</p>
-            <p class="mt-2 text-lg font-bold text-emerald-600">Sample Data</p>
-            <p class="mt-1 text-xs text-slate-400">Not connected to a database</p>
         </div>
     </div>
 
@@ -157,7 +148,7 @@
                         Cancel
                     </button>
                     <button type="submit"
-                        class="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+                        class="cbed-add-button rounded-lg px-5 py-2.5 text-sm font-semibold">
                         <i class="fa-solid fa-plus mr-1"></i> Add Record
                     </button>
                 </div>

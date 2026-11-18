@@ -1,5 +1,6 @@
 @extends('layouts.admin')
 @section('title', 'Animal Monitoring Report | CBED')
+@section('dataSource', 'database')
 @section('page-heading', 'Animal Monitoring Report')
 @section('content')
 <div class="min-w-0 text-slate-800">

@@ -28,7 +28,7 @@ class MatingCalfReports
 
             // A calf from a later confirmed pregnancy must not close this service's report.
             $next = $positiveByDam->get($record->carabao_id, collect())
-                ->map(fn ($service) => self::start($service))
+                ->pluck('mating_date')
                 ->filter(fn ($date) => $date && $date > $start)->sort()->first();
             $inventoryBirths = collect([$record->animal_registry_id ?? null, $record->registry_number ?? null])
                 ->filter()->unique()->flatMap(fn ($id) => $birthsByMotherId->get(strtolower(trim((string) $id)), collect()));

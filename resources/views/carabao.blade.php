@@ -7,62 +7,40 @@
 @section('content')
 <div
     x-data="carabaoPage()"
-    x-init="init()"
     x-cloak
     class="min-w-0 bg-slate-50 text-slate-800"
 >
     {{-- HEADER --}}
-    <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                <i class="fa-solid fa-house"></i>
-                <span>/</span>
-                <span>CBED Data System</span>
-                <span>/</span>
-                <span class="font-semibold text-slate-700">Carabaos</span>
-            </div>
+    <x-admin-page-header title="Carabao Management" description="Manage animal identification, farmer ownership, cooperative, province, classification, and inventory." section="Animal Management" breadcrumb="Carabaos">
+        <button
+            type="button"
+            @click="downloadImportTemplate()"
+            class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+            <i class="fa-solid fa-file-excel"></i>
+            Excel Template
+        </button>
+        <button type="button" @click="downloadPDFReport()"
+            class="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800 hover:bg-rose-100">
+            <i class="fa-solid fa-file-pdf"></i> PDF Report
+        </button>
 
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Carabao Management
-            </h1>
-            <p class="mt-1 text-sm text-slate-500">
-                Manage animal identification, farmer ownership, cooperative,
-                province, classification, and inventory.
-            </p>
-        </div>
+        <label
+            class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            <i class="fa-solid fa-file-import"></i> Import CSV
+            <input type="file" accept=".csv,text/csv" class="hidden"
+                @change="importCSV($event)">
+        </label>
 
-        <div class="flex flex-wrap gap-2">
+        <button type="button" @click="exportCSV()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            <i class="fa-solid fa-file-export"></i> Export CSV
+        </button>
 
-            <button
-                type="button"
-                @click="downloadImportTemplate()"
-                class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-                <i class="fa-solid fa-file-excel"></i>
-                Excel Template
-            </button>
-            <button type="button" @click="downloadPDFReport()"
-                class="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800 hover:bg-rose-100">
-                <i class="fa-solid fa-file-pdf"></i> PDF Report
-            </button>
-
-            <label
-                class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                <i class="fa-solid fa-file-import"></i> Import CSV
-                <input type="file" accept=".csv,text/csv" class="hidden"
-                    @change="importCSV($event)">
-            </label>
-
-            <button type="button" @click="exportCSV()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                <i class="fa-solid fa-file-export"></i> Export CSV
-            </button>
-
-            <button type="button" @click="openAddModal()"
-                class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">
-                <i class="fa-solid fa-plus"></i> Add Carabaos
-            </button>
-        </div>
-    </div>
+        <button type="button" @click="openAddModal()"
+            class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+            <i class="fa-solid fa-plus"></i> Add Carabaos
+        </button>
+    </x-admin-page-header>
 
     {{-- LOADING / ERROR --}}
     <div x-show="loading"
@@ -431,7 +409,7 @@
                                 <h3 class="font-bold">Animal Records</h3>
                                 <p class="mt-1 text-sm text-slate-500">Choose an Animal ID from Carabao Inventory. Available inventory details will fill automatically. Enter ownership and entrustment separately for every animal.</p>
                             </div>
-                            <button type="button" @click="addRow()" class="shrink-0 rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">
+                            <button type="button" @click="addRow()" class="cbed-add-button shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold">
                                 <i class="fa-solid fa-plus mr-1"></i> Add Animal
                             </button>
                         </div>
@@ -815,6 +793,7 @@ document.addEventListener('alpine:init', () => {
             try {
                 await this.loadOptions();
                 await this.loadCarabaos();
+                this.$dispatch('cbed-data-status');
                 await this.loadInventoryAnimals();
             } catch (error) {
                 this.loadError = error.message || 'Unable to load data.';
@@ -868,7 +847,8 @@ document.addEventListener('alpine:init', () => {
 
         async loadCarabaos() {
             const data = await this.request(this.urls.index);
-            const records = Array.isArray(data) ? data : (data.data || []);
+            const records = Array.isArray(data) ? data : data?.data;
+            if (!Array.isArray(records)) throw new Error('The server did not return a list of carabaos.');
 
             this.carabaos = records.map((record, index) => ({
                 ...record,

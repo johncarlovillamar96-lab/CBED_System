@@ -1,35 +1,19 @@
 ﻿{{-- resources/views/calf-drop.blade.php --}}
 @extends('layouts.admin')
+@section('inlineCalfDropNotifications', '1')
 @section('title', 'Calf Records | CBED')
 @section('page-heading', 'Calf Records')
 
 @section('content')
-<div x-data="calfDropPage()" x-init="init()" x-cloak class="calf-records-page management-page min-w-0 bg-slate-50 text-slate-800">
-    <div class="management-hero mb-7 flex flex-col justify-between gap-4 rounded-2xl p-5 text-white shadow-lg sm:flex-row sm:items-center sm:p-6">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-blue-100"><i class="fa-solid fa-house"></i><span>/</span><span>CBED Data System</span><span>/</span><span class="font-semibold text-white">Calf Records</span></div>
-            <h1 class="text-2xl font-bold tracking-tight text-white sm:text-3xl">Calf Records</h1>
-            <p class="mt-2 text-sm text-slate-200">Review births and manage calf records linked to Carabao Inventory.</p>
-        </div>
-        <div class="flex flex-wrap items-center gap-2">
-            <button type="button" @click="exportCSV()" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-export"></i> Export CSV</button>
-            <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-import"></i> Import CSV<input type="file" accept=".csv,text/csv" class="hidden" @change="importCSV($event)"></label>
-            <button type="button" @click="openBulk()" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i> Add Calf Records</button>
-            <span class="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"><i class="fa-regular fa-calendar mr-2"></i>{{ now()->format('F d, Y') }}</span>
-        </div>
-    </div>
-    {{-- INVENTORY STATUS --}}
-    <div class="mb-6 flex flex-col justify-between gap-3 rounded-xl border p-4 text-sm sm:flex-row sm:items-center"
-         :class="inventoryLoaded ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : (inventoryLoading ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-amber-200 bg-amber-50 text-amber-900')">
-        <div class="flex items-start gap-3">
-            <i class="fa-solid mt-0.5" :class="inventoryLoaded ? 'fa-circle-check' : (inventoryLoading ? 'fa-spinner fa-spin' : 'fa-circle-info')"></i>
-            <div>
-                <p class="font-semibold" x-text="inventoryLoaded ? 'Calf records loaded from MySQL' : (inventoryLoading ? 'Loading calf records from MySQL...' : 'Calf database not connected')"></p>
-                <p class="mt-1" x-text="inventoryLoaded ? (inventoryCalves.length + ' calf record(s) from Calf Drop and Carabao Inventory are listed here automatically.') : (inventoryError || 'Check /admin/carabao-inventory-api and /admin/calf-drop-api.')"></p>
-            </div>
-        </div>
-        <button type="button" @click="loadInventoryCalves()" :disabled="inventoryLoading" class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><i class="fa-solid fa-rotate"></i> Refresh</button>
-    </div>
+<div x-data="calfDropPage()" x-cloak class="calf-records-page management-page min-w-0 bg-slate-50 text-slate-800">
+    <x-admin-page-header title="Calf Records" description="Review births and manage calf records linked to Carabao Inventory." section="Animal Management">
+        <button type="button" @click="exportCSV()" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-export"></i> Export</button>
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-import"></i> Import<input type="file" accept=".csv,text/csv" class="hidden" @change="importCSV($event)"></label>
+        <button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i> Add Calf Record</button>
+        <button type="button" @click="loadInventoryCalves(true)" :disabled="inventoryLoading" class="action-secondary disabled:opacity-50">
+            <i class="fa-solid fa-rotate" :class="inventoryLoading ? 'fa-spin' : ''"></i> Refresh
+        </button>
+    </x-admin-page-header>
 
     {{-- Summary cards --}}
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -38,61 +22,287 @@
 
     {{-- Distribution panels --}}
     <section class="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div class="cbed-card dashboard-panel overflow-hidden rounded-xl border p-6"><div class="mb-6"><h2 class="font-bold text-slate-800">Calf Records per Province</h2><p class="mt-1 text-xs text-slate-500">Based on current filters</p></div><div class="space-y-4"><template x-for="d in distribution('province')" :key="d.name"><div><div class="mb-1 flex justify-between gap-3 text-sm"><span x-text="d.name"></span><b x-text="d.count"></b></div><div class="h-2.5 rounded-full bg-slate-100"><div class="h-2.5 rounded-full bg-blue-700 transition-all" :style="`width:${d.percent}%`"></div></div></div></template><p x-show="!distribution('province').length" class="text-sm text-slate-500">No records found.</p></div></div>
-        <div class="cbed-card dashboard-panel overflow-hidden rounded-xl border p-6"><div class="mb-6"><h2 class="font-bold text-slate-800">Calves Born per Year</h2><p class="mt-1 text-xs text-slate-500">Counts are grouped by Date of Birth and follow the current filters, except Reported Year.</p></div><div class="space-y-4"><template x-for="item in birthYearSummary" :key="item.year"><div><div class="mb-1 flex justify-between gap-3 text-sm"><span x-text="item.year"></span><b x-text="item.count"></b></div><div class="h-2.5 rounded-full bg-slate-100"><div class="h-2.5 rounded-full bg-blue-700 transition-all" :style="`width:${item.percent}%`"></div></div></div></template><p x-show="birthYearSummary.length===0" class="text-sm text-slate-500">No calf birth dates found.</p></div></div>
+        <article class="cbed-card dashboard-panel min-w-0 overflow-hidden rounded-xl border" aria-labelledby="calves-by-province-title">
+            <header class="flex items-start gap-3 border-b border-slate-200 p-5">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700" aria-hidden="true"><i class="fa-solid fa-map-location-dot"></i></span>
+                <div>
+                    <h2 id="calves-by-province-title" class="font-bold text-slate-900">Calf Records by Province</h2>
+                    <p class="mt-1 text-xs text-slate-500" x-text="filteredRecords.length + ' matching ' + (filteredRecords.length === 1 ? 'record' : 'records')"></p>
+                </div>
+            </header>
+            <div class="max-h-72 overflow-y-auto p-5">
+                <ol class="space-y-4">
+                    <template x-for="province in distribution('province')" :key="province.name">
+                        <li>
+                            <div class="mb-1.5 flex justify-between gap-3 text-sm">
+                                <span class="min-w-0 break-words font-medium text-slate-700" x-text="province.name"></span>
+                                <span class="shrink-0 font-semibold tabular-nums text-slate-900" x-text="province.count"></span>
+                            </div>
+                            <div class="h-2 rounded-full bg-slate-100" aria-hidden="true"><div class="h-full rounded-full bg-blue-600" :style="`width:${province.percent}%`"></div></div>
+                        </li>
+                    </template>
+                </ol>
+                <p x-show="!filteredRecords.length" class="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No records match the current filters.</p>
+            </div>
+        </article>
+        <article class="cbed-card dashboard-panel min-w-0 overflow-hidden rounded-xl border" aria-labelledby="calves-by-year-title">
+            <header class="flex items-start gap-3 border-b border-slate-200 p-5">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700" aria-hidden="true"><i class="fa-regular fa-calendar"></i></span>
+                <div>
+                    <h2 id="calves-by-year-title" class="font-bold text-slate-900">Calf Records by Birth Year</h2>
+                    <p class="mt-1 text-xs text-slate-500">Grouped by birth or event date across all reported years.</p>
+                </div>
+            </header>
+            <div class="max-h-72 overflow-y-auto p-5">
+                <ol class="space-y-3">
+                    <template x-for="item in birthYearSummary" :key="item.year">
+                        <li class="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] items-center gap-3 text-sm">
+                            <span class="font-medium tabular-nums text-slate-700" x-text="item.year"></span>
+                            <div class="h-2.5 rounded-full bg-slate-100" aria-hidden="true"><div class="h-full rounded-full bg-emerald-600" :style="`width:${item.percent}%`"></div></div>
+                            <span class="text-right font-semibold tabular-nums text-slate-900" x-text="item.count"></span>
+                        </li>
+                    </template>
+                </ol>
+                <p x-show="!birthYearSummary.length" class="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No matching records have a birth or event date.</p>
+            </div>
+        </article>
     </section>
+
+    @include('partials.calf-drop-notifications')
 
     {{-- Directory and filters --}}
     <section class="cbed-card dashboard-panel overflow-hidden rounded-xl border">
         <div class="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-lg font-bold text-slate-900">Calf Records</h2><p class="mt-1 text-sm text-slate-500">Search, filter, view, import, export, or add calf records.</p></div><div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredRecords.length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button></div></div>
         <div class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-6">
-            <div class="xl:col-span-2"><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search Records</label><div class="relative"><i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="search" x-model="search" @input="page=1" placeholder="Calf ID, mother ID, farmer, sire..." class="filter-input pl-9"></div></div>
+            <div class="min-w-0 xl:col-span-2">
+                <label for="calf-record-search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search Records</label>
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"></i>
+                    <input id="calf-record-search" x-ref="recordSearch" type="search" x-model="search" @input="page=1" @keydown.escape="search='';page=1" placeholder="Calf ID, farmer, or location" class="filter-input calf-record-search">
+                    <button x-show="search" type="button" @click="search='';page=1;$refs.recordSearch.focus()" aria-label="Clear search" class="absolute inset-y-1 right-1 flex w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Province</label><select x-model="filterProvince" @change="page=1" class="filter-input"><option value="">All Provinces</option><template x-for="v in options('province')" :key="v"><option :value="v" x-text="v"></option></template></select></div>
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Breed</label><select x-model="filterBreed" @change="page=1" class="filter-input"><option value="">All Breeds</option><template x-for="v in options('breed')" :key="v"><option :value="v" x-text="v"></option></template></select></div>
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Sex</label><select x-model="filterSex" @change="page=1" class="filter-input"><option value="">All Calf Sexes</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Reported Year</label><select x-model="filterYear" @change="page=1" class="filter-input"><option value="">All Years</option><template x-for="v in reportedYearOptions()" :key="v"><option :value="String(v)" x-text="v"></option></template></select></div>
         </div>
-        <div class="overflow-x-auto"><table class="w-full min-w-[1900px] text-left text-sm"><thead class="bg-slate-100 text-xs uppercase tracking-wider text-slate-600"><tr><th class="px-4 py-4">No.</th><th class="px-4 py-4">Calf ID</th><th class="px-4 py-4">Mother ID</th><th class="px-4 py-4">Farmer</th><th class="px-4 py-4">Province</th><th class="px-4 py-4">Cooperative</th><th class="px-4 py-4">Birth / Event Date</th><th class="px-4 py-4">Sex</th><th class="px-4 py-4">Breed</th><th class="px-4 py-4">Sire / Bull ID</th><th class="px-4 py-4">Reported Year</th><th class="px-4 py-4">Outcome</th><th class="px-4 py-4">Animal Status</th><th class="px-4 py-4">Actions</th></tr></thead><tbody class="divide-y divide-slate-100">
-            <template x-for="(r, i) in paginatedRecords()" :key="r.id"><tr class="hover:bg-blue-50/50"><td class="px-4 py-4 text-slate-500" x-text="(page-1)*perPage+i+1"></td><td class="px-4 py-4 font-bold text-slate-900"><span x-text="r.calf_id || '—'"></span><span x-show="r.source==='Inventory'" class="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[.65rem] font-semibold uppercase text-sky-700" title="Listed automatically from the Carabao Inventory (has a Dam ID)">Inventory</span></td><td class="px-4 py-4" x-text="r.mother_id || '—'"></td><td class="px-4 py-4" x-text="r.farmer || '—'"></td><td class="px-4 py-4" x-text="r.province || '—'"></td><td class="px-4 py-4" x-text="r.cooperative || '—'"></td><td class="px-4 py-4" x-text="r.date_of_birth || r.monitored_date || '—'"></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.sex==='Male'?'bg-blue-50 text-blue-700':r.sex==='Female'?'bg-pink-50 text-pink-700':'bg-slate-100 text-slate-600'" x-text="r.sex || '—'"></span></td><td class="px-4 py-4" x-text="r.breed || '—'"></td><td class="px-4 py-4" x-text="r.sire_id || '—'"></td><td class="px-4 py-4" x-text="r.reported_year || '—'"></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.birth_outcome==='Stillbirth'?'bg-rose-50 text-rose-700':r.birth_outcome==='Abortion'?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'" x-text="r.birth_outcome || 'Live Birth'"></span></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.animal_status==='Live'?'bg-emerald-50 text-emerald-700':r.animal_status==='Out'?'bg-slate-100 text-slate-700':r.animal_status==='Dead'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700'" x-text="r.animal_status || '—'"></span></td><td class="whitespace-nowrap px-4 py-4"><button type="button" @click="view(r)" class="mr-1 rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details"><i class="fa-solid fa-eye"></i></button><button type="button" @click="startEdit(r)" class="mr-1 rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit calf record"><i class="fa-solid fa-pen-to-square"></i></button><button type="button" x-show="r.source!=='Inventory'" @click="remove(r.id)" class="rounded-lg px-3 py-2 text-red-600 hover:bg-red-50" title="Delete record"><i class="fa-solid fa-trash"></i></button></td></tr></template>
+        <div class="max-h-[72vh] overflow-auto" role="region" aria-label="Calf records table" tabindex="0">
+            <table class="calf-records-table w-full min-w-[1900px] text-left text-sm">
+                <thead class="text-xs uppercase tracking-wide">
+                    <tr>
+                        <th scope="col">No.</th>
+                        <th scope="col">Calf ID</th>
+                        <th scope="col">Mother ID</th>
+                        <th scope="col">Farmer</th>
+                        <th scope="col">Province</th>
+                        <th scope="col">Cooperative</th>
+                        <th scope="col">Birth / Event Date</th>
+                        <th scope="col">Sex</th>
+                        <th scope="col">Breed</th>
+                        <th scope="col">Sire / Bull ID</th>
+                        <th scope="col">Reported Year</th>
+                        <th scope="col">Outcome</th>
+                        <th scope="col">Animal Status</th>
+                        <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+            <template x-for="(r, i) in paginatedRecords()" :key="r.id"><tr class="hover:bg-blue-50/50"><td class="px-4 py-4 text-slate-500" x-text="(page-1)*perPage+i+1"></td><td class="px-4 py-4 font-bold text-slate-900"><span x-text="r.calf_id || '—'"></span></td><td class="px-4 py-4" x-text="r.mother_id || '—'"></td><td class="px-4 py-4" x-text="r.farmer || '—'"></td><td class="px-4 py-4" x-text="r.province || '—'"></td><td class="px-4 py-4" x-text="r.cooperative || '—'"></td><td class="px-4 py-4" x-text="formatBirthDate(r.date_of_birth || r.monitored_date)"></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.sex==='Male'?'bg-blue-50 text-blue-700':r.sex==='Female'?'bg-pink-50 text-pink-700':'bg-slate-100 text-slate-600'" x-text="r.sex || '—'"></span></td><td class="px-4 py-4" x-text="r.breed || '—'"></td><td class="px-4 py-4" x-text="r.sire_id || '—'"></td><td class="px-4 py-4" x-text="r.reported_year || '—'"></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.birth_outcome==='Stillbirth'?'bg-rose-50 text-rose-700':r.birth_outcome==='Abortion'?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700'" x-text="r.birth_outcome || 'Live Birth'"></span></td><td class="px-4 py-4"><span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="r.animal_status==='Live'?'bg-emerald-50 text-emerald-700':r.animal_status==='Out'?'bg-slate-100 text-slate-700':r.animal_status==='Dead'?'bg-rose-50 text-rose-700':'bg-amber-50 text-amber-700'" x-text="r.animal_status || '—'"></span></td><td class="whitespace-nowrap px-4 py-4"><button type="button" @click="view(r)" class="mr-1 rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details"><i class="fa-solid fa-eye"></i></button><button type="button" @click="startEdit(r)" class="mr-1 rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit calf record"><i class="fa-solid fa-pen-to-square"></i></button><button type="button" @click="remove(r)" :disabled="deletingCalf" aria-label="Delete calf record" class="rounded-lg px-3 py-2 text-red-600 hover:bg-red-50" title="Delete record"><i class="fa-solid fa-trash"></i></button></td></tr></template>
             <tr x-show="filteredRecords.length===0"><td colspan="14" class="px-5 py-12 text-center text-slate-500"><i class="fa-solid fa-folder-open mb-2 block text-2xl text-slate-300"></i>No calf drop records found. Change your filters or add records.</td></tr>
-        </tbody></table></div>
+                </tbody>
+            </table>
+        </div>
         <div class="flex flex-col justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center"><p class="text-sm text-slate-500">Showing <b x-text="filteredRecords.length ? ((page-1)*perPage+1) : 0"></b>–<b x-text="Math.min(page*perPage,filteredRecords.length)"></b> of <b x-text="filteredRecords.length"></b> filtered records (<b x-text="allRecords.length"></b> total)</p><div class="flex items-center gap-2"><button type="button" @click="page=Math.max(1,page-1)" :disabled="page<=1" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Previous</button><span class="px-2 text-sm text-slate-600">Page <b x-text="page"></b> of <b x-text="totalPages()"></b></span><button type="button" @click="page=Math.min(totalPages(),page+1)" :disabled="page>=totalPages()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div>
     </section>
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Calf Records</footer>
 
-    {{-- Bulk Add modal --}}
-    <div x-cloak x-show="showBulk" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
-        <div @click.outside="showBulk = false" class="max-h-[94vh] w-full max-w-[96vw] overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div class="flex items-start justify-between gap-4 border-b border-slate-200 bg-white p-5"><div class="min-w-0"><h3 class="text-lg font-bold text-slate-900 sm:text-xl">Bulk Add Calf Drop Records</h3><p class="mt-1 text-sm text-slate-500">Enter multiple calf records below. Each row represents one calf.</p><div class="mt-3 flex flex-wrap items-center gap-2"><span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800"><i class="fa-solid fa-list-ol mr-1"></i><span x-text="bulkRows.length"></span> row(s) in this batch</span><span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">Required: Mother ID, Outcome, and Event Date</span></div></div><div class="flex shrink-0 items-center gap-3"><span class="whitespace-nowrap text-sm font-bold text-[#0b1f3a]" x-text="bulkRows.length + ' animal(s)'"></span><button @click="showBulk = false" type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="Close modal"><i class="fa-solid fa-xmark text-xl"></i></button></div></div>
-            <div class="max-h-[calc(94vh-110px)] overflow-auto p-4 sm:p-5">
-                <div class="mb-4 flex justify-end"><button @click="addRow()" type="button" class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-plus mr-2"></i>Add Calf</button></div>
-                <div class="overflow-x-auto rounded-xl border border-slate-200"><table class="min-w-[2200px] w-full text-left text-sm"><thead class="bg-slate-100 text-xs uppercase tracking-wider text-slate-600"><tr><th class="p-3">Calf ID *</th><th class="p-3">Mother ID *</th><th class="p-3">Farmer</th><th class="p-3">Province</th><th class="p-3">Cooperative</th><th class="p-3">Date of Birth</th><th class="p-3">Sex *</th><th class="p-3">Breed</th><th class="p-3">Sire / Bull ID</th><th class="p-3">Monitored Date</th><th class="p-3">Reported Year</th><th class="p-3">Birth Outcome *</th><th class="p-3">Animal Status</th><th class="p-3">Breed Series</th><th class="p-3">Remarks</th><th class="p-3">Action</th></tr></thead><tbody class="divide-y divide-slate-100">
-                    <template x-for="(r, i) in bulkRows" :key="r._key"><tr class="align-top">
-                        <td class="min-w-36 p-2"><input x-model.trim="r.calf_id" class="form-input" placeholder="Calf ID"></td><td class="min-w-36 p-2"><input x-model.trim="r.mother_id" @input="refreshGeneratedId(r)" class="form-input" placeholder="Mother animal ID"></td><td class="min-w-40 p-2"><input x-model="r.farmer" class="form-input" placeholder="Farmer name"></td>
-                        <td class="min-w-40 p-2"><select x-model="r.province" class="form-input"><option value="">Select Province</option><template x-for="v in provinceOptions" :key="v"><option :value="v" x-text="v"></option></template></select></td><td class="min-w-44 p-2"><input x-model="r.cooperative" class="form-input" placeholder="Cooperative"></td><td class="min-w-40 p-2"><input type="date" x-model="r.date_of_birth" class="form-input"></td><td class="min-w-32 p-2"><select x-model="r.sex" class="form-input"><option value="">Select Sex</option><option value="Male">Male</option><option value="Female">Female</option></select></td><td class="min-w-36 p-2"><select x-model="r.breed" class="form-input"><option value="">Select Breed</option><template x-for="v in breedOptions" :key="v"><option :value="v" x-text="v"></option></template></select></td><td class="min-w-36 p-2"><input x-model="r.sire_id" class="form-input" placeholder="Sire / Bull ID"></td><td class="min-w-40 p-2"><input type="date" x-model="r.monitored_date" class="form-input"></td><td class="min-w-32 p-2"><input type="number" min="2000" max="2100" x-model="r.reported_year" @input="refreshGeneratedId(r)" class="form-input" placeholder="2026"></td><td class="min-w-40 p-2"><select x-model="r.birth_outcome" @change="refreshGeneratedId(r)" class="form-input"><option value="Live Birth">Live Birth</option><option value="Stillbirth">Stillbirth (SB)</option><option value="Abortion">Abortion (AB)</option></select></td><td class="min-w-36 p-2"><select x-model="r.animal_status" class="form-input"><option value="Live">Live</option><option value="Out">Out</option><option value="Dead">Dead</option><option value="Not Applicable">Not Applicable</option></select></td><td class="min-w-28 p-2"><input x-model.trim="r.breed_series" @input="refreshGeneratedId(r)" class="form-input" placeholder="6"></td><td class="min-w-48 p-2"><input x-model="r.remarks" class="form-input" placeholder="Remarks"></td><td class="p-2 text-center"><button @click="removeRow(i)" type="button" class="rounded-lg px-3 py-2 text-red-600 hover:bg-red-50" title="Remove row"><i class="fa-solid fa-trash"></i></button></td>
-                    </tr></template><tr x-show="bulkRows.length === 0"><td colspan="16" class="px-4 py-10 text-center text-slate-500">No calf rows. Click “Add Calf” to begin.</td></tr>
-                </tbody></table></div>
-                <div class="mt-4 flex flex-col gap-3 rounded-xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p class="text-sm font-semibold text-slate-800">Batch total: <span x-text="bulkRows.length"></span> animal row(s)</p><p class="mt-1 text-xs text-slate-500">Rows need Mother ID and Event Date. Live births also need Sex. Stillbirth IDs use SB; abortion IDs use AB.</p></div><div class="flex justify-end gap-2"><button @click="showBulk = false" type="button" class="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold hover:bg-slate-100">Cancel</button><button @click="saveBulk()" type="button" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-floppy-disk mr-2"></i>Save All</button></div></div>
+    <div x-cloak x-show="showAdd" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
+        <form @submit.prevent="saveCalf()" role="dialog" aria-modal="true" aria-labelledby="add-calf-title" class="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <header class="flex shrink-0 items-center justify-between border-b border-slate-200 p-5">
+                <h3 id="add-calf-title" class="text-xl font-bold text-slate-900">Add Calf Record</h3>
+                <button type="button" @click="showAdd=false" :disabled="savingCalf" aria-label="Close add calf form" class="rounded-lg p-2 hover:bg-slate-100"><i class="fa-solid fa-xmark"></i></button>
+            </header>
+            <div class="min-h-0 overflow-y-auto p-4 sm:p-5">
+                <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Calf entry method">
+                    <button type="button" @click="setEntryMode(true)" :aria-pressed="showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Use a mating record</button>
+                    <button type="button" @click="setEntryMode(false)" :aria-pressed="!showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="!showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Manual Entry</button>
+                </div>
+                <section x-show="showMatingPicker" class="mb-4 rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="calf-drop-due-title">
+                    <h4 id="calf-drop-due-title" class="font-semibold text-slate-900">Mating records at 280+ pregnancy days</h4>
+                    <p class="mt-1 text-sm text-slate-500">Select a mother awaiting a calf-drop report to prefill the form.</p>
+                    <p x-show="loadingDueMatings" role="status" class="mt-3 text-sm text-slate-500">Loading mating records…</p>
+                    <div x-show="dueMatingsError" class="mt-3 flex items-center gap-3 text-sm text-rose-700">
+                        <span role="alert" x-text="dueMatingsError"></span>
+                        <button type="button" @click="loadDueMatings()" class="font-semibold underline">Retry</button>
+                    </div>
+                    <p x-show="!loadingDueMatings && !dueMatingsError && !dueMatings.length" class="mt-3 text-sm text-slate-500">No matching pregnancies are awaiting a calf-drop report.</p>
+                    <ul x-show="dueMatings.length" class="mt-3 max-h-48 divide-y divide-slate-100 overflow-y-auto">
+                        <template x-for="mating in dueMatings" :key="mating.id">
+                            <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                                <div>
+                                    <span class="font-semibold text-slate-900" x-text="mating.animal_id || mating.carabao_id"></span>
+                                    <span class="ml-2 text-slate-600" x-text="mating.cooperative_name || ''"></span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="mating.calf_drop_overdue ? 'bg-amber-100 text-amber-900' : 'bg-blue-50 text-blue-800'" x-text="mating.pregnancy_days + ' days'"></span>
+                                    <button type="button" @click="addFromMating(mating)" :disabled="savingCalf" class="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-50">Use mating record</button>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </section>
+                <fieldset :disabled="savingCalf" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <template x-if="!showMatingPicker">
+                        <div class="grid gap-4 sm:col-span-2 sm:grid-cols-2 lg:col-span-3">
+                            <div class="relative text-sm" @click.outside="cooperativePickerOpen=false" @keydown.escape.stop="if(cooperativePickerOpen){cooperativePickerOpen=false;$refs.cooperativeTrigger.focus()}">
+                                <span id="calf-cooperative-label" class="font-semibold">Cooperative <span class="text-rose-600">*</span></span>
+                                <button type="button" x-ref="cooperativeTrigger" aria-labelledby="calf-cooperative-label calf-cooperative-value" aria-controls="calf-cooperative-picker" :aria-expanded="cooperativePickerOpen" @click="toggleCooperativePicker()" class="form-input mt-1 flex items-center justify-between gap-2 text-left">
+                                    <span id="calf-cooperative-value" x-text="addForm.cooperative || (inventoryLoading ? 'Loading cooperatives…' : 'Select cooperative')"></span>
+                                    <i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i>
+                                </button>
+                                <div id="calf-cooperative-picker" x-show="cooperativePickerOpen" class="absolute inset-x-0 z-10 mt-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                                    <input type="search" x-ref="cooperativeSearch" x-model="cooperativeQuery" @keydown.enter.prevent="if(matchingCooperatives.length===1)selectManualCooperative(matchingCooperatives[0])" aria-label="Search cooperatives" placeholder="Search cooperatives…" class="form-input">
+                                    <ul class="mt-1 max-h-40 overflow-y-auto">
+                                        <template x-for="cooperative in matchingCooperatives" :key="cooperative.id">
+                                            <li><button type="button" @click="selectManualCooperative(cooperative)" class="w-full rounded-md px-2 py-2 text-left hover:bg-sky-50 focus:bg-sky-50" x-text="cooperative.cooperative_name"></button></li>
+                                        </template>
+                                    </ul>
+                                    <p x-show="!matchingCooperatives.length" class="px-2 py-2 text-slate-500" x-text="inventoryLoading ? 'Loading cooperatives…' : 'No matching cooperatives.'"></p>
+                                </div>
+                            </div>
+                            <div class="relative text-sm" @click.outside="farmerPickerOpen=false" @keydown.escape.stop="if(farmerPickerOpen){farmerPickerOpen=false;$refs.farmerTrigger.focus()}">
+                                <span id="calf-farmer-label" class="font-semibold">Farmer <span class="text-rose-600">*</span></span>
+                                <button type="button" x-ref="farmerTrigger" aria-labelledby="calf-farmer-label calf-farmer-value" aria-controls="calf-farmer-picker" :aria-expanded="farmerPickerOpen" :disabled="!manualFarmers.length" @click="toggleFarmerPicker()" class="form-input mt-1 flex items-center justify-between gap-2 text-left disabled:opacity-60">
+                                    <span id="calf-farmer-value" x-text="addForm.farmer || (!addForm.cooperative_id ? 'Select a cooperative first' : (manualFarmers.length ? 'Select farmer' : 'No farmers in this cooperative'))"></span>
+                                    <i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i>
+                                </button>
+                                <div id="calf-farmer-picker" x-show="farmerPickerOpen" class="absolute inset-x-0 z-10 mt-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                                    <input type="search" x-ref="farmerSearch" x-model="farmerQuery" @keydown.enter.prevent="if(matchingManualFarmers.length===1)selectManualFarmer(matchingManualFarmers[0])" aria-label="Search farmers" placeholder="Search farmers…" class="form-input">
+                                    <ul class="mt-1 max-h-40 overflow-y-auto">
+                                        <template x-for="farmer in matchingManualFarmers" :key="farmer.id">
+                                            <li><button type="button" @click="selectManualFarmer(farmer)" class="w-full rounded-md px-2 py-2 text-left hover:bg-sky-50 focus:bg-sky-50" x-text="farmerLabel(farmer)"></button></li>
+                                        </template>
+                                    </ul>
+                                    <p x-show="!matchingManualFarmers.length" class="px-2 py-2 text-slate-500">No matching farmers.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <label class="text-sm font-semibold">Mother ID <span class="text-rose-600">*</span>
+                        <input x-show="showMatingPicker" :value="addForm.mother_id" readonly class="form-input mt-1">
+                        <template x-if="!showMatingPicker">
+                            <select x-model="addForm.mother_id" @change="refreshGeneratedId(addForm)" required :disabled="loadingDueMatings || !!dueMatingsError || !manualMothers.length" class="form-input mt-1">
+                                <option value="" x-text="loadingDueMatings ? 'Checking mating records…' : (dueMatingsError ? 'Mating records unavailable' : (!addForm.farmer_id ? 'Select a farmer first' : (manualMothers.length ? 'Select mother' : 'No live, breedable females available')))"></option>
+                                <template x-for="mother in manualMothers" :key="mother.id"><option :value="mother.animal_id" x-text="mother.animal_name ? mother.animal_id + ' — ' + mother.animal_name : mother.animal_id"></option></template>
+                            </select>
+                        </template>
+                        <button x-show="!showMatingPicker && dueMatingsError" type="button" @click="loadDueMatings()" class="mt-1 text-sm text-rose-700 underline">Retry loading mating records</button>
+                    </label>
+                    <label class="text-sm font-semibold">Birth or event date <span class="text-rose-600">*</span>
+                        <input x-model="addForm.date_of_birth" type="date" required class="form-input mt-1">
+                    </label>
+                    <label class="text-sm font-semibold">Birth outcome
+                        <select x-model="addForm.birth_outcome" @change="refreshGeneratedId(addForm)" class="form-input mt-1"><option>Live Birth</option><option>Stillbirth</option><option>Abortion</option></select>
+                    </label>
+                    <label class="text-sm font-semibold">Calf ID
+                        <input x-model.trim="addForm.calf_id" placeholder="Generated if blank" :readonly="addForm.birth_outcome !== 'Live Birth'" class="form-input mt-1">
+                    </label>
+                    <label class="text-sm font-semibold">Sex <span x-show="addForm.birth_outcome === 'Live Birth'" class="text-rose-600">*</span>
+                        <select x-model="addForm.sex" :required="addForm.birth_outcome === 'Live Birth'" class="form-input mt-1"><option value="">Select sex</option><option>Male</option><option>Female</option></select>
+                    </label>
+                    <label class="text-sm font-semibold">Breed
+                        <select x-model="addForm.breed"  class="form-input mt-1"><option value="">Select breed</option><template x-for="option in breedOptions" :key="option"><option :value="option" x-text="option"></option></template></select>
+                    </label>
+                    <label class="text-sm font-semibold">Sire / Bull ID
+                        <input x-model="addForm.sire_id"  class="form-input mt-1">
+                    </label>
+                    <label x-show="showMatingPicker" class="text-sm font-semibold">Farmer
+                        <input :value="addForm.farmer" readonly class="form-input mt-1">
+                    </label>
+                    <label x-show="showMatingPicker" class="text-sm font-semibold">Cooperative
+                        <input :value="addForm.cooperative" readonly class="form-input mt-1">
+                    </label>
+                    <label class="text-sm font-semibold">Province
+                        <input x-model.trim="addForm.province" list="calf-provinces" class="form-input mt-1">
+                        <datalist id="calf-provinces"><template x-for="province in provinceOptions" :key="province"><option :value="province"></option></template></datalist>
+                    </label>
+                    <label class="text-sm font-semibold">Municipality<input x-model.trim="addForm.municipality" class="form-input mt-1"></label>
+                    <label class="text-sm font-semibold">Barangay<input x-model.trim="addForm.barangay" class="form-input mt-1"></label>
+                    <label class="text-sm font-semibold">Monitored date
+                        <input x-model="addForm.monitored_date" type="date" class="form-input mt-1">
+                    </label>
+                    <label class="text-sm font-semibold">Reported year
+                        <input x-model="addForm.reported_year" type="number" min="2000" max="2100" @input="refreshGeneratedId(addForm)" class="form-input mt-1">
+                    </label>
+                    <label x-show="addForm.birth_outcome === 'Live Birth'" class="text-sm font-semibold">Animal status
+                        <select x-model="addForm.animal_status"  class="form-input mt-1"><option>Live</option><option>Out</option><option>Dead</option><option>Not Applicable</option></select>
+                    </label>
+                    <label x-show="addForm.birth_outcome !== 'Live Birth'" class="text-sm font-semibold">Breed series
+                        <input x-model="addForm.breed_series" @input="refreshGeneratedId(addForm)" class="form-input mt-1">
+                    </label>
+                    <label class="text-sm font-semibold sm:col-span-2 lg:col-span-3">Remarks<textarea x-model="addForm.remarks" rows="2" class="form-input mt-1"></textarea></label>
+                </fieldset>
             </div>
-        </div>
+            <footer class="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50 p-4">
+                <button type="button" @click="showAdd=false" :disabled="savingCalf" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Cancel</button>
+                <button type="submit" :disabled="savingCalf" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" x-text="savingCalf ? 'Saving...' : 'Save Calf Record'"></button>
+            </footer>
+        </form>
     </div>
 
     {{-- View modal --}}
     <div x-cloak x-show="showView" x-transition.opacity class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4"><div @click.outside="showView = false" class="w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl"><div class="flex items-center justify-between border-b border-slate-200 p-5"><div><h3 class="text-lg font-bold">Calf Drop Record Details</h3><p class="mt-1 text-sm text-slate-500">Full calf birth record</p></div><button @click="showView = false" type="button" class="rounded-lg p-2 hover:bg-slate-100"><i class="fa-solid fa-xmark"></i></button></div><div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3"><template x-for="f in fields" :key="f"><div class="rounded-lg border border-slate-200 p-3"><p class="text-xs text-slate-500" x-text="label(f)"></p><p class="mt-1 break-words font-semibold text-slate-800" x-text="selected && selected[f] != null && selected[f] !== '' ? selected[f] : '-' "></p></div></template></div><div class="flex justify-end border-t border-slate-200 p-4"><button @click="showView = false" type="button" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">Close</button></div></div></div>
     <div x-cloak x-show="showEdit" x-transition.opacity class="fixed inset-0 z-[65] flex items-center justify-center bg-slate-950/60 p-4"><div @click.outside="closeEdit()" class="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-xl"><form @submit.prevent="saveEdit()"><div class="flex items-center justify-between border-b border-slate-200 p-5"><div><h3 class="text-lg font-bold">Edit Calf Record</h3><p class="mt-1 text-sm text-slate-500">Calf ID and mother ID are protected from changes.</p></div><button @click="closeEdit()" type="button" class="rounded-lg p-2 hover:bg-slate-100"><i class="fa-solid fa-xmark"></i></button></div><div class="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2"><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Calf ID (locked)</label><input :value="editForm?.calf_id||''" readonly class="form-input bg-slate-100"></div><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Mother ID (locked)</label><input :value="editForm?.mother_id||''" readonly class="form-input bg-slate-100"></div><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Date of Birth</label><input type="date" x-model="editForm.date_of_birth" required class="form-input"></div><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Sex</label><select x-model="editForm.sex" required class="form-input"><option value="Male">Male</option><option value="Female">Female</option></select></div><div x-show="editForm?.source!=='Calf Drop'"><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Breed</label><input x-model="editForm.breed" class="form-input"></div><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Sire / Bull ID</label><input x-model="editForm.sire_id" class="form-input"></div><div><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Animal Status</label><select x-model="editForm.animal_status" class="form-input"><option value="Live">Live</option><option value="Out">Out</option><option value="Dead">Dead</option><option value="Not Applicable">Not Applicable</option></select></div><div x-show="editForm?.source!=='Inventory'"><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Monitored Date</label><input type="date" x-model="editForm.monitored_date" class="form-input"></div><div x-show="editForm?.source!=='Inventory'"><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Birth Outcome</label><select x-model="editForm.birth_outcome" class="form-input"><option value="Live Birth">Live Birth</option><option value="Stillbirth">Stillbirth</option><option value="Abortion">Abortion</option></select></div><div x-show="editForm?.source!=='Inventory'" class="sm:col-span-2"><label class="mb-1 block text-xs font-semibold uppercase text-slate-500">Remarks</label><textarea x-model="editForm.remarks" rows="3" class="form-input"></textarea></div></div><div class="flex justify-end gap-2 border-t border-slate-200 p-4"><button @click="closeEdit()" type="button" class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold">Cancel</button><button type="submit" :disabled="savingEdit" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="savingEdit?'Saving…':'Save Changes'"></span></button></div></form></div></div>
+    <dialog x-ref="deleteCalfDialog" aria-labelledby="delete-calf-title" aria-describedby="delete-calf-description"
+        @cancel="if(deletingCalf)$event.preventDefault()" class="m-auto max-h-[90vh] w-11/12 max-w-2xl overflow-y-auto rounded-2xl bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/60">
+        <div class="p-6">
+            <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700" aria-hidden="true"><i class="fa-solid fa-trash-can"></i></div>
+            <h2 id="delete-calf-title" class="text-lg font-bold" x-text="finalDeleteConfirmation ? 'Are you sure you want to delete this calf record?' : 'Review calf record before deleting'"></h2>
+            <p id="delete-calf-description" class="mt-2 text-sm text-slate-600" x-text="finalDeleteConfirmation ? (deleteTarget?.inventory_id ? 'The animal will be permanently removed from Carabao Inventory and Calf Records.' : 'This calf record will be permanently deleted.') : 'Check the details below, then select Delete record to continue.'"></p>
+            <dl x-show="!finalDeleteConfirmation" class="mt-4 grid grid-cols-1 gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-3">
+                <template x-for="field in fields" :key="field">
+                    <div :class="field === 'remarks' ? 'sm:col-span-3' : ''">
+                        <dt class="capitalize text-slate-500" x-text="label(field)"></dt>
+                        <dd class="whitespace-pre-wrap break-words font-semibold" x-text="['date_of_birth','monitored_date'].includes(field) ? formatBirthDate(deleteTarget?.[field]) : (deleteTarget?.[field] ?? '') || '—'"></dd>
+                    </div>
+                </template>
+                <div x-show="deleteTarget?.birth_weight != null"><dt class="text-slate-500">Birth Weight</dt><dd class="font-semibold" x-text="deleteTarget?.birth_weight"></dd></div>
+                <div x-show="deleteTarget?.source"><dt class="text-slate-500">Source</dt><dd class="font-semibold" x-text="deleteTarget?.source"></dd></div>
+            </dl>
+            <p x-show="finalDeleteConfirmation" class="mt-4 break-words rounded-lg bg-slate-50 p-3 text-sm font-semibold" x-text="'Calf ID: ' + (deleteTarget?.calf_id || '—') + ' · Mother ID: ' + (deleteTarget?.mother_id || '—')"></p>
+            <p x-show="deleteCalfError" role="alert" class="mt-3 text-sm text-rose-700" x-text="deleteCalfError"></p>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" x-ref="cancelCalfDelete" autofocus @click="$refs.deleteCalfDialog.close()" :disabled="deletingCalf" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancel</button>
+                <button x-show="!finalDeleteConfirmation" type="button" @click="reviewCalfDelete()" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800">Delete record</button>
+                <button x-show="finalDeleteConfirmation" type="button" @click="confirmCalfDelete()" :disabled="deletingCalf" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50" x-text="deletingCalf ? 'Deleting…' : 'Yes, delete permanently'"></button>
+            </div>
+        </div>
+    </dialog>
     <div x-cloak x-show="notice" x-transition class="fixed bottom-5 right-5 z-[70] max-w-sm rounded-xl px-5 py-3 text-sm font-medium text-white shadow-xl" x-text="notice"></div>
 </div>
 @endsection
 
 @push('styles')
 <style>
+    .calf-records-table { border-collapse: separate; border-spacing: 0; }
+    .calf-records-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        padding: .75rem 1rem;
+        background: #103c60;
+        color: #fff;
+        border-bottom: 3px solid #e8b22f;
+        white-space: nowrap;
+    }
+    .calf-records-table tbody tr:nth-child(even) { background: #f8fafc; }
+    .calf-records-table tbody tr:hover { background: #f0f8fb; }
+    .calf-records-table tbody td { border-bottom: 1px solid #e8edf3; vertical-align: middle; }
     [x-cloak]{display:none!important}
     .calf-records-page { background:radial-gradient(circle at 92% 0%,rgba(11,31,58,.06),transparent 25%),#f5f8fc; }
-    .calf-records-page .management-hero { position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2); }
-    .calf-records-page .management-hero::after { content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045); }
-    .calf-records-page .management-hero h1,.calf-records-page .management-hero p,.calf-records-page .management-hero span { color:#fff!important; }
-    .calf-records-page .management-hero button,.calf-records-page .management-hero label { border-color:rgba(255,255,255,.32)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;backdrop-filter:blur(8px);cursor:pointer; }
-    .calf-records-page .management-hero button:hover,.calf-records-page .management-hero label:hover { background:rgba(255,255,255,.22)!important; }
     .calf-records-page .management-summary-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }
     .calf-records-page .management-summary-card:nth-child(2) { border-top-color:#e87523!important; }
     .calf-records-page .management-summary-card:nth-child(3) { border-top-color:#25835b!important; }
@@ -105,6 +315,8 @@
     .calf-records-page .dashboard-panel { border-color:#dce6ed!important;border-radius:1rem!important;box-shadow:0 7px 24px rgba(15,45,67,.06)!important; }
     .form-input,.filter-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;padding:.625rem .75rem;font-size:.875rem;color:#1e293b;outline:none}
     .form-input:focus,.filter-input:focus{border-color:#1d4ed8;box-shadow:0 0 0 2px #dbeafe}
+    .filter-input.calf-record-search { padding-inline: 2.25rem; }
+    .calf-record-search::-webkit-search-cancel-button { appearance: none; }
 </style>
 @endpush
 
@@ -112,11 +324,16 @@
 <script>
 function calfDropPage() {
     return {
-        storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoaded: false, inventoryLoading: false, inventoryError: '', search: '', filterProvince: '', filterBreed: '', filterSex: '', filterYear: '2026',
-        showBulk: false, showView: false, showEdit: false, savingEdit: false, editForm: {}, bulkRows: [], selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 10,
+        storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoading: false, search: '', filterProvince: '', filterBreed: '', filterSex: '', filterYear: '',
+        showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 10,
+        showMatingPicker: false, dueMatings: [], loadingDueMatings: false, dueMatingsError: '',
+        calfCooperatives: [], calfFarmers: [], calfInventory: [],
+        cooperativePickerOpen: false, cooperativeQuery: '',
+        farmerPickerOpen: false, farmerQuery: '',
+        deleteTarget: null, deleteCalfError: '', finalDeleteConfirmation: false,
         provinceOptions: ['Aurora','Bataan','Bulacan','Nueva Ecija','Pampanga','Tarlac','Zambales'],
-        breedOptions: ['RV','SP','BrMB','BMB','CB50','Crossbred','Other'],
-        fields: ['calf_id','mother_id','farmer','province','cooperative','date_of_birth','sex','breed','sire_id','monitored_date','reported_year','birth_outcome','animal_status','breed_series','remarks'],
+        breedOptions: ['RV', 'SP', 'ItMB', 'BrMB', 'BMB', 'CB50', 'CB75', 'CB87', 'CB93'],
+        fields: ['calf_id','mother_id','farmer','province','municipality','barangay','cooperative','date_of_birth','sex','breed','sire_id','monitored_date','reported_year','birth_outcome','animal_status','breed_series','remarks'],
         init() {
             try {
                 const saved=localStorage.getItem(this.storageKey);
@@ -130,7 +347,7 @@ function calfDropPage() {
                 console.error('Could not load or clean saved calf records:',e);
                 this.msg('Unable to read saved calf records. Check browser storage.');
             }
-            this.loadInventoryCalves();
+            this.loadInventoryCalves(true);
         },
         isSampleRecord(record) {
             const calfId=String(record?.calf_id??'').trim();
@@ -150,6 +367,14 @@ function calfDropPage() {
         // An inventory animal is a calf when it has a Dam ID (mother). Placeholder values do not count.
         hasDam(a) { const v = String(a?.dam_id ?? '').trim().toLowerCase(); return v !== '' && !['-','--','n/a','na','none','unknown','0'].includes(v); },
         normalizeProvince(value) { const text = String(value ?? '').replace(/\s+/g,' ').trim(); if (!text) return ''; const aliases = {nuevaecija:'Nueva Ecija', nuevaecjia:'Nueva Ecija', nuevaecijaprovince:'Nueva Ecija'}; return aliases[text.toLowerCase().replace(/[^a-z]/g,'')] || text; },
+        formatBirthDate(value) {
+            if(!value)return '—';
+            const date=String(value).slice(0,10);
+            const parsed=new Date(date+'T00:00:00Z');
+            if(Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0,10)!==date)return value;
+            const month=parsed.toLocaleDateString('en-US',{month:'short',timeZone:'UTC'});
+            return [date.slice(8,10),month,date.slice(2,4)].join('-');
+        },
         farmerLabel(f) { if (typeof f === 'string') return f.trim(); const direct = String(f?.full_name ?? f?.farmer_name ?? f?.name ?? f?.recipient_name ?? '').trim(); if (direct) return direct; return [f?.last_name ?? f?.lastname, f?.first_name ?? f?.firstname, f?.middle_name ?? f?.middlename].map(v => String(v ?? '').trim()).filter(Boolean).join(', '); },
         inventoryToCalf(a, coops, farmers) {
             const norm = v => String(v ?? '').trim().toLowerCase().replace(/\s+/g,' ');
@@ -170,23 +395,37 @@ function calfDropPage() {
             return {
                 id: 'inv-' + a.id, inventory_id: a.id, source: 'Inventory',
                 calf_id: String(a.registry_number || a.bolus_id || a.tag_no || a.animal_id || a.id).trim(),
-                mother_id: String(a.dam_id).trim(), farmer, province: this.normalizeProvince(a.province), cooperative,
+                mother_id: String(a.dam_id).trim(), farmer, province: this.normalizeProvince(a.province),
+                municipality: a.municipality || '', barangay: a.barangay || '', cooperative,
                 date_of_birth: dob, sex, breed: String(a.breed ?? '').trim(), sire_id: String(a.sire_id ?? '').trim(),
                 monitored_date: '', reported_year: /^\d{4}$/.test(dob.slice(0,4)) ? dob.slice(0,4) : '',
                 birth_outcome: 'Live Birth', animal_status, breed_series: '',
                 remarks: [a.dam_name ? 'Dam: ' + a.dam_name : '', a.sire_name ? 'Sire: ' + a.sire_name : '', a.remarks || ''].filter(Boolean).join(' · ')
             };
         },
-        async loadInventoryCalves() {
-            this.inventoryLoading = true; this.inventoryError = '';
-            const readList = async url => { const res = await fetch(url, {headers:{Accept:'application/json'}}); if (!res.ok) throw new Error(`${url} returned HTTP ${res.status}`); const p = await res.json(); const list = Array.isArray(p) ? p : (p?.data ?? p?.records ?? p?.farmers ?? p?.cooperatives ?? []); if (!Array.isArray(list)) throw new Error(`${url} did not return a list.`); return list; };
+        async loadInventoryCalves(announce = false) {
+            this.inventoryLoading = true;
+            const readList = async url => {
+                const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+                const payload = await response.json();
+                const list = Array.isArray(payload) ? payload : (payload?.data ?? payload?.records ?? payload?.farmers ?? payload?.cooperatives);
+                if (!Array.isArray(list)) throw new Error(`${url} did not return a list.`);
+                return list;
+            };
             try {
                 const animals = await readList('/admin/carabao-inventory-api');
-                const databaseCalves = await readList('/admin/calf-drop-api').catch(e=>{console.warn('Calf Drop database history unavailable:',e);return [];});
+                const databaseCalves = await readList('/admin/calf-drop-api').catch(error => {
+                    console.warn('Calf Drop database history unavailable:', error);
+                    return null;
+                });
                 let coops = [], farmers = [];
                 try { [coops, farmers] = await Promise.all([readList('/admin/cooperatives/data'), readList('/admin/farmers/data')]); } catch (e) { console.warn('Farmer/cooperative names unavailable:', e); }
+                this.calfCooperatives=coops;
+                this.calfFarmers=farmers;
+                this.calfInventory=animals;
                 const seenCalfIds=new Set();
-                const calfRows=databaseCalves.map(c=>({...c,id:'db-calf-'+c.id,database_id:c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
+                const calfRows=(databaseCalves ?? []).map(c=>({...c,id:'db-calf-'+c.id,database_id:c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
                 this.inventoryCalves=calfRows
                     .filter(calf=>{
                         const id=String(calf.calf_id||'').trim().toLowerCase();
@@ -195,31 +434,54 @@ function calfDropPage() {
                         return true;
                     })
                     .sort((a,b)=>String(b.date_of_birth||'').localeCompare(String(a.date_of_birth||'')));
-                this.inventoryLoaded = true; this.page = 1;
+                this.page = 1;
+                if (databaseCalves === null) {
+                    this.$dispatch('cbed-data-status', {
+                        title: 'Calf drop history unavailable',
+                        description: 'Inventory calves are shown. Use Refresh to retry the calf drop history.',
+                        type: 'error'
+                    });
+                } else if (announce) {
+                    this.$dispatch('cbed-data-status', {
+                        description: 'Calf records are retrieved from Calf Drop and Carabao Inventory. Older entries may also be saved in this browser.'
+                    });
+                }
             } catch (e) {
-                this.inventoryLoaded = false; this.inventoryCalves = [];
-                this.inventoryError = e.message || 'Could not load the Carabao Inventory.';
+                this.inventoryCalves = [];
                 console.error('Calf Drop inventory load failed:', e);
+                this.$dispatch('cbed-data-status', {
+                    title: 'Calf records unavailable',
+                    description: 'Use Refresh to retry loading the records from the database.',
+                    type: 'error'
+                });
             } finally { this.inventoryLoading = false; }
         },
-        get filteredRecords() { const q = this.search.toLowerCase().trim(); return this.allRecords.filter(r => { const matchesSearch = !q || this.fields.some(f => String(r[f] ?? '').toLowerCase().includes(q)); return matchesSearch && (!this.filterProvince || r.province === this.filterProvince) && (!this.filterBreed || r.breed === this.filterBreed) && (!this.filterSex || r.sex === this.filterSex) && (!this.filterYear || String(r.reported_year) === this.filterYear); }).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
-        get summaryCards() { const list = this.filteredRecords; return [
-            {title:'Total Calves',value:list.length,description:'Records matching filters',icon:'fa-solid fa-list-check',color:'text-slate-900'},
-            {title:'Male Calves',value:list.filter(r=>r.sex==='Male').length,description:'Male calves recorded',icon:'fa-solid fa-mars',color:'text-blue-700'},
-            {title:'Female Calves',value:list.filter(r=>r.sex==='Female').length,description:'Female calves recorded',icon:'fa-solid fa-venus',color:'text-pink-700'},
-            {title:'Breeds',value:new Set(list.map(r=>r.breed).filter(Boolean)).size,description:'Breeds represented',icon:'fa-solid fa-dna',color:'text-emerald-700'}
-        ]; },
+        get matchingCalfRecords() {
+            const normalize=value=>String(value ?? '').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+            const terms=normalize(this.search).trim().split(/\s+/).filter(Boolean);
+            return this.allRecords.filter(record=>{
+                if((this.filterProvince && record.province!==this.filterProvince)
+                    || (this.filterBreed && record.breed!==this.filterBreed)
+                    || (this.filterSex && record.sex!==this.filterSex))return false;
+                if(!terms.length)return true;
+                const values=this.fields.map(field=>normalize(record[field]));
+                return terms.every(term=>values.some(value=>value.includes(term)));
+            });
+        },
+        get filteredRecords() { return this.matchingCalfRecords.filter(r=>!this.filterYear || String(r.reported_year)===this.filterYear).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
+        get summaryCards() {
+            const records=this.filteredRecords;
+            const status=record=>String(record.animal_status ?? '').trim().toLowerCase();
+            return [
+                {title:'Total Calves',value:records.filter(r=>status(r)==='live').length,description:'Live calves matching filters',icon:'fa-solid fa-list-check'},
+                {title:'Dead / Out',value:records.filter(r=>['dead','out'].includes(status(r))).length,description:'Calves recorded as Dead or Out',icon:'fa-solid fa-circle-minus'},
+                {title:'Female Calves',value:records.filter(r=>r.sex==='Female').length,description:'Female calves across all statuses',icon:'fa-solid fa-venus'},
+                {title:'Male Calves',value:records.filter(r=>r.sex==='Male').length,description:'Male calves across all statuses',icon:'fa-solid fa-mars'}
+            ];
+        },
         get birthYearSummary() {
             const counts=new Map();
-            const query=this.search.toLowerCase().trim();
-            const records=this.allRecords.filter(record=>{
-                const matchesSearch=!query||this.fields.some(field=>String(record[field]??'').toLowerCase().includes(query));
-                return matchesSearch
-                    &&(!this.filterProvince||record.province===this.filterProvince)
-                    &&(!this.filterBreed||record.breed===this.filterBreed)
-                    &&(!this.filterSex||record.sex===this.filterSex);
-            });
-            records.forEach(record=>{
+            this.matchingCalfRecords.forEach(record=>{
                 const date=String(record.date_of_birth??'').slice(0,10);
                 if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
                 const parsed=new Date(`${date}T00:00:00`);
@@ -241,11 +503,138 @@ function calfDropPage() {
         label(field) { const labels={calf_id:'Calf ID',mother_id:'Mother ID',farmer:'Farmer Name',province:'Province',cooperative:'Cooperative',date_of_birth:'Date of Birth / Event Date',sex:'Sex',breed:'Breed',sire_id:'Sire / Bull ID',monitored_date:'Monitored Date',reported_year:'Reported Year',birth_outcome:'Birth Outcome',animal_status:'Animal Status',breed_series:'Breed Series',remarks:'Remarks'}; return labels[field]||field; },
         generatedId(r) { const mother=String(r.mother_id||'').trim().replace(/\s+/g,'-'); const year=String(r.reported_year|| (r.date_of_birth ? r.date_of_birth.slice(0,4) : new Date().getFullYear())).slice(-2); const series=String(r.breed_series||'6').trim()||'6'; if (!mother || r.birth_outcome === 'Live Birth') return ''; const code=r.birth_outcome==='Stillbirth'?'SB':'AB'; return `${series}-${code}-${year}-${mother}`; },
         refreshGeneratedId(r) { const id=this.generatedId(r); if(id) r.calf_id=id; else if(r.birth_outcome==='Live Birth' && /-(SB|AB)-/.test(String(r.calf_id||''))) r.calf_id=''; },
-        emptyRow() { return {_key:++this.rowKey,calf_id:'',mother_id:'',farmer:'',province:'',cooperative:'',date_of_birth:'',sex:'',breed:'',sire_id:'',monitored_date:new Date().toISOString().slice(0,10),reported_year:String(new Date().getFullYear()),birth_outcome:'Live Birth',animal_status:'Live',breed_series:'6',remarks:''}; },
-        openBulk() { this.bulkRows=[this.emptyRow()]; this.showBulk=true; }, addRow() { this.bulkRows.push(this.emptyRow()); }, removeRow(index) { this.bulkRows.splice(index,1); },
+        emptyRow() { return {_key:++this.rowKey,calf_id:'',mother_id:'',farmer:'',province:'',municipality:'',barangay:'',cooperative:'',date_of_birth:'',sex:'',breed:'',sire_id:'',monitored_date:new Date().toISOString().slice(0,10),reported_year:String(new Date().getFullYear()),birth_outcome:'Live Birth',animal_status:'Live',breed_series:'6',remarks:''}; },
+        openAdd() {
+            this.addForm={...this.emptyRow(),cooperative_id:'',farmer_id:''};
+            this.showMatingPicker=true;
+            this.cooperativePickerOpen=false;
+            this.farmerPickerOpen=false;
+            this.showAdd=true;
+            this.loadDueMatings();
+        },
+        get manualFarmers() {
+            if(!this.addForm.cooperative_id)return [];
+            return this.calfFarmers.filter(farmer=>String(farmer.cooperative_id)===this.addForm.cooperative_id);
+        },
+        get matchingCooperatives() {
+            const query=this.cooperativeQuery.trim().toLowerCase();
+            return this.calfCooperatives.filter(cooperative=>String(cooperative.cooperative_name || '').toLowerCase().includes(query));
+        },
+        get matchingManualFarmers() {
+            const terms=this.farmerQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+            return this.manualFarmers.filter(farmer=>{
+                const name=this.farmerLabel(farmer).toLowerCase();
+                return terms.every(term=>name.includes(term));
+            });
+        },
+        toggleFarmerPicker() {
+            this.farmerPickerOpen=!this.farmerPickerOpen;
+            if(this.farmerPickerOpen){
+                this.farmerQuery='';
+                this.$nextTick(()=>this.$refs.farmerSearch.focus());
+            }
+        },
+        selectManualFarmer(farmer) {
+            const id=String(farmer.id);
+            if(id!==this.addForm.farmer_id)this.changeManualFarmer(id);
+            this.farmerPickerOpen=false;
+            this.$refs.farmerTrigger.focus();
+        },
+        toggleCooperativePicker() {
+            this.cooperativePickerOpen=!this.cooperativePickerOpen;
+            if(this.cooperativePickerOpen){
+                this.cooperativeQuery='';
+                this.$nextTick(()=>this.$refs.cooperativeSearch.focus());
+            }
+        },
+        selectManualCooperative(cooperative) {
+            const id=String(cooperative.id);
+            if(id!==this.addForm.cooperative_id)this.changeManualCooperative(id);
+            this.cooperativePickerOpen=false;
+            this.$refs.cooperativeTrigger.focus();
+        },
+        get manualMothers() {
+            if(!this.addForm.farmer_id || this.loadingDueMatings || this.dueMatingsError)return [];
+            const mothersWithDueMatings=new Set(this.dueMatings.map(mating=>String(mating.carabao_id)));
+            return this.calfInventory.filter(animal=>String(animal.farmer_id)===this.addForm.farmer_id
+                && animal.animal_id && animal.live_breedable_female === true
+                && !mothersWithDueMatings.has(String(animal.id)));
+        },
+        setEntryMode(useMating) {
+            if(this.showMatingPicker!==useMating){
+                this.showMatingPicker=useMating;
+                this.cooperativePickerOpen=false;
+                this.changeManualCooperative('');
+                this.addForm.sire_id='';
+            }
+            if(useMating)this.loadDueMatings();
+        },
+        changeManualCooperative(id) {
+            const cooperative=this.calfCooperatives.find(item=>String(item.id)===id);
+            this.addForm.cooperative_id=id;
+            this.addForm.cooperative=cooperative?.cooperative_name || '';
+            this.farmerPickerOpen=false;
+            this.changeManualFarmer('');
+        },
+        changeManualFarmer(id) {
+            const farmer=this.manualFarmers.find(item=>String(item.id)===id);
+            this.addForm.farmer_id=farmer ? id : '';
+            this.addForm.farmer=farmer ? this.farmerLabel(farmer) : '';
+            this.addForm.mother_id='';
+            this.addForm.province=this.normalizeProvince(farmer?.province || farmer?.cooperative_record?.province);
+            this.addForm.municipality=farmer?.municipality || farmer?.cooperative_record?.municipality || '';
+            this.addForm.barangay=farmer?.barangay || farmer?.cooperative_record?.barangay || '';
+            if(this.addForm.birth_outcome!=='Live Birth')this.addForm.calf_id='';
+        },
+        async loadDueMatings() {
+            if(this.loadingDueMatings)return;
+            this.loadingDueMatings=true;
+            this.dueMatingsError='';
+            this.dueMatings=[];
+            try {
+                const response=await fetch('/admin/breeding-api/records',{headers:{Accept:'application/json'}});
+                if(!response.ok)throw new Error();
+                const records=await response.json();
+                this.dueMatings=records.filter(record=>record.calf_drop_due)
+                    .sort((a,b)=>b.pregnancy_days-a.pregnancy_days);
+            } catch {
+                this.dueMatingsError='Could not load mating records.';
+            } finally {
+                this.loadingDueMatings=false;
+            }
+        },
+        addFromMating(mating) {
+            Object.assign(this.addForm,{
+                mother_id:String(mating.animal_id || mating.carabao_id),
+                farmer:[mating.farmer_first_name,mating.farmer_middle_name,mating.farmer_last_name].filter(Boolean).join(' '),
+                cooperative:mating.cooperative_name || '',
+                province:this.normalizeProvince(mating.farmer_province),
+                municipality:mating.farmer_municipality || '',
+                barangay:mating.farmer_barangay || '',
+                sire_id:mating.bull_id || ''
+            });
+            this.refreshGeneratedId(this.addForm);
+        },
         persist() { try { localStorage.setItem(this.storageKey,JSON.stringify(this.records)); return true; } catch(e) { this.msg('Unable to save browser data. Check browser storage settings.'); return false; } },
-        async saveBulk() {
-            const valid=this.bulkRows.filter(r=>
+        async saveCalf() {
+            if(this.savingCalf || !this.addForm.date_of_birth)return;
+            if(!this.showMatingPicker && !this.manualFarmers.some(farmer=>String(farmer.id)===this.addForm.farmer_id)){
+                this.msg('Select a farmer from the cooperative.');
+                return;
+            }
+            if(!this.showMatingPicker && !this.manualMothers.some(mother=>mother.animal_id===this.addForm.mother_id)){
+                this.msg('Select a live, breedable female from the available mothers, or use her mating record.');
+                return;
+            }
+            this.savingCalf=true;
+            try {
+                if(await this.saveRecords([{...this.addForm}]))this.showAdd=false;
+            } finally {
+                this.savingCalf=false;
+            }
+        },
+        async saveRecords(rows) {
+            const valid=rows.filter(r=>
                 String(r.mother_id||'').trim()
                 &&String(r.date_of_birth||r.monitored_date||'').trim()
                 &&(r.birth_outcome!=='Live Birth'||String(r.sex||'').trim())
@@ -298,12 +687,16 @@ function calfDropPage() {
                         body:JSON.stringify({
                             calf_id:row.calf_id||null,
                             mother_id:row.mother_id,
+                            cooperative_id:row.cooperative_id||null,
+                            farmer_id:row.farmer_id||null,
                             date_of_birth:row.date_of_birth||row.monitored_date,
                             sex:row.sex,
                             animal_status:row.animal_status||'Live',
                             breed:row.breed||null,
                             sire_id:row.sire_id||null,
                             province:row.province||null,
+                            municipality:row.municipality||null,
+                            barangay:row.barangay||null,
                             remarks:row.remarks||null
                         })
                     });
@@ -324,25 +717,21 @@ function calfDropPage() {
                 this.records=[...localRecords,...this.records];
                 if(!this.persist()){
                     this.records=previous;
-                    this.bulkRows=this.bulkRows.filter(row=>!savedLiveRows.has(row._key));
                     if(savedLiveRows.size)await this.loadInventoryCalves();
-                    this.showBulk=true;
-                    this.msg('Live births were sent to inventory, but non-live birth records could not be saved in this browser.');
+                    this.msg(savedLiveRows.size ? 'Live births were saved to inventory. Other outcomes could not be saved in this browser.' : 'Could not save the calf record in this browser.');
                     return;
                 }
             }
-            this.bulkRows=this.bulkRows.filter(row=>!savedRows.has(row._key));
             if(savedRows.size){
                 await this.loadInventoryCalves();
                 this.page=1;
             }
             if(failures.length){
-                this.showBulk=true;
-                this.msg(`Saved ${savedRows.size} record(s). ${failures.join(' ')}`);
+                this.msg(savedRows.size ? `Saved ${savedRows.size} record(s). ${failures.join(' ')}` : failures.join(' '));
                 return;
             }
-            this.showBulk=false;
-            this.msg(`Saved ${savedRows.size} calf record(s). Live births are now in Carabao Inventory.`);
+            this.msg(savedRows.size === 1 ? 'Calf record saved.' : `${savedRows.size} calf records saved.`);
+            return true;
         },
         view(record) { this.selected={...record}; this.showView=true; },
         startEdit(record) { const sex=String(record.sex??'').trim().toLowerCase(); this.editForm={...record,date_of_birth:String(record.date_of_birth??'').slice(0,10),monitored_date:String(record.monitored_date??'').slice(0,10),sex:['f','female'].includes(sex)?'Female':(['m','male'].includes(sex)?'Male':''),animal_status:['Live','Out','Dead','Not Applicable'].includes(record.animal_status)?record.animal_status:'Live',birth_outcome:['Live Birth','Stillbirth','Abortion'].includes(record.birth_outcome)?record.birth_outcome:'Live Birth'};this.showEdit=true; },
@@ -369,8 +758,56 @@ function calfDropPage() {
             }catch(error){this.msg(error.message||'Could not update calf record.');}
             finally{this.savingEdit=false;}
         },
-        remove(id) { if(!confirm('Delete this calf drop record?'))return;const previous=this.records;this.records=this.records.filter(r=>r.id!==id);if(this.persist())this.msg('Calf record deleted.');else this.records=previous; },
-        resetFilters() { this.search='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.filterYear='2026';this.page=1; },
+        remove(record) {
+            if(this.deletingCalf)return;
+            this.deleteTarget=record;
+            this.deleteCalfError='';
+            this.finalDeleteConfirmation=false;
+            this.$refs.deleteCalfDialog.showModal();
+        },
+
+        reviewCalfDelete() {
+            this.finalDeleteConfirmation=true;
+            this.$nextTick(()=>this.$refs.cancelCalfDelete.focus());
+        },
+
+        async confirmCalfDelete() {
+            if(this.deletingCalf || !this.deleteTarget || !this.finalDeleteConfirmation)return;
+            const record=this.deleteTarget;
+            this.deletingCalf=true;
+            this.deleteCalfError='';
+            try {
+                const id=record.inventory_id || record.database_id;
+                if(id){
+                    const path=record.inventory_id ? 'inventory/' : '';
+                    const response=await fetch(`/admin/calf-drop-api/${path}${id}`,{
+                        method:'DELETE',
+                        headers:{Accept:'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''}
+                    });
+                    if(!response.ok){
+                        const payload=await response.json().catch(()=>({}));
+                        throw new Error(payload.message||`Delete failed (${response.status}).`);
+                    }
+                    this.inventoryCalves=this.inventoryCalves.filter(row=>row.id!==record.id);
+                }else{
+                    const previous=this.records;
+                    this.records=this.records.filter(row=>row.id!==record.id);
+                    if(!this.persist()){
+                        this.records=previous;
+                        throw new Error('Unable to delete the record from browser storage.');
+                    }
+                }
+                this.page=Math.min(this.page,this.totalPages());
+                this.$refs.deleteCalfDialog.close();
+                this.deleteTarget=null;
+                this.msg('Calf record deleted.');
+            }catch(error){
+                this.deleteCalfError=error.message;
+            }finally{
+                this.deletingCalf=false;
+            }
+        },
+        resetFilters() { this.search='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.filterYear='';this.page=1; },
         msg(message) { this.notice=message;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice='';},3500); },
         exportCSV() { const escapeCSV=value=> '"'+String(value??'').replace(/"/g,'""')+'"';const lines=[this.fields.map(escapeCSV).join(','),...this.filteredRecords.map(r=>this.fields.map(f=>escapeCSV(r[f])).join(','))];const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='calfdrop_records.csv';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); },
         importCSV(event) {
@@ -413,8 +850,7 @@ function calfDropPage() {
                         }
                     });
                     if(!imported.length){this.msg('No valid rows found. Check Calf ID, Mother ID, and Sex columns.');return;}
-                    this.bulkRows=imported;
-                    await this.saveBulk();
+                    await this.saveRecords(imported);
                 }catch(e){
                     console.error('Could not import calf records:',e);
                     this.msg('Could not read the CSV. Check its headers and format.');

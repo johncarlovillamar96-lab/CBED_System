@@ -3,6 +3,7 @@
 @extends('layouts.admin')
 
 @section('title', $moduleTitle ?? ucfirst(str_replace('-', ' ', $module ?? 'Module')))
+@section('dataSource', 'database')
 
 @section('content')
 
@@ -17,7 +18,10 @@
     $firstItem = method_exists($rows, 'firstItem') ? ($rows->firstItem() ?? 0) : ($currentPageRows ? 1 : 0);
     $lastItem = method_exists($rows, 'lastItem') ? ($rows->lastItem() ?? 0) : $currentPageRows;
 
-    $searchValue = request('search', '');
+    $searchValue = request('search', in_array($module, ['health', 'bcs'], true) ? request('q', '') : '');
+    $isProduct = in_array($module, ['meat', 'manure'], true);
+    $productLabel = ucfirst($module);
+    $detailedSearch = $isProduct || in_array($module, ['health', 'bcs', 'mtd', 'exits'], true);
 
     $moduleDescriptions = [
         'bcs' => 'Review dated body condition score measurements and their animal registry references.',
@@ -26,6 +30,7 @@
         'mtd' => 'Manage milk test day records and production information.',
         'exits' => 'Monitor animal exits, transfers, and disposal records.',
         'meat' => 'Manage meat production and related records.',
+        'manure' => 'Manage manure production and related records.',
         'manure' => 'Manage manure production and utilization records.',
     ];
 
@@ -38,67 +43,66 @@
         ['title' => 'Rows on This Page', 'value' => number_format($currentPageRows), 'description' => 'Currently displayed', 'icon' => 'fa-list-check'],
         ['title' => 'Current Page', 'value' => $currentPage, 'description' => 'Pagination position', 'icon' => 'fa-file-lines'],
     ];
+    if ($module === 'bcs') {
+        $summaryCards = [
+            ['title' => 'BCS Records', 'value' => number_format($bcsSummary->records), 'description' => 'Records matching current filters', 'icon' => 'fa-clipboard-list'],
+            ['title' => 'Animals Scored', 'value' => number_format($bcsSummary->animals), 'description' => 'Unique animals linked to records', 'icon' => 'fa-cow'],
+            ['title' => 'Average BCS', 'value' => $bcsSummary->average_score === null ? '—' : number_format((float) $bcsSummary->average_score, 2), 'description' => 'Average across recorded scores', 'icon' => 'fa-chart-simple'],
+            ['title' => 'Latest Record Date', 'value' => $bcsSummary->latest_date ? \Illuminate\Support\Carbon::parse($bcsSummary->latest_date)->format('d-M-y') : '—', 'description' => 'Most recent matching record', 'icon' => 'fa-calendar-check'],
+        ];
+    }
+    if ($module === 'mtd') {
+        $summaryCards = [
+            ['title' => 'MTD Records', 'value' => number_format($mtdSummary->records), 'description' => 'Records matching current filters', 'icon' => 'fa-clipboard-list'],
+            ['title' => 'Animals Tested', 'value' => number_format($mtdSummary->animals), 'description' => 'Unique animals linked to test records', 'icon' => 'fa-cow'],
+            ['title' => 'Total Bulk', 'value' => number_format((float) $mtdSummary->bulk, 2).' kg', 'description' => 'Bulk readings recorded in kilograms', 'icon' => 'fa-droplet'],
+        ];
+    }
+    if ($module === 'exits') {
+        $summaryCards = [
+            ['title' => 'Exit Records', 'value' => number_format($exitSummary->records), 'description' => 'Records matching current filters', 'icon' => 'fa-arrow-right-from-bracket'],
+            ['title' => 'Transferred', 'value' => number_format((int) $exitSummary->transfers), 'description' => 'Animals recorded as transferred', 'icon' => 'fa-truck'],
+            ['title' => 'Culled', 'value' => number_format((int) $exitSummary->culled), 'description' => 'Animals recorded as culled', 'icon' => 'fa-ban'],
+            ['title' => 'Sold', 'value' => number_format((int) $exitSummary->sold), 'description' => 'Animals recorded as sold', 'icon' => 'fa-tag'],
+            ['title' => 'Deaths', 'value' => number_format((int) $exitSummary->deaths), 'description' => 'Animals recorded as dead', 'icon' => 'fa-circle-minus'],
+        ];
+    }
 @endphp
 
 <div class="mating-dashboard management-page min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <div class="pcc-mating-hero mb-7 flex flex-col gap-5 rounded-2xl p-5 text-white shadow-xl sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex items-center gap-4">
-            <div class="pcc-brand-mark hidden sm:flex" aria-hidden="true">
-                <i class="fa-solid fa-cow"></i><span><i class="fa-solid fa-dna"></i></span>
-            </div>
-            <div>
-                <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-blue-100">
-                    <i class="fa-solid fa-house"></i><span>/</span>
-                    <span>CBED Data System</span><span>/</span>
-                    <b class="text-white">{{ $pageTitle }}</b>
-                </div>
-                <h1 class="text-2xl font-bold text-white sm:text-3xl">{{ $pageTitle }}</h1>
-                <p class="mt-1 text-sm text-blue-100">{{ $pageDescription }}</p>
-                <span class="pcc-program-tag">
-                    <i class="fa-regular fa-calendar"></i> {{ now()->format($module === 'fhpr' ? 'F j,Y' : 'F d, Y') }}
-                </span>
-            </div>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-            <a href="{{ route('modules.export', $module) }}" class="action-secondary">
-                <i class="fa-solid fa-file-export"></i> Export CSV
+    <x-admin-page-header :title="$pageTitle" :description="$pageDescription" :section="in_array($module, ['farmers', 'cooperatives'], true) ? 'Workspace' : 'Animal Management'" :tag="now()->format($module === 'fhpr' ? 'F j,Y' : 'F d, Y')" tag-icon="fa-regular fa-calendar">
+        <a href="{{ route('modules.export', $module) }}" class="action-secondary">
+            <i class="fa-solid fa-file-export"></i> {{ in_array($module, ['milk', 'bcs', 'meat', 'manure', 'mtd', 'exits'], true) ? 'Export' : 'Export CSV' }}
+        </a>
+        @unless($module === 'fhpr')
+            <button type="button" onclick="document.getElementById('{{ $module }}-csv-import').showModal()" aria-haspopup="dialog" class="action-secondary">
+                <i class="fa-solid fa-file-import" aria-hidden="true"></i> {{ $module === 'health' ? 'Import CSV' : 'Import' }}
+            </button>
+            <a href="{{ route('modules.template', $module) }}" class="{{ in_array($module, ['health', 'milk', 'meat', 'manure', 'mtd', 'exits'], true) ? 'action-secondary' : 'action-primary' }}">
+                <i class="fa-solid fa-download" aria-hidden="true"></i> Download Template
             </a>
-            @unless($module === 'fhpr')
-                <a href="{{ route('modules.template', $module) }}" class="action-primary">
-                    <i class="fa-solid fa-download"></i> Download Template
-                </a>
-            @endunless
-        </div>
-    </div>
-
-    {{-- CONNECTION STATUS --}}
-    <div class="mb-6 flex gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-        <i class="fa-solid fa-circle-check mt-0.5"></i>
-        <div>
-            <b>Database connected</b>
-            <p class="mt-1">Records displayed below are retrieved from the CBED database.</p>
-        </div>
-    </div>
-
-    @if($module === 'bcs')
-        <section class="mb-7 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 class="text-lg font-bold text-[#12345a]">Existing BCS score values</h2>
-            <p class="mt-1 text-sm text-slate-500">These choices come from distinct values already stored in <code>bcs_records.body_condition_score</code>. The existing table has no score-classification or interpretation columns.</p>
-            <div class="mt-4 flex flex-wrap gap-2">
-                @forelse($bcsScores as $score)
-                    <span class="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-900">{{ $score }}</span>
-                @empty
-                    <span class="text-sm text-slate-500">No BCS scores have been recorded yet.</span>
-                @endforelse
-            </div>
-        </section>
-    @endif
+        @endunless
+        @if($module === 'health')
+            <button type="button" onclick="openHealthEditor()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Activity</button>
+        @elseif($module === 'milk')
+            <button type="button" onclick="document.getElementById('milk-production-form').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Milk Production</button>
+        @elseif($isProduct)
+            <button type="button" onclick="document.getElementById('{{ $module }}-production-form').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add {{ $productLabel }} Production</button>
+        @elseif($module === 'mtd')
+            <button type="button" onclick="document.getElementById('mtd-entry').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bulk Add MTD Records</button>
+        @elseif($module === 'exits')
+            <button type="button" x-data @click="$dispatch('exit-record',{mode:'add'})" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Exit</button>
+        @endif
+    </x-admin-page-header>
 
     {{-- SUCCESS / ERROR MESSAGES --}}
-    @if(session('success'))
+    @if(session('success') && in_array($module, ['mtd', 'exits'], true))
+        <div x-data="{ notice: @js(session('success')), noticeType: 'success' }" x-init="setTimeout(() => notice='', 4500)">
+            @include('partials.action-toast')
+        </div>
+    @elseif(session('success'))
         <div class="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
             <i class="fa-solid fa-circle-check mt-0.5"></i>
             <span>{{ session('success') }}</span>
@@ -166,41 +170,69 @@
                 @endforeach
             </div>
 
-            <div class="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h3 class="font-bold text-slate-800">Production by Quarter (kg)</h3>
-                    <span class="text-xs text-slate-500">Q1–Q4 · {{ $selectedYear }}</span>
-                </div>
-                <div class="grid h-52 grid-cols-4 items-end gap-3 border-b border-slate-300 px-2">
-                    @foreach($milkQuarterSummaries as $quarter)
-                        <div class="flex h-full flex-col items-center justify-end">
-                            <span class="mb-2 text-center text-xs font-semibold tabular-nums text-slate-700">{{ number_format($quarter['total_production'], 2) }}</span>
-                            <div class="flex h-36 w-full items-end justify-center">
-                                <div class="w-10 rounded-t-md {{ $quarter['selected'] ? 'bg-blue-800' : 'bg-blue-600' }} transition-all"
-                                     style="height: {{ $maxQuarterProduction > 0 ? max(4, ($quarter['total_production'] / $maxQuarterProduction) * 144) : 4 }}px"
-                                     title="{{ $quarter['name'] }}: {{ number_format($quarter['total_production'], 2) }} kg"></div>
-                            </div>
-                            <span class="mb-2 mt-2 text-sm font-bold text-slate-700">{{ $quarter['name'] }}</span>
-                        </div>
-                    @endforeach
-                </div>
+        </section>
+    @endif
+
+    @if($isProduct)
+        <section class="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 class="mb-4 text-xl font-bold text-[#12345a]">Annual {{ $productLabel }} Production</h2>
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                @forelse($productYearly as $year)
+                    <a href="{{ url('/'.$module).'?'.http_build_query(array_replace(request()->except(['page', 'quarter', 'date']), ['year' => $year->year])) }}" class="rounded-xl border p-4 hover:bg-sky-50 {{ (string) ($productFilters['year'] ?? '') === (string) $year->year ? 'border-blue-500 bg-blue-50' : 'border-slate-200' }}">
+                        <span class="text-sm font-semibold text-slate-600">{{ $year->year }}</span><span class="mt-2 block text-xl font-bold">{{ number_format((float) $year->volume, 2) }} kg</span>
+                    </a>
+                @empty
+                    <p class="text-sm text-slate-500">No dated {{ $module }} production records match these filters.</p>
+                @endforelse
+            </div>
+        </section>
+        <section class="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 class="mb-4 text-xl font-bold text-[#12345a]">Quarterly {{ $productLabel }} Production{{ isset($productFilters['year']) ? ' · '.$productFilters['year'] : ' · All Years' }}</h2>
+            <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                @foreach(range(1, 4) as $quarter)
+                    <a href="{{ url('/'.$module).'?'.http_build_query(array_replace(request()->except(['page', 'date']), ['quarter' => $quarter])) }}" class="rounded-xl border p-4 hover:bg-sky-50 {{ (int) ($productFilters['quarter'] ?? 0) === $quarter ? 'border-blue-500 bg-blue-50' : 'border-slate-200' }}">
+                        <span class="text-sm font-semibold text-slate-600">Q{{ $quarter }}</span><span class="mt-2 block text-xl font-bold">{{ number_format((float) ($productQuarterly[$quarter] ?? 0), 2) }} kg</span>
+                    </a>
+                @endforeach
             </div>
         </section>
     @endif
 
     {{-- SUMMARY CARDS --}}
     @if($module === 'health')
-        <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            @php $healthCards=[['Total Animals Monitored',$healthSummary['animals']],['Total Visits / Monitored',$healthSummary['visits']],['Total Treatments',$healthSummary['treatments']]]; @endphp
-            @foreach($healthCards as [$title,$value])<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $title }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($value) }}</p></div>@endforeach
-            @foreach($healthSummary['services'] as $service=>$count)<div class="pcc-stat-card rounded-xl bg-white p-5"><p class="text-sm text-slate-500">{{ $service }}</p><p class="mt-2 text-3xl font-bold">{{ number_format($count) }}</p><p class="mt-1 text-xs text-slate-500">Service entries</p></div>@endforeach
+        <div class="mb-5 grid gap-4 sm:grid-cols-3">
+            @foreach([
+                ['Animals Monitored', $healthSummary['animals'], 'fa-id-card'],
+                ['Total Visits', $healthSummary['visits'], 'fa-calendar-check'],
+                ['Total Treatments', $healthSummary['treatments'], 'fa-kit-medical'],
+            ] as [$title, $value, $icon])
+                <div class="pcc-stat-card flex items-center justify-between gap-3 rounded-xl bg-white p-5">
+                    <div><p class="text-sm font-medium text-slate-600">{{ $title }}</p><p class="mt-2 text-3xl font-bold tabular-nums">{{ number_format($value) }}</p></div>
+                    <div class="pcc-stat-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl" aria-hidden="true"><i class="fa-solid {{ $icon }}"></i></div>
+                </div>
+            @endforeach
         </div>
-    @elseif($module === 'milk')
+        <section class="pcc-records-panel mb-7 rounded-xl border border-slate-200 bg-white p-5" aria-labelledby="health-service-summary">
+            <h2 id="health-service-summary" class="mb-4 font-semibold text-slate-900">Service Counts</h2>
+            <dl class="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+                @foreach($healthSummary['services'] as $service => $count)
+                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <dt class="text-sm text-slate-600">{{ $service === 'Vitamins Services' ? 'Vitamins / Mineral Supplements' : $service }}</dt>
+                        <dd class="mt-1 text-xl font-bold tabular-nums text-slate-900">{{ number_format($count) }}</dd>
+                    </div>
+                @endforeach
+            </dl>
+        </section>
+    @elseif(in_array($module, ['milk', 'meat', 'manure'], true))
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        @foreach([
+        @foreach($module === 'milk' ? [
             ['Total Milk Production', number_format($milkSummary['total_production'], 2).' kg', 'Filtered collection records', 'fa-droplet'],
             ['Total Milk Traded', number_format($milkSummary['total_traded'], 2).' kg', 'Filtered collection records', 'fa-truck-ramp-box'],
             ['Total Value of Milk Production', '₱'.number_format($milkSummary['total_value'], 2), 'Production × price per kilogram', 'fa-peso-sign'],
+        ] : [
+            ['Total '.$productLabel.' Production', number_format((float) $productSummary->volume, 2).' kg', 'Filtered production records', 'fa-weight-scale'],
+            [$productLabel.' from Other Sources', number_format((float) $productSummary->other_volume, 2).' kg', 'Filtered production records', 'fa-truck-ramp-box'],
+            ['Total Production Value', '₱'.number_format((float) $productSummary->value, 2), 'Recorded production value', 'fa-peso-sign'],
         ] as [$title, $value, $description, $icon])
             <div class="pcc-stat-card rounded-xl bg-white p-5">
                 <div class="flex items-center justify-between gap-3">
@@ -211,7 +243,7 @@
         @endforeach
     </div>
     @else
-    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 {{ $module === 'exits' ? 'xl:grid-cols-5' : 'xl:grid-cols-4' }}">
         @foreach($summaryCards as $card)
             <div class="pcc-stat-card rounded-xl bg-white p-5">
                 <div class="flex items-center justify-between gap-3">
@@ -230,21 +262,20 @@
     @endif
 
     {{-- RECORDS TABLE --}}
-    <section class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section @if($module === 'health') id="health-records-panel" @endif class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
                 <h2 class="text-lg font-bold text-[#12345a]">{{ $module === 'milk' ? 'Milk Production Records' : $pageTitle.' Records' }}</h2>
-                <p class="mt-1 text-sm text-slate-500">{{ $module === 'fhpr' ? 'View and search breeding summary records for female animals with a recorded classification.' : 'View, search, import, and manage your records.' }}</p>
+                @unless(in_array($module, ['health', 'meat', 'manure', 'mtd', 'exits'], true))
+                    <p class="mt-1 text-sm text-slate-500">{{ match($module) { 'fhpr' => 'View and search breeding summary records for female animals with a recorded classification.', 'milk' => 'Search and filter milk collection records.', default => 'View, search, import, and manage your records.' } }}</p>
+                @endunless
             </div>
             <div class="flex gap-2">
-                @if($module === 'health')
-                    <button type="button" onclick="openHealthEditor()" class="action-primary"><i class="fa-solid fa-plus"></i> Add Activity</button>
-                @endif
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     {{ number_format($totalRecords) }} records
                 </span>
-                @if($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->contains(fn($value)=>$value!=='')))
+                @if(!$detailedSearch && ($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->contains(fn($value)=>$value!==''))))
                     <a href="{{ url()->current() }}" class="action-secondary">Reset Filters</a>
                 @endif
             </div>
@@ -252,12 +283,71 @@
 
         {{-- SEARCH --}}
         <form method="GET" action="{{ url()->current() }}"
-              class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-6">
-            <div class="sm:col-span-2 xl:col-span-4">
-                <label for="search" class="filter-label">Search</label>
-                <input id="search" type="text" name="search" value="{{ $searchValue }}"
-                       class="filter-input" placeholder="{{ $module === 'milk' ? 'Cooperative or farmer name...' : 'Search records...' }}">
+              class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ $detailedSearch ? 'xl:grid-cols-8' : 'xl:grid-cols-6' }}">
+            @if($module === 'health')
+                <input type="hidden" name="per_page" value="{{ $rows->perPage() }}">
+            @endif
+            <div class="sm:col-span-2 {{ $detailedSearch ? 'xl:col-span-2' : 'xl:col-span-4' }}">
+                <label for="search" class="filter-label">{{ $detailedSearch ? 'Search Records' : 'Search' }}</label>
+                <input id="search" type="search" name="search" value="{{ $searchValue }}"
+                       class="filter-input" placeholder="{{ match($module) { 'health' => 'Farmer, registry ID, tag, or service', 'bcs', 'mtd' => 'Farmer, cooperative, animal ID, or tag', 'exits' => 'Farmer, animal, or exit reason', 'milk' => 'Cooperative or farmer name...', 'meat', 'manure' => 'Cooperative name or code', default => 'Search records...' } }}">
             </div>
+            @if($module === 'health')
+                <div>
+                    <label for="health-cooperative-filter" class="filter-label">Cooperative</label>
+                    <select id="health-cooperative-filter" name="cooperative_id" class="filter-input">
+                        <option value="">All Cooperatives</option>
+                        @foreach($healthCooperatives as $cooperative)
+                            <option value="{{ $cooperative->id }}" @selected((string) ($healthFilters['cooperative_id'] ?? '') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="health-breed-filter" class="filter-label">Breed</label>
+                    <select id="health-breed-filter" name="breed" class="filter-input">
+                        <option value="">All Breeds</option>
+                        @foreach($healthBreeds as $breed)
+                            <option value="{{ $breed }}" @selected(($healthFilters['breed'] ?? '') === $breed)>{{ $breed }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div><label for="health-date-from" class="filter-label">Monitoring Date From</label><input id="health-date-from" type="date" name="date_from" value="{{ $healthFilters['date_from'] ?? '' }}" class="filter-input"></div>
+                <div><label for="health-date-to" class="filter-label">Monitoring Date To</label><input id="health-date-to" type="date" name="date_to" value="{{ $healthFilters['date_to'] ?? '' }}" class="filter-input"></div>
+            @elseif($module === 'bcs')
+                <div>
+                    <label for="bcs-cooperative-filter" class="filter-label">Cooperative</label>
+                    <select id="bcs-cooperative-filter" name="cooperative_id" class="filter-input">
+                        <option value="">All Cooperatives</option>
+                        @foreach($bcsCooperatives as $cooperative)
+                            <option value="{{ $cooperative->id }}" @selected((string) ($bcsFilters['cooperative_id'] ?? '') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="bcs-score-filter" class="filter-label">BCS Score</label>
+                    <select id="bcs-score-filter" name="score" class="filter-input">
+                        <option value="">All Scores</option>
+                        @foreach($bcsScores as $score)
+                            <option value="{{ $score }}" @selected(isset($bcsFilters['score']) && (float) $bcsFilters['score'] === (float) $score)>{{ $score }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div><label for="bcs-date-from" class="filter-label">Record Date From</label><input id="bcs-date-from" type="date" name="date_from" value="{{ $bcsFilters['date_from'] ?? '' }}" class="filter-input"></div>
+                <div><label for="bcs-date-to" class="filter-label">Record Date To</label><input id="bcs-date-to" type="date" name="date_to" value="{{ $bcsFilters['date_to'] ?? '' }}" class="filter-input"></div>
+            @elseif($isProduct)
+                <div><label for="product-filter-cooperative" class="filter-label">Cooperative</label><select id="product-filter-cooperative" name="cooperative_id" class="filter-input"><option value="">All Cooperatives</option>@foreach($productCooperatives as $cooperative)<option value="{{ $cooperative->id }}" @selected((string) ($productFilters['cooperative_id'] ?? '') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>@endforeach</select></div>
+                <div><label for="product-filter-year" class="filter-label">Year</label><select id="product-filter-year" name="year" class="filter-input"><option value="">All Years</option>@foreach($productYearly as $year)<option value="{{ $year->year }}" @selected((string) ($productFilters['year'] ?? '') === (string) $year->year)>{{ $year->year }}</option>@endforeach</select></div>
+                <div><label for="product-filter-quarter" class="filter-label">Quarter</label><select id="product-filter-quarter" name="quarter" class="filter-input"><option value="">All Quarters</option>@foreach(range(1,4) as $quarter)<option value="{{ $quarter }}" @selected((int) ($productFilters['quarter'] ?? 0) === $quarter)>Q{{ $quarter }}</option>@endforeach</select></div>
+                <div><label for="product-filter-date" class="filter-label">Production Date</label><input id="product-filter-date" type="date" name="date" value="{{ $productFilters['date'] ?? '' }}" class="filter-input"></div>
+            @elseif($module === 'mtd')
+                <div><label for="mtd-filter-cooperative" class="filter-label">Cooperative</label><select id="mtd-filter-cooperative" name="cooperative_id" class="filter-input"><option value="">All Cooperatives</option>@foreach($mtdCooperatives as $cooperative)<option value="{{ $cooperative->id }}" @selected((string) ($filters['cooperative_id'] ?? '') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>@endforeach</select></div>
+                <div><label for="mtd-filter-period" class="filter-label">AM / PM</label><select id="mtd-filter-period" name="period" class="filter-input"><option value="">All Periods</option>@foreach(['AM','PM'] as $period)<option @selected(($filters['period'] ?? '') === $period)>{{ $period }}</option>@endforeach</select></div>
+                <div><label for="mtd-filter-date" class="filter-label">Date Conducted</label><input id="mtd-filter-date" type="date" name="date" value="{{ $filters['date'] ?? '' }}" class="filter-input"></div>
+            @elseif($module === 'exits')
+                <div><label for="exit-filter-cooperative" class="filter-label">Cooperative</label><select id="exit-filter-cooperative" name="cooperative_id" class="filter-input"><option value="">All Cooperatives</option>@foreach($exitCooperatives as $cooperative)<option value="{{ $cooperative->id }}" @selected((string) ($filters['cooperative_id'] ?? '') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>@endforeach</select></div>
+                <div><label for="exit-filter-nature" class="filter-label">Nature of Exit</label><select id="exit-filter-nature" name="nature" class="filter-input"><option value="">All Exit Types</option>@foreach($exitTypes as $type)<option value="{{ $type }}" @selected(($filters['nature'] ?? '') === $type)>{{ $type }}</option>@endforeach</select></div>
+                <div><label for="exit-filter-date" class="filter-label">Exit Date</label><input id="exit-filter-date" type="date" name="date" value="{{ $filters['date'] ?? '' }}" class="filter-input"></div>
+            @endif
             @if($module === 'milk')
                 <div>
                     <label for="cooperative_id" class="filter-label">Cooperative</label>
@@ -296,7 +386,7 @@
                 </div>
                 <div>
                     <label for="period" class="filter-label">AM / PM</label>
-                    <select id="period" name="period" class="filter-input">
+                    <select id="period" name="period" class="filter-input h-11">
                         <option value="">All Periods</option>
                         <option value="AM" @selected($milkFilters['period'] === 'AM')>AM</option>
                         <option value="PM" @selected($milkFilters['period'] === 'PM')>PM</option>
@@ -304,43 +394,16 @@
                 </div>
             @endif
             <div class="flex items-end gap-2 xl:col-span-2">
-                <button type="submit" class="action-primary">
-                    <i class="fa-solid fa-magnifying-glass"></i> Search
+                <button type="submit" class="action-primary {{ $module === 'milk' ? 'h-11' : '' }}">
+                    <i class="fa-solid fa-magnifying-glass"></i> {{ $detailedSearch ? 'Apply Filters' : 'Search' }}
                 </button>
-                @if($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->except('search')->contains(fn($value)=>$value!=='')))
+                @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
                     <a href="{{ url()->current() }}" class="action-secondary">
                         <i class="fa-solid fa-xmark"></i> Clear
                     </a>
                 @endif
             </div>
         </form>
-
-        @unless($module === 'fhpr')
-        {{-- IMPORT --}}
-        <div class="border-b bg-slate-50 p-5">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                    <h3 class="font-bold text-slate-800">
-                        <i class="fa-solid fa-file-csv mr-2 text-emerald-600"></i>Import Records
-                    </h3>
-                    <p class="mt-1 text-xs text-slate-500">
-                        Upload your completed CSV file to import records into the database.
-                    </p>
-                </div>
-
-                <form method="POST" action="{{ route('modules.import', $module) }}"
-                      enctype="multipart/form-data"
-                      class="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
-                    @csrf
-                    <input type="file" name="file" accept=".csv,.txt" required
-                           class="block w-full max-w-sm cursor-pointer rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-3 file:cursor-pointer file:border-0 file:bg-slate-100 file:px-4 file:py-2.5 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200">
-                    <button type="submit" class="action-primary shrink-0">
-                        <i class="fa-solid fa-upload"></i> Import CSV
-                    </button>
-                </form>
-            </div>
-        </div>
-        @endunless
 
         {{-- TABLE --}}
         <div class="overflow-x-auto {{ $module === 'fhpr' ? 'fhpr-table-scroll' : '' }}" @if($module === 'fhpr') tabindex="0" role="region" aria-label="FHPR table with frozen animal details" @endif>
@@ -362,12 +425,25 @@
                                     'cooperative_name_display' => $module === 'fhpr' ? 'Cooperative' : 'Cooperative Name',
                                     'year_collected' => 'Year Collected',
                                     'collection_period' => 'AM / PM',
+                                    'bulk_kg' => 'Bulk (kg)',
+                                    'bulk_result' => 'Bulk Result',
+                                    'right_front' => 'RF - Right Front',
+                                    'right_back' => 'RB - Right Back',
+                                    'left_front' => 'LF - Left Front',
+                                    'left_back' => 'LB - Left Back',
+                                    'test_date' => 'Date Conducted',
                                     'total_liters' => 'Total Milk Production (kg)',
                                     'number_of_cows' => 'Number of Cows',
                                     'price_per_kg' => 'Price per Kilogram (₱)',
                                     'milk_traded' => 'Milk Traded (kg)',
                                     'value_total' => 'Value of Total Milk Production (₱)',
-                                    'animal_identifier' => $module === 'fhpr' ? 'Animal ID' : 'Registry ID / Animal ID',
+                                    'animal_identifier' => match($module) { 'fhpr' => 'Animal ID', 'mtd', 'exits' => 'Animal', default => 'Registry ID / Animal ID' },
+                                    'reason_of_exit' => 'Reason for Exit',
+                                    'entrustment' => 'Type of Entrustment',
+                                    'disposed_to' => 'Sold, Transferred, or Disposed To',
+                                    'disposal_province' => 'Disposal Province',
+                                    'disposal_municipality' => 'Disposal Municipality',
+                                    'disposal_barangay' => 'Disposal Barangay',
                                     'registry_id' => $module === 'health' ? 'Animal Registry ID' : 'Registry ID',
                                     'tag_number' => 'Tag Number',
                                     'cooperative_name' => in_array($module,['health','bcs'],true) ? 'Cooperative Name' : 'Cooperative',
@@ -378,6 +454,16 @@
                                     'monitoring_date' => $module === 'health' ? 'Monitoring Date' : 'Date',
                                     'services' => 'Type of Service',
                                     'dosage_ml' => 'Dosage (mL)',
+                                    'actual_date' => 'Production Date',
+                                    'reported_date' => 'Reported Date',
+                                    'volume_kg' => $productLabel.' Production (kg)',
+                                    'other_source_volume_kg' => 'Other Sources (kg)',
+                                    'value_php' => 'Production Value (₱)',
+                                    'deworming' => 'Deworming',
+                                    'vitamins_minerals' => 'Vitamins / Mineral Supplements',
+                                    'vaccination' => 'Vaccination',
+                                    'uterine_flushing' => 'Uterine Flushing',
+                                    'ear_tagging' => 'Ear Tagging',
                                     'no_of_visits_monitored' => 'No. of Visits / Monitored',
                                     'no_of_treatments' => 'No. of Treatments',
                                     'actions' => 'Actions',
@@ -411,7 +497,7 @@
                                     $value = data_get($row, $columnKey);
                                 @endphp
 
-                                <td class="td max-w-xs {{ $module === 'health' && in_array($columnKey,['services','dosage_ml','remarks','actions'],true) ? 'whitespace-normal' : 'whitespace-nowrap' }}">
+                                <td class="td {{ $module === 'mtd' && $columnKey === 'remarks' ? 'min-w-[20rem] max-w-[32rem]' : 'max-w-xs' }} {{ ($module === 'health' && in_array($columnKey,['services','dosage_ml','remarks','actions'],true)) || ($module === 'mtd' && $columnKey === 'remarks') ? 'whitespace-normal' : 'whitespace-nowrap' }}">
                                     @if($module === 'fhpr' && $columnKey === 'days_in_milk')
                                         <div x-data="fhprMilkDate(@js($row->id), @js($value), @js($row->_lactation_start_date), @js($row->_lactation_start_display))" @fhpr-dry-off-updated.window="update($event.detail)">
                                             <div x-text="days===null||days===''?'—':days">{{ $value !== null && $value !== '' ? $value : '—' }}</div>
@@ -436,20 +522,63 @@
                                             <p x-show="saved" role="status" class="mt-1 text-xs text-emerald-700">Updated</p>
                                         </div>
                                     @elseif($module === 'health' && $columnKey === 'services')
-                                        @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'] }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                        @if($row->worksheet_services)
+                                            @foreach($row->worksheet_services as $service)<div class="mb-1 last:mb-0">{{ $service }}</div>@endforeach
+                                        @else
+                                            @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'] }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                        @endif
                                     @elseif($module === 'health' && $columnKey === 'dosage_ml')
-                                        @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['dosage_display'] ?: '—' }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                        @if($row->worksheet_dosage !== null && $row->worksheet_dosage !== '')
+                                            <div class="whitespace-pre-wrap">{{ $row->worksheet_dosage }}</div>
+                                        @else
+                                            @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['dosage_display'] ?: '—' }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                        @endif
                                     @elseif($module === 'health' && $columnKey === 'actions')
-                                        <div class="flex gap-2"><button type="button" class="rounded border px-2 py-1 text-slate-700 hover:bg-slate-50" onclick="openHealthEditor({{ $row->id }},true)">View</button><button type="button" class="rounded border px-2 py-1 text-blue-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }})">Edit</button><button type="button" class="rounded border px-2 py-1 text-red-700 hover:bg-red-50" onclick="deleteHealthActivity({{ $row->id }})">Delete</button></div>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-slate-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }},true)" aria-label="View health record" title="View details"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            <button type="button" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }})" aria-label="Edit health record" title="Edit health record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
+                                            <button type="button" class="rounded-lg px-3 py-2 text-red-600 hover:bg-red-50" onclick="deleteHealthActivity({{ $row->id }})" aria-label="Delete health record" title="Delete health record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                        </div>
                                     @elseif($module === 'health' && $columnKey === 'remarks')
-                                        @foreach($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['remarks'] ?: '—' }}</div>@endforeach
-                                        @if($row->remarks)<div class="mt-1 border-t pt-1 text-slate-600">{{ $row->remarks }}</div>@endif
+                                        @php
+                                            $serviceRemarks = array_filter(array_column($row->services, 'remarks'), fn ($remark) => $remark !== '');
+                                        @endphp
+                                        @foreach($serviceRemarks as $remark)<div class="mb-1 last:mb-0">{{ $remark }}</div>@endforeach
+                                        @if($row->remarks !== null && $row->remarks !== '')<div class="whitespace-pre-wrap text-slate-600">{{ $row->remarks }}</div>@elseif(!$serviceRemarks)<span class="text-slate-400">—</span>@endif
                                     @elseif($module === 'milk' && $columnKey === 'record_date')
                                         {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('F j, Y') : '—' }}
                                     @elseif($module === 'milk' && in_array($columnKey, ['price_per_kg','value_total'], true))
                                         {{ $value !== null ? '₱'.number_format((float)$value, 2) : '—' }}
                                     @elseif($module === 'milk' && in_array($columnKey, ['total_liters','milk_traded'], true))
                                         {{ $value !== null ? number_format((float)$value, 2) : '—' }}
+                                    @elseif($isProduct && in_array($columnKey, ['actual_date', 'reported_date'], true))
+                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('d-M-y') : '—' }}
+                                    @elseif($isProduct && in_array($columnKey, ['volume_kg', 'other_source_volume_kg', 'price_per_kg', 'value_php'], true))
+                                        {{ $value === null ? '—' : (in_array($columnKey, ['price_per_kg', 'value_php'], true) ? '₱' : '').number_format((float) $value, 2) }}
+                                    @elseif($module === 'mtd' && $columnKey === 'test_date')
+                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('d-M-y') : '—' }}
+                                    @elseif($module === 'mtd' && $columnKey === 'bulk_kg')
+                                        {{ $value ?? ($row->milk_yield_liters !== null ? $row->milk_yield_liters.' L' : '—') }}
+                                    @elseif($module === 'mtd' && in_array($columnKey, $row->missing_teats, true))
+                                        <span class="text-slate-500">× Missing</span>
+                                    @elseif($module === 'mtd' && $columnKey === 'remarks')
+                                        <span class="whitespace-pre-wrap break-words">{{ $value !== null && $value !== '' ? $value : '—' }}</span>
+                                    @elseif($module === 'mtd' && $columnKey === 'actions')
+                                        <div class="flex items-center gap-1" x-data="{ record: @js(array_intersect_key((array) $row, array_flip([...$columns, 'id', 'missing_teats', 'milk_yield_liters']))) }">
+                                            <button type="button" @click="$dispatch('mtd-record',{mode:'view',record})" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details" aria-label="View MTD record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            <button type="button" @click="$dispatch('mtd-record',{mode:'edit',record})" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit record" aria-label="Edit MTD record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
+                                            <button type="button" @click="$dispatch('mtd-record',{mode:'delete',record})" class="rounded-lg px-3 py-2 text-rose-600 hover:bg-rose-50" title="Delete record" aria-label="Delete MTD record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                        </div>
+                                    @elseif($module === 'exits' && $columnKey === 'exit_date')
+                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('d-M-y') : '—' }}
+                                    @elseif($module === 'exits' && $columnKey === 'actions')
+                                        <div class="flex items-center gap-1" x-data="{ record: @js($row) }">
+                                            <button type="button" @click="$dispatch('exit-record',{mode:'view',record})" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details" aria-label="View exit record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            @if($row->record_id)
+                                                <button type="button" @click="$dispatch('exit-record',{mode:'edit',record})" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit record" aria-label="Edit exit record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
+                                                <button type="button" @click="$dispatch('exit-record',{mode:'delete',record})" class="rounded-lg px-3 py-2 text-rose-600 hover:bg-rose-50" title="Delete record" aria-label="Delete exit record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                            @endif
+                                        </div>
                                     @elseif(is_null($value) || $value === '')
                                         <span class="text-slate-400">—</span>
                                     @elseif(is_bool($value))
@@ -477,10 +606,36 @@
 
         {{-- PAGINATION --}}
         <div class="flex flex-col justify-between gap-3 border-t px-5 py-4 sm:flex-row sm:items-center">
-            <p class="text-sm text-slate-500">
-                Showing <b>{{ $firstItem }}</b>–<b>{{ $lastItem }}</b>
-                of <b>{{ number_format($totalRecords) }}</b> records
-            </p>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <p class="text-sm text-slate-500">
+                    Showing <b>{{ $firstItem }}</b>–<b>{{ $lastItem }}</b>
+                    of <b>{{ number_format($totalRecords) }}</b>
+                    @if($module === 'health')
+                        (<b>{{ number_format($healthSummary['activities']) }}</b> total)
+                    @else
+                        records
+                    @endif
+                </p>
+                @if($module === 'health')
+                    <form method="get" action="{{ url('/health') }}" data-health-page-size>
+                        @foreach(array_filter($healthFilters) as $field => $value)
+                            <input type="hidden" name="{{ $field }}" value="{{ $value }}">
+                        @endforeach
+                        @if($searchValue !== '')
+                            <input type="hidden" name="search" value="{{ $searchValue }}">
+                        @endif
+                        <label class="flex items-center gap-2 text-sm text-slate-500">
+                            Rows per page
+                            <select name="per_page" class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
+                                @foreach([10, 15, 25, 50, 100] as $size)
+                                    <option value="{{ $size }}" @selected($rows->perPage() === $size)>{{ $size }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        <noscript><button type="submit" class="page-btn">Apply</button></noscript>
+                    </form>
+                @endif
+            </div>
 
             @if($isPaginator)
                 @php
@@ -492,24 +647,118 @@
                 @endphp
                 <div class="flex items-center gap-2">
                     @if($prevUrl)
-                        <a href="{{ $prevUrl }}" class="page-btn">Previous</a>
+                        <a href="{{ $prevUrl }}" @if($module === 'health') data-health-page="previous" @endif class="page-btn">Previous</a>
                     @else
                         <span class="page-btn" aria-disabled="true" style="opacity:.4;cursor:not-allowed">Previous</span>
                     @endif
 
-                    <span class="text-sm">Page <b>{{ $currentPage }}</b> of <b>{{ $lastPage }}</b></span>
+                    <span class="text-sm" @if($module === 'health') data-health-page-status tabindex="-1" @endif>Page <b>{{ $currentPage }}</b> of <b>{{ $lastPage }}</b></span>
 
                     @if($nextUrl)
-                        <a href="{{ $nextUrl }}" class="page-btn">Next</a>
+                        <a href="{{ $nextUrl }}" @if($module === 'health') data-health-page="next" @endif class="page-btn">Next</a>
                     @else
                         <span class="page-btn" aria-disabled="true" style="opacity:.4;cursor:not-allowed">Next</span>
                     @endif
                 </div>
             @endif
         </div>
+        @if($module === 'health')
+            <p data-health-pagination-message role="status" class="px-5 text-sm text-slate-600"></p>
+        @endif
     </section>
 
-    @if($module === 'health')
+    @unless($module === 'fhpr')
+        <dialog id="{{ $module }}-csv-import" aria-labelledby="{{ $module }}-import-title" class="m-auto w-11/12 max-w-lg rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+            <form method="post" action="{{ route('modules.import', $module) }}" enctype="multipart/form-data">
+                @csrf
+                <div class="space-y-4 p-5">
+                    <h2 id="{{ $module }}-import-title" class="text-xl font-bold text-[#12345a]">{{ match($module) { 'health' => 'Import Health CSV', 'milk' => 'Import Milk CSV', 'meat', 'manure' => 'Import '.$productLabel.' CSV', 'mtd' => 'Import MTD CSV', 'exits' => 'Import Exit Records CSV', 'bcs' => 'Import BCS CSV', default => 'Import CSV' } }}</h2>
+                    <label class="block text-sm font-semibold">CSV file<input type="file" name="file" accept=".csv,.txt" required class="mt-1 block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-2"></label>
+                </div>
+                <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
+                    <button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button>
+                    <button type="submit" class="action-primary">Import</button>
+                </footer>
+            </form>
+        </dialog>
+    @endunless
+    @if($module === 'milk')
+        <dialog id="milk-production-form" aria-labelledby="milk-production-title" class="m-auto max-h-[92vh] w-11/12 max-w-4xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60"
+            x-data="milkProductionEntry(@js($milkCooperatives), @js($milkFarmers), @js($milkAnimals), @js((string) old('cooperative_id', '')), @js((string) old('farmer_id', '')), @js((string) old('carabao_id', '')), @js(old('number_of_cows', '')))"
+            @if($errors->milkProduction->any()) x-init="$el.showModal()" @endif>
+            <form method="post" action="{{ route('milk.production.store') }}">
+                @csrf
+                <header class="flex items-center justify-between gap-3 border-b p-5">
+                    <h2 id="milk-production-title" class="text-xl font-bold text-[#12345a]">Add Milk Production</h2>
+                    <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Close milk production form"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </header>
+                <div class="grid gap-4 p-5 sm:grid-cols-2">
+                    @if($errors->milkProduction->any())
+                        <ul role="alert" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 sm:col-span-2">@foreach($errors->milkProduction->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
+                    @endif
+                    @foreach(['cooperative' => ['Cooperative', 'cooperative_id'], 'farmer' => ['Farmer', 'farmer_id'], 'animal' => ['Animal No.', 'carabao_id']] as $picker => [$title, $field])
+                        @if($picker === 'animal')
+                            <label class="text-sm font-semibold">Number of Cows<input type="number" name="number_of_cows" x-model.number="cows" @input="if(Number($event.target.value)!==1){animal='';if(openPicker==='animal')openPicker=''}" min="0" step="1" required class="filter-input mt-1"></label>
+                        @endif
+                        <div class="relative text-sm" @if($picker === 'animal') x-show="Number(cows)===1" @endif
+                            @click.outside="if(openPicker==='{{ $picker }}')openPicker=''"
+                            @keydown.escape="if(openPicker==='{{ $picker }}'){$event.stopPropagation();$event.preventDefault();openPicker='';$el.querySelector('button').focus()}">
+                            <span id="milk-{{ $picker }}-label" class="font-semibold">{{ $title }}</span>
+                            <input type="hidden" name="{{ $field }}" :value="{{ $picker }}" @if($picker === 'animal') :disabled="Number(cows)!==1" @endif>
+                            <button type="button" class="filter-input mt-1 flex items-center justify-between gap-2 text-left disabled:opacity-60"
+                                aria-labelledby="milk-{{ $picker }}-label milk-{{ $picker }}-value" aria-controls="milk-{{ $picker }}-choices" :aria-expanded="openPicker==='{{ $picker }}'"
+                                :disabled="pickerDisabled('{{ $picker }}')" @click="togglePicker('{{ $picker }}', $el.parentElement)">
+                                <span id="milk-{{ $picker }}-value" x-text="pickerValue('{{ $picker }}')"></span>
+                                <i class="fa-solid fa-chevron-down text-xs text-slate-500" aria-hidden="true"></i>
+                            </button>
+                            <div id="milk-{{ $picker }}-choices" x-cloak x-show="openPicker==='{{ $picker }}'" class="absolute inset-x-0 z-10 mt-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                                <input type="search" x-model="query" aria-label="Search {{ strtolower($title) }}" placeholder="Search {{ strtolower($title) }}…" class="filter-input" @keydown.enter.prevent="if(matches('{{ $picker }}').length===1)choose('{{ $picker }}', matches('{{ $picker }}')[0], $el.closest('.relative'))">
+                                <ul class="mt-1 max-h-40 overflow-y-auto">
+                                    @if($picker === 'animal')
+                                        <li x-show="animal && !query"><button type="button" @click="choose('animal', {id:''}, $el.closest('.relative'))" class="w-full rounded-md px-2 py-2 text-left text-slate-600 hover:bg-sky-50 focus:bg-sky-50">Clear animal selection</button></li>
+                                    @endif
+                                    <template x-for="item in matches('{{ $picker }}')" :key="item.id"><li><button type="button" @click="choose('{{ $picker }}', item, $el.closest('.relative'))" class="w-full rounded-md px-2 py-2 text-left hover:bg-sky-50 focus:bg-sky-50" x-text="item.name"></button></li></template>
+                                </ul>
+                                <p x-show="!matches('{{ $picker }}').length" class="p-2 text-slate-500">No matches found.</p>
+                            </div>
+                        </div>
+                    @endforeach
+                    <label class="text-sm font-semibold">Collection date<input type="date" name="record_date" value="{{ old('record_date', now()->toDateString()) }}" required class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">AM / PM
+                        <select name="collection_period" required class="filter-input mt-1"><option value="">Select period</option>@foreach(['AM','PM'] as $period)<option value="{{ $period }}" @selected(old('collection_period') === $period)>{{ $period }}</option>@endforeach</select>
+                    </label>
+                    <label class="text-sm font-semibold">Total Milk Production (kg)<input type="number" name="total_liters" min="0" max="999999.99" step="0.01" value="{{ old('total_liters') }}" required class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Price per Kilogram (₱)<input type="number" name="price_per_kg" min="0" step="0.01" value="{{ old('price_per_kg') }}" required class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Milk Traded (kg)<input type="number" name="milk_traded" min="0" step="0.01" value="{{ old('milk_traded') }}" required class="filter-input mt-1"></label>
+                </div>
+                <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
+                    <button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button>
+                    <button type="submit" :disabled="!cooperative || !farmer" class="action-primary disabled:opacity-50">Save Milk Production</button>
+                </footer>
+            </form>
+        </dialog>
+    @elseif($isProduct)
+        <dialog id="{{ $module }}-production-form" aria-labelledby="product-production-title" class="m-auto max-h-[92vh] w-11/12 max-w-4xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60" @if($errors->productProduction->any()) x-data x-init="$el.showModal()" @endif>
+            <form method="post" action="{{ route($module.'.production.store') }}">
+                @csrf
+                <header class="flex items-center justify-between gap-3 border-b p-5">
+                    <h2 id="product-production-title" class="text-xl font-bold text-[#12345a]">Add {{ $productLabel }} Production</h2>
+                    <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close {{ $module }} production form"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                </header>
+                <div class="grid gap-4 p-5 sm:grid-cols-2">
+                    @if($errors->productProduction->any())<ul role="alert" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 sm:col-span-2">@foreach($errors->productProduction->all() as $error)<li>{{ $error }}</li>@endforeach</ul>@endif
+                    <label class="text-sm font-semibold sm:col-span-2">Cooperative<select name="cooperative_id" required class="filter-input mt-1"><option value="">Select cooperative</option>@foreach($productCooperatives as $cooperative)<option value="{{ $cooperative->id }}" @selected((string) old('cooperative_id') === (string) $cooperative->id)>{{ $cooperative->cooperative_name }}</option>@endforeach</select></label>
+                    <label class="text-sm font-semibold">Production Date<input type="date" name="actual_date" value="{{ old('actual_date', now()->toDateString()) }}" required class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Reported Date<input type="date" name="reported_date" value="{{ old('reported_date') }}" class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">{{ $productLabel }} Production (kg)<input type="number" name="volume_kg" value="{{ old('volume_kg') }}" min="0" step="0.01" required class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Other Sources (kg)<input type="number" name="other_source_volume_kg" value="{{ old('other_source_volume_kg') }}" min="0" step="0.01" class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Farm Gate Price per kg (₱)<input type="number" name="price_per_kg" value="{{ old('price_per_kg') }}" min="0" step="0.01" class="filter-input mt-1"></label>
+                    <label class="text-sm font-semibold">Production Value (₱)<input type="number" name="value_php" value="{{ old('value_php') }}" min="0" step="0.01" class="filter-input mt-1"></label>
+                </div>
+                <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4"><button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button><button type="submit" class="action-primary">Save {{ $productLabel }} Production</button></footer>
+            </form>
+        </dialog>
+    @elseif($module === 'health')
         <div id="health-editor" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="health-editor-title">
             <div class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
                 <div class="sticky top-0 flex items-center justify-between border-b bg-white px-6 py-4"><div><h2 id="health-editor-title" class="text-xl font-bold text-[#12345a]">Add Health and Nutrition Activity</h2><p class="text-sm text-slate-500">One activity can include multiple services.</p></div><button type="button" onclick="closeHealthEditor()" class="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">✕</button></div>
@@ -522,7 +771,7 @@
                         <label class="block text-sm font-semibold">No. of Treatments<input id="health-treatments" type="number" min="0" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
                     </div>
                     <datalist id="health-service-options"><option value="Deworming"><option value="Vitamins"><option value="Vaccination"><option value="Uterine Flushing"><option value="Fecalysis"><option value="Ear Tagging"><option value="Recruitment"><option value="Hands-on Milking"><option value="Forage Demo"></datalist>
-                    <div class="rounded-xl border border-slate-200 p-4"><div class="mb-3 flex items-center justify-between gap-2"><div><h3 class="font-bold text-slate-800">Type of Service</h3><p class="text-xs text-slate-500">Each service has its own optional dosage and remarks. Add custom service types as needed.</p></div><button id="health-add-service-button" type="button" onclick="addHealthServiceRow()" class="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"><i class="fa-solid fa-plus mr-1"></i>Add Service</button></div><div id="health-service-rows" class="space-y-3"></div></div>
+                    <div class="rounded-xl border border-slate-200 p-4"><div class="mb-3 flex items-center justify-between gap-2"><div><h3 class="font-bold text-slate-800">Type of Service</h3><p class="text-xs text-slate-500">Each service has its own optional dosage and remarks. Add custom service types as needed.</p></div><button id="health-add-service-button" type="button" onclick="addHealthServiceRow()" class="cbed-add-button rounded-lg px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i>Add Service</button></div><div id="health-service-rows" class="space-y-3"></div></div>
                     <label class="block text-sm font-semibold">Activity Remarks<textarea id="health-activity-remarks" rows="2" maxlength="2000" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></textarea></label>
                     <div class="flex justify-end gap-2"><button type="button" onclick="closeHealthEditor()" class="rounded-lg border px-4 py-2">Close</button><button id="health-save-button" type="submit" class="action-primary bg-blue-700 text-white">Save Activity</button></div>
                 </form>
@@ -534,12 +783,264 @@
 
 </div>
 
+    @if($module === 'mtd')
+        @include('partials.mtd-entry')
+        @include('partials.mtd-record-actions')
+    @elseif($module === 'exits')
+        @include('partials.animal-exit-dialog')
+    @endif
 @endsection
+
+@if(in_array($module, ['milk', 'mtd', 'exits'], true))
+@push('scripts')
+<script>
+function milkProductionEntry(cooperatives, farmers, animals, cooperative, farmer, animal, cows) {
+    return {
+        cooperative, farmer, animal, cows, openPicker:'', query:'',
+        options(picker) {
+            if(picker==='cooperative')return cooperatives.map(item=>({id:item.id,name:item.cooperative_name}));
+            if(picker==='farmer')return farmers.filter(item=>String(item.cooperative_id)===this.cooperative);
+            return animals.filter(item=>String(item.farmer_id)===this.farmer)
+                .map(item=>({id:item.id,name:item.animal_name ? item.animal_number+' — '+item.animal_name : item.animal_number}));
+        },
+        matches(picker) {
+            const terms=this.query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+            return this.options(picker).filter(item=>terms.every(term=>String(item.name).toLowerCase().includes(term)));
+        },
+        pickerDisabled(picker) {
+            return (picker==='farmer' && !this.cooperative) || (picker==='animal' && !this.farmer);
+        },
+        pickerValue(picker) {
+            const selected=this.options(picker).find(item=>String(item.id)===this[picker]);
+            if(selected)return selected.name;
+            if(picker==='cooperative')return 'Select cooperative';
+            if(picker==='farmer')return this.cooperative ? 'Select farmer' : 'Select a cooperative first';
+            return this.farmer ? 'Select animal (optional)' : 'Select a farmer first';
+        },
+        togglePicker(picker, wrapper) {
+            this.openPicker=this.openPicker===picker ? '' : picker;
+            this.query='';
+            if(this.openPicker)this.$nextTick(()=>wrapper.querySelector('input[type="search"]').focus());
+        },
+        choose(picker, item, wrapper) {
+            const id=String(item.id);
+            if(this[picker]!==id){
+                this[picker]=id;
+                if(picker==='cooperative')this.farmer='';
+                if(picker!=='animal')this.animal='';
+            }
+            this.openPicker='';
+            wrapper.querySelector('button').focus();
+        }
+    };
+}
+function mtdEntry(cooperatives, farmers, animals, cooperative, farmer, previousRows, today) {
+    const teats=['right_front','right_back','left_front','left_back'];
+    const inventory=animals.map(animal=>({...animal,animal_number:animal.animal_id || animal.registry_number || animal.tag_number || String(animal.id)}));
+    const directory=milkProductionEntry(cooperatives,farmers,inventory,cooperative,farmer,'',0);
+    const rows=Object.values(previousRows || {}).filter(row=>row && typeof row==='object').map((row,index)=>({...row,key:index+1,missing_teats:Array.isArray(row.missing_teats) ? row.missing_teats : []}));
+    if(!rows.length)rows.push({key:1,carabao_id:'',test_date:today,collection_period:'',missing_teats:[]});
+    return {...directory,rows,nextKey:rows.length+1,
+        availableAnimals(row){
+            const selected=new Set(this.rows.filter(other=>other.key!==row.key && other.carabao_id)
+                .map(other=>String(other.carabao_id)));
+            return this.options('animal').filter(animal=>!selected.has(String(animal.id)));
+        },
+        addRow(){
+            const previous=this.rows.at(-1);
+            this.rows.push({key:this.nextKey++,carabao_id:'',test_date:previous?.test_date || today,collection_period:previous?.collection_period || '',missing_teats:[]});
+        },
+        loadTeatAvailability(row,id){
+            const animal=inventory.find(item=>String(item.id)===String(id));
+            row.carabao_id=id;
+            row.missing_teats=[...(animal?.mtd_missing_teats || [])];
+            teats.forEach(teat=>{row[teat]='';});
+        },
+        setMissingTeat(row,teat,missing){
+            row.missing_teats=row.missing_teats.filter(value=>value!==teat);
+            if(missing){
+                row.missing_teats.push(teat);
+                row[teat]='';
+            }
+        },
+        choose(picker,item,wrapper){
+            const changed=this[picker]!==String(item.id);
+            directory.choose.call(this,picker,item,wrapper);
+            if(changed)this.rows.forEach(row=>this.loadTeatAvailability(row,''));
+        }
+    };
+}
+function mtdRecordActions(baseUrl, results) {
+    const resultFields=['bulk_result','right_front','right_back','left_front','left_back'];
+    const fields=['test_date','collection_period','bulk_kg',...resultFields,'remarks'];
+    return {
+        results, resultFields, fields, mode:'view', record:{}, draft:{}, error:'', saving:false,
+        labels:{cooperative_name:'Cooperative',farmer_name:'Farmer',animal_identifier:'Animal',test_date:'Date Conducted',
+            collection_period:'AM / PM',bulk_kg:'Bulk (kg)',bulk_result:'Bulk Result',right_front:'RF - Right Front',
+            right_back:'RB - Right Back',left_front:'LF - Left Front',left_back:'LB - Left Back',remarks:'Remarks'},
+        open({mode,record}) {
+            this.mode=mode;
+            this.record=record;
+            this.error='';
+            this.draft=Object.fromEntries(fields.map(field=>[field,resultFields.includes(field) && !results.includes(record[field]) ? '' : (record[field] ?? '')]));
+            this.$root.showModal();
+            this.$nextTick(()=>this.$refs.cancel.focus());
+        },
+        isMissing(field) {
+            return (this.record.missing_teats || []).includes(field);
+        },
+        display(field) {
+            if(this.isMissing(field))return '× Missing';
+            if(field==='bulk_kg' && this.record.bulk_kg==null && this.record.milk_yield_liters!=null)return this.record.milk_yield_liters+' L';
+            return this.record[field] == null || this.record[field]==='' ? '—' : this.record[field];
+        },
+        async save() {
+            if(this.saving || !['edit','delete'].includes(this.mode) || !this.record.id)return;
+            this.saving=true;
+            this.error='';
+            try {
+                const response=await fetch(baseUrl+'/'+this.record.id,{
+                    method:this.mode==='edit' ? 'PUT' : 'DELETE',
+                    headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content || ''},
+                    body:this.mode==='edit' ? JSON.stringify(Object.fromEntries(fields.map(field=>[field,this.draft[field]==='' ? null : this.draft[field]]))) : undefined
+                });
+                if(!response.ok){
+                    const result=await response.json().catch(()=>({}));
+                    throw Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not update the MTD record.');
+                }
+                this.$root.close();
+                window.location.reload();
+            } catch(error) {
+                this.error=error.message;
+            } finally {
+                this.saving=false;
+            }
+        }
+    };
+}
+function animalExitDialog(cooperatives, farmers, animals, labels, natureOptions, baseUrl, today) {
+    const directory=milkProductionEntry(cooperatives,farmers,animals,'','','',0);
+    const fields=Object.keys(labels);
+    return {...directory, labels, fields, mode:'add', record:{}, draft:{}, natureOptions, error:'', saving:false,
+        titles:{add:'Add Exit',view:'Exit Record Details',edit:'Edit Exit Record',delete:'Delete exit record?'},
+        options(picker){
+            const choices=directory.options.call(this,picker);
+            if(picker!=='animal')return choices;
+            const allowed=new Set(animals.filter(item=>String(item.cooperative_id)===this.cooperative).map(item=>item.id));
+            return choices.filter(item=>allowed.has(item.id));
+        },
+        choose(picker,item,wrapper){
+            const changed=this[picker]!==String(item.id);
+            directory.choose.call(this,picker,item,wrapper);
+            if(changed && picker!=='animal')this.selectAnimal('');
+        },
+        selectAnimal(id){
+            const selected=animals.find(item=>String(item.id)===id);
+            this.animal=id;
+            this.draft.entrustment=selected?.entrustment || '';
+            this.draft.ownership_status=selected?.ownership_status || '';
+        },
+        showExit({mode,record={}}){
+            if(this.saving)return;
+            this.mode=mode;
+            this.record=record;
+            this.error='';
+            this.cooperative=this.farmer=this.animal=this.openPicker='';
+            this.draft=Object.fromEntries(fields.map(field=>[field,record[field] ?? (mode==='add' && field==='exit_date' ? today : '')]));
+            this.natureOptions=[...new Set([...natureOptions,...(record.nature_of_exit ? [record.nature_of_exit] : [])])];
+            this.$root.showModal();
+            this.$nextTick(()=>this.$refs.cancel.focus());
+        },
+        async save(){
+            if(this.saving || this.mode==='view' || (this.mode==='add' ? !this.animal : !this.record.record_id))return;
+            const adding=this.mode==='add';
+            const deleting=this.mode==='delete';
+            const payload=adding ? {...this.draft,cooperative_id:this.cooperative,farmer_id:this.farmer,carabao_id:this.animal} : this.draft;
+            this.saving=true;
+            this.error='';
+            try{
+                const response=await fetch(adding ? baseUrl : baseUrl+'/'+this.record.record_id,{
+                    method:adding ? 'POST' : (deleting ? 'DELETE' : 'PUT'),
+                    headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content || ''},
+                    body:deleting ? undefined : JSON.stringify(payload)
+                });
+                if(!response.ok){
+                    const result=await response.json().catch(()=>({}));
+                    throw Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not save the exit record.');
+                }
+                this.$root.close();
+                if(adding)window.location.assign(baseUrl);
+                else window.location.reload();
+            }catch(error){
+                this.error=error.message;
+            }finally{
+                this.saving=false;
+            }
+        }
+    };
+}
+</script>
+@endpush
+@endif
 
 @if($module === 'health')
 @push('scripts')
 <script>
 const healthRecordsUrl=@json(url('/admin/health-records'));
+const healthPanel=document.getElementById('health-records-panel');
+if(healthPanel){
+    const address=new URL(window.location.href);
+    if(address.searchParams.has('page') || address.searchParams.has('per_page')){
+        address.searchParams.delete('page');
+        address.searchParams.delete('per_page');
+        window.history.replaceState(window.history.state,'',address);
+    }
+
+    let pageRequest;
+    async function loadHealthPage(url, focusSelector){
+        pageRequest?.abort();
+        const request=new AbortController();
+        pageRequest=request;
+        const message=healthPanel.querySelector('[data-health-pagination-message]');
+        message.textContent='Loading records…';
+        healthPanel.setAttribute('aria-busy','true');
+        try{
+            const response=await fetch(url,{signal:request.signal});
+            if(!response.ok)throw new Error('Could not load records.');
+            const html=await response.text();
+            if(request.signal.aborted)return;
+            const page=new DOMParser().parseFromString(html,'text/html').getElementById(healthPanel.id);
+            if(!page)throw new Error('Could not load records.');
+            healthPanel.replaceChildren(...page.childNodes);
+            (healthPanel.querySelector(focusSelector) || healthPanel.querySelector('[data-health-page-status]'))?.focus({preventScroll:true});
+        }catch(error){
+            if(request.signal.aborted)return;
+            message.textContent='Could not load records. Please try again.';
+            const size=healthPanel.querySelector('[data-health-page-size] select');
+            const original=[...size.options].find(option=>option.defaultSelected);
+            if(original)size.value=original.value;
+        }finally{
+            if(pageRequest===request){
+                healthPanel.removeAttribute('aria-busy');
+                pageRequest=null;
+            }
+        }
+    }
+
+    healthPanel.addEventListener('click',event=>{
+        const link=event.target.closest('[data-health-page]');
+        if(!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
+        event.preventDefault();
+        loadHealthPage(link.href,'[data-health-page="'+link.dataset.healthPage+'"]');
+    });
+    healthPanel.addEventListener('change',event=>{
+        const form=event.target.closest('[data-health-page-size]');
+        if(!form)return;
+        const url=new URL(form.action);
+        url.search=new URLSearchParams(new FormData(form));
+        loadHealthPage(url,'[data-health-page-size] select');
+    });
+}
 let healthServiceRowKey=0;
 function closeHealthEditor(){document.getElementById('health-editor').classList.add('hidden');document.getElementById('health-editor').classList.remove('flex');}
 function addHealthServiceRow(service={}){const index=healthServiceRowKey++,row=document.createElement('div');row.className='health-service-row grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1.4fr_.7fr_1.4fr_auto]';row.innerHTML=`<label class="text-xs font-semibold">Service Type<input list="health-service-options" data-service="type" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Choose or enter a type" required></label><label class="text-xs font-semibold">Dosage (mL)<input data-service="dosage_ml" type="number" min="0" step="0.01" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Not applicable"></label><label class="text-xs font-semibold">Service Remarks<input data-service="remarks" maxlength="2000" class="mt-1 w-full rounded border px-2 py-2 text-sm"></label><button type="button" class="self-end rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" aria-label="Remove service" onclick="this.closest('.health-service-row').remove()">Remove</button>`;row.querySelector('[data-service="type"]').value=service.type==='Other Services'?(service.other_service_name||'Other Services'):(service.type||'');row.querySelector('[data-service="dosage_ml"]').value=service.dosage_ml??'';row.querySelector('[data-service="remarks"]').value=service.remarks??'';document.getElementById('health-service-rows').appendChild(row);}
@@ -627,15 +1128,6 @@ function fhprDryOffEditor(url, date, displayDate, recordId) {
 @media(max-width:640px){.fhpr-table-scroll{--fhpr-no:40px;--fhpr-cooperative:80px;--fhpr-farmer:80px;--fhpr-animal:96px}.fhpr-data-table tr>:nth-child(-n+4){padding:.75rem .375rem;font-size:.7rem}}
 .page-btn{display:inline-flex;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;font-weight:600;color:#334155;background:#fff}
 a.page-btn:hover{background:#f1f5f9}
-.pcc-mating-hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2)}
-.pcc-mating-hero::after{content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045)}
-.pcc-brand-mark{position:relative;flex:none;width:4.35rem;height:4.35rem;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.34);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.07));color:#ffd05b;font-size:2rem;box-shadow:0 10px 22px rgba(0,28,52,.2)}
-.pcc-brand-mark span{position:absolute;right:-.45rem;bottom:-.4rem;display:grid;width:1.65rem;height:1.65rem;place-items:center;border:2px solid #075785;border-radius:999px;background:#ffd05b;color:#12345a;font-size:.75rem}
-.pcc-program-tag{display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;border:1px solid rgba(255,213,91,.35);border-radius:999px;background:rgba(4,37,68,.24);padding:.35rem .7rem;color:#ffe08a;font-size:.7rem;font-weight:700;letter-spacing:.035em}
-.pcc-mating-hero .action-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;backdrop-filter:blur(8px)}
-.pcc-mating-hero .action-secondary:hover{background:rgba(255,255,255,.2)}
-.pcc-mating-hero .action-primary{background:#ffd05b;color:#12345a;box-shadow:0 7px 16px rgba(4,37,68,.2)}
-.pcc-mating-hero .action-primary:hover{background:#ffdc7d}
 .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}
 .pcc-stat-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(7,62,99,.13)}
 .pcc-stat-card:nth-child(2){border-top-color:#e87523}.pcc-stat-card:nth-child(3){border-top-color:#25835b}.pcc-stat-card:nth-child(4){border-top-color:#0786a5}

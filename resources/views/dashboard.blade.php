@@ -2,25 +2,13 @@
 @extends('layouts.admin')
 
 @section('title', 'Dashboard')
+@section('dataSource', 'database')
 @section('page-heading', 'Dashboard')
 
 @section('content')
 
 <div class="management-page dashboard-page min-w-0 bg-slate-50 text-slate-800">
-<div class="management-hero mb-7 flex flex-col justify-between gap-4 rounded-2xl p-5 text-white shadow-lg sm:flex-row sm:items-center sm:p-6">
-    <div>
-        <h1 class="text-2xl font-bold tracking-tight text-white">
-            Welcome to CBED Data System
-        </h1>
-        <p class="mt-2 text-sm text-slate-200">
-            Monitor farmers, carabaos, and enterprise development activities.
-        </p>
-    </div>
-
-    <div class="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white">
-        <i class="fa-regular fa-calendar mr-2"></i>{{ now()->format('F d, Y') }}
-    </div>
-</div>
+<x-admin-page-header title="Welcome to CBED Data System" description="Monitor farmers, carabaos, and enterprise development activities." breadcrumb="Dashboard" :tag="now()->format('F d, Y')" tag-icon="fa-regular fa-calendar" />
 
 <!-- Statistics -->
 <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -276,12 +264,6 @@
 <style>
     [x-cloak]{display:none!important}
     .management-page { background: radial-gradient(circle at 92% 0%,rgba(11,31,58,.06),transparent 25%),#f5f8fc; }
-    .management-hero { position:relative; isolation:isolate; overflow:hidden; background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%); box-shadow:0 16px 32px rgba(7,62,99,.2); }
-    .management-hero::after { content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045); }
-    .management-hero h1,.management-hero p,.management-hero span { color:#fff!important; }
-    .management-hero button,.management-hero a { border-color:rgba(255,255,255,.32)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;backdrop-filter:blur(8px); }
-    .management-hero button:hover,.management-hero a:hover { background:rgba(255,255,255,.22)!important; }
-    .management-hero button[class*="bg-[#0b1f3a]"] { border-color:#ffd05b!important;background:#ffd05b!important;color:#12345a!important; }
     .management-page .management-summary-card,.semen-bull-page .dashboard-stat-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }
     .management-page .management-summary-card:nth-child(2),.semen-bull-page .dashboard-stat-card:nth-child(2) { border-top-color:#e87523!important; }
     .management-page .management-summary-card:nth-child(3),.semen-bull-page .dashboard-stat-card:nth-child(3) { border-top-color:#25835b!important; }

@@ -38,12 +38,31 @@
         :root {
             --cbed-navy: #0b1f3a;
             --cbed-hover: #122b4d;
+            --cbed-add-bg: #ffd05b;
+            --cbed-add-hover: #ffdc7d;
+            --cbed-add-text: #12345a;
             --page-bg: #f4f7fb;
             --sidebar-width: 13rem;
         }
 
         [x-cloak] {
             display: none !important;
+        }
+
+        button.cbed-add-button {
+            border-color: transparent;
+            background: var(--cbed-add-bg);
+            color: var(--cbed-add-text);
+            box-shadow: 0 7px 16px rgba(4, 37, 68, .2);
+        }
+
+        button.cbed-add-button:hover:not(:disabled) {
+            background: var(--cbed-add-hover);
+        }
+
+        button.cbed-add-button:disabled {
+            opacity: .5;
+            cursor: not-allowed;
         }
 
         html {
@@ -150,6 +169,8 @@
 
 <body x-data="{ sidebarOpen: false }"
       @keydown.escape.window="sidebarOpen = false">
+
+    @include('partials.connection-toast', ['dataSource' => $__env->yieldContent('dataSource')])
 
     {{-- MOBILE OVERLAY --}}
     <div
@@ -313,11 +334,11 @@
         {{-- PAGE CONTENT --}}
         <main class="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
 
-            @unless(View::hasSection('inlineCalfDropNotifications'))
+            @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives') || View::hasSection('inlineCalfDropNotifications'))
                 @include('partials.calf-drop-notifications')
             @endunless
 
-            @if (session('success'))
+            @if (session('success') && !in_array($module ?? null, ['mtd', 'exits'], true))
                 <div class="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                     <i class="fa-solid fa-circle-check text-lg"></i>
                     <span>{{ session('success') }}</span>

@@ -4,20 +4,13 @@
 @section('page-heading', 'Semen Bull Management')
 
 @section('content')
-<div x-data="semenBullPage()" x-init="init()" x-cloak class="semen-bull-page min-w-0 bg-slate-50 text-slate-800">
+<div x-data="semenBullPage()" x-cloak class="semen-bull-page min-w-0 bg-slate-50 text-slate-800">
     {{-- PAGE HEADER: matching Breeding / Carabao Management UI --}}
-    <div class="dashboard-hero mb-7 flex flex-col justify-between gap-4 rounded-2xl p-5 text-white shadow-lg sm:flex-row sm:items-center sm:p-6">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-blue-100"><i class="fa-solid fa-house"></i><span>/</span><span>CBED Data System</span><span>/</span><span class="font-semibold text-white">Semen Bull Management</span></div>
-            <h1 class="text-2xl font-bold tracking-tight text-white sm:text-3xl">Semen Bull Management</h1>
-            <p class="mt-2 text-sm text-slate-200">Manage semen bull profiles, registration details, and recorded semen usage.</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
-            <button type="button" @click="exportXLSX()" class="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-export"></i> Export XLSX</button>
-            <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-import"></i> Import XLSX<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importXLSX($event)"></label>
-            <button type="button" @click="openAdd()" class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-[#0b1f3a] shadow-sm hover:bg-blue-50"><i class="fa-solid fa-plus"></i> Add Semen Bull</button>
-        </div>
-    </div>
+    <x-admin-page-header title="Semen Bull Management" description="Manage semen bull profiles, registration details, and recorded semen usage." section="Animal Management" breadcrumb="Semen Bulls">
+        <button type="button" @click="exportXLSX()" class="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-export"></i> Export XLSX</button>
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-import"></i> Import XLSX<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importXLSX($event)"></label>
+        <button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold shadow-sm"><i class="fa-solid fa-plus"></i> Add Semen Bull</button>
+    </x-admin-page-header>
 
     {{-- SUMMARY CARDS --}}
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -30,7 +23,7 @@
     <section class="cbed-card dashboard-panel overflow-hidden">
         <div class="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 class="text-lg font-bold text-[#0b1f3a]">Semen Bull Records</h2><p class="mt-1 text-sm text-slate-500">Search, filter, view, import, export, or add semen bull profiles using Excel workbooks.</p></div>
-            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button><button type="button" @click="fetchBulls()" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
+            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button><button type="button" @click="fetchBulls(true)" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
         </div>
 
         {{-- FILTERS --}}
@@ -108,8 +101,6 @@
     .form-input,.filter-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;padding:.625rem .75rem;font-size:.875rem;color:#1e293b;outline:none}
     .form-input:focus,.filter-input:focus{border-color:#1d4ed8;box-shadow:0 0 0 2px #dbeafe}
     .field-label{display:block;margin-bottom:.375rem;font-size:.75rem;font-weight:700;color:#475569}
-    .dashboard-hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 88% 10%,rgba(255,255,255,.15),transparent 20%),linear-gradient(115deg,#07152b,#0b1f3a 55%,#1e477c)}
-    .dashboard-hero::after{content:"";position:absolute;z-index:-1;width:18rem;height:18rem;right:8%;top:-12rem;border:1px solid rgba(255,255,255,.18);border-radius:50%;box-shadow:0 0 0 28px rgba(255,255,255,.035),0 0 0 58px rgba(255,255,255,.025)}
     .dashboard-stat-card{border:1px solid #dbe4ee;border-top:4px solid #0b1f3a;border-radius:1rem;box-shadow:0 5px 18px rgba(15,23,42,.05);transition:transform .15s ease,box-shadow .15s ease}
     .dashboard-stat-card:hover{transform:translateY(-2px);box-shadow:0 12px 24px rgba(11,31,58,.12)}
     .dashboard-stat-icon{background:linear-gradient(145deg,#07152b,#1e477c)!important;color:#fff!important;border-radius:.85rem;box-shadow:0 7px 15px rgba(11,31,58,.2)}
@@ -120,12 +111,6 @@
     .semen-bull-page table tbody tr{transition:background-color .15s ease}
     .semen-bull-page table tbody tr:hover{background:#f1f5f9}
     /* PCC-inspired dashboard styling aligned with Mating Attempts */
-    .management-page .management-hero,.semen-bull-page .dashboard-hero { background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2); }
-    .management-page .management-hero::after,.semen-bull-page .dashboard-hero::after { content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045); }
-    .management-page .management-hero button,.management-page .management-hero a { border-color:rgba(255,255,255,.32)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;backdrop-filter:blur(8px); }
-    .management-page .management-hero button:hover,.management-page .management-hero a:hover { background:rgba(255,255,255,.22)!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"] { border-color:#ffd05b!important;background:#ffd05b!important;color:#12345a!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"]:hover { background:#ffdc7d!important; }
     .management-page .management-summary-card,.semen-bull-page .dashboard-stat-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }
     .management-page .management-summary-card:nth-child(2),.semen-bull-page .dashboard-stat-card:nth-child(2) { border-top-color:#e87523!important; }
     .management-page .management-summary-card:nth-child(3),.semen-bull-page .dashboard-stat-card:nth-child(3) { border-top-color:#25835b!important; }
@@ -157,7 +142,7 @@ function semenBullPage(){
         fields:['id','name','breed','registration','dob','source','sire','dam','semenUsed','status','remarks'],
         form:{id:'',name:'',breed:'',registration:'',dob:'',source:'',sire:'',dam:'',status:'Active',semenUsed:0,remarks:''},
 
-        async init(){ await this.fetchBulls(); },
+        async init(){ await this.fetchBulls(true); },
         async request(url, options={}){
             const headers={'Accept':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':this.csrfToken,...(options.headers||{})};
             const response=await fetch(url,{...options,headers});
@@ -172,7 +157,7 @@ function semenBullPage(){
             }
             return result;
         },
-        async fetchBulls(){
+        async fetchBulls(announce = false){
             this.loading=true; this.errorMessage='';
             try{
                 let page=1,lastPage=1; const rows=[];
@@ -180,13 +165,15 @@ function semenBullPage(){
                     const url=new URL(this.baseUrl,window.location.origin);
                     url.searchParams.set('page',page); url.searchParams.set('per_page','100');
                     const result=await this.request(url.toString());
-                    const payload=Array.isArray(result)?result:result.data;
-                    const data=Array.isArray(payload)?payload:(payload?.data||[]);
+                    const payload=Array.isArray(result)?result:result?.data;
+                    const data=Array.isArray(payload)?payload:payload?.data;
+                    if (!Array.isArray(data)) throw new Error('The server did not return a list of semen bulls.');
                     data.forEach(row=>rows.push(this.mapRow(row)));
                     lastPage=Array.isArray(payload)?1:Number(payload?.last_page||1);
                     page++;
                 }while(page<=lastPage);
                 this.bulls=rows; this.page=Math.min(this.page,this.totalPages());
+                if (announce) this.$dispatch('cbed-data-status');
             }catch(error){this.errorMessage=error.message||'Unable to load database records.';this.msg(this.errorMessage,'error');}
             finally{this.loading=false;}
         },

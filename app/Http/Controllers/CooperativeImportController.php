@@ -406,7 +406,8 @@ class CooperativeImportController extends Controller
                 'value_of_disposed_animals' => $get(['value of disposed animal (php)', 'value of disposed animals']),
                 'remarks' => $get(['remarks']),
                 'inventory_status' => $get(['inventory status']),
-                'exit_reason' => $get(['nature for exit', 'reason of exit']), 'death_date' => $get(['date of disposal/death']),
+                'exit_reason' => $get(['reason of exit', 'reason for exit', 'exit reason']),
+                'death_date' => $get(['date of disposal/death']),
             ];
         }
         if ($breedingRows) {

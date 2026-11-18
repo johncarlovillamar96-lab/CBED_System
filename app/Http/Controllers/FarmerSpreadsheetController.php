@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\SpreadsheetWorksheetReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -9,22 +10,25 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class FarmerSpreadsheetController extends Controller
 {
+    private const ADDRESS_COLUMNS = ['barangay' => 22, 'municipality' => 23, 'province' => 24, 'district' => 25, 'region' => 26];
+
     public function import(Request $request)
     {
         $validated = $request->validate([
             'cooperative_id' => ['required', 'integer', 'exists:cooperatives,id'],
-            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:20480'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls,xlsm', 'max:20480'],
         ]);
 
         abort_unless(
-            Schema::hasColumn('farmers', 'cooperative_sequence') && Schema::hasColumn('farmers', 'cooperative_id'),
+            Schema::hasColumns('farmers', ['cooperative_sequence', 'cooperative_id', ...array_keys(self::ADDRESS_COLUMNS)]),
             422,
             'Run the latest database migrations before importing farmers.'
         );
 
         $book = IOFactory::load($request->file('file')->getRealPath());
-        $sheet = $book->getActiveSheet();
-        $rows = $sheet->toArray(null, true, true, false);
+        $inventorySheet = $book->getSheetByName('BD_ALL');
+        $sheet = $inventorySheet ?? $book->getActiveSheet();
+        $rows = $inventorySheet ? SpreadsheetWorksheetReader::rows($sheet) : $sheet->toArray(null, true, true, false);
         [$headerIndex, $headers] = $this->findHeaderRow($rows);
         abort_if($headerIndex === null, 422, 'Could not find farmer name headers. Use Farmer Name, or separate first_name and last_name columns.');
 
@@ -42,12 +46,18 @@ class FarmerSpreadsheetController extends Controller
             }
             if ($first === '' && $last === '') continue;
 
+            $address = [];
+            foreach (self::ADDRESS_COLUMNS as $field => $column) {
+                $value = $inventorySheet ? trim((string) ($values[$column] ?? '')) : $get([$field]);
+                $address[$field] = $value === '' ? null : $value;
+            }
+
             $records[] = [
                 'first_name' => $first,
                 'middle_name' => $middle ?: null,
                 'last_name' => $last,
-                'birthday' => $this->date($get(['birthday', 'birth date', 'date of birth'])),
-                'sex' => $get(['sex', 'gender']) ?: null,
+                'birthday' => $inventorySheet ? null : $this->date($get(['birthday', 'birth date', 'date of birth'])),
+                'sex' => $inventorySheet ? null : ($get(['sex', 'gender']) ?: null),
                 'cell_number' => $get(['cell number', 'contact number', 'phone', 'mobile']) ?: null,
                 'civil_status' => $get(['civil status']) ?: null,
                 'occupation' => $get(['occupation']) ?: null,
@@ -55,6 +65,7 @@ class FarmerSpreadsheetController extends Controller
                 'spouse_name' => $get(['spouse name']) ?: null,
                 'spouse_occupation' => $get(['spouse occupation']) ?: null,
                 '_sort_name' => trim($last.' '.$first.' '.$middle),
+                ...$address,
             ];
         }
 
@@ -64,12 +75,14 @@ class FarmerSpreadsheetController extends Controller
         $cooperativeId = (int) $validated['cooperative_id'];
         $created = 0;
         $skipped = 0;
+        $updated = 0;
         $firstCode = null;
         $lastCode = null;
 
-        DB::transaction(function () use ($records, $cooperativeId, &$created, &$skipped, &$firstCode, &$lastCode) {
+        DB::transaction(function () use ($records, $cooperativeId, &$created, &$skipped, &$updated, &$firstCode, &$lastCode) {
+            DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first();
             $sequence = (int) DB::table('farmers')->where('cooperative_id', $cooperativeId)->max('cooperative_sequence');
-            $existingRows = DB::table('farmers')->where('cooperative_id', $cooperativeId)->get(['first_name', 'middle_name', 'last_name', 'farmer_code', 'cooperative_sequence']);
+            $existingRows = DB::table('farmers')->where('cooperative_id', $cooperativeId)->get(['id', 'first_name', 'middle_name', 'last_name', 'farmer_code', 'cooperative_sequence', ...array_keys(self::ADDRESS_COLUMNS)]);
             $existingNames = [];
             foreach ($existingRows as $farmer) {
                 $sequence = max($sequence, (int) ($farmer->cooperative_sequence ?? 0));
@@ -78,8 +91,8 @@ class FarmerSpreadsheetController extends Controller
                     $suffix = substr((string) $farmer->farmer_code, strlen($prefix));
                     if (ctype_digit($suffix)) $sequence = max($sequence, (int) $suffix);
                 }
-                $existingNames[$this->normalize(trim($farmer->last_name.' '.$farmer->first_name.' '.$farmer->middle_name))] = true;
-                $existingNames[$this->normalize(trim($farmer->first_name.' '.$farmer->middle_name.' '.$farmer->last_name))] = true;
+                $existingNames[$this->normalize(trim($farmer->last_name.' '.$farmer->first_name.' '.$farmer->middle_name))] = $farmer;
+                $existingNames[$this->normalize(trim($farmer->first_name.' '.$farmer->middle_name.' '.$farmer->last_name))] = $farmer;
             }
 
             foreach ($records as $record) {
@@ -87,7 +100,20 @@ class FarmerSpreadsheetController extends Controller
                 unset($record['_sort_name']);
                 $key = $this->normalize($sortName);
                 if (isset($existingNames[$key])) {
-                    $skipped++;
+                    $farmer = $existingNames[$key];
+                    $changes = [];
+                    foreach (self::ADDRESS_COLUMNS as $field => $column) {
+                        if ($record[$field] !== null && $record[$field] !== $farmer->$field) {
+                            $changes[$field] = $record[$field];
+                        }
+                    }
+                    if ($changes) {
+                        DB::table('farmers')->where('id', $farmer->id)->update($changes + ['updated_at' => now()]);
+                        foreach ($changes as $field => $value) $farmer->$field = $value;
+                        $updated++;
+                    } else {
+                        $skipped++;
+                    }
                     continue;
                 }
 
@@ -98,8 +124,8 @@ class FarmerSpreadsheetController extends Controller
                 $record['farmer_code'] = $code;
                 $record['created_at'] = now();
                 $record['updated_at'] = now();
-                DB::table('farmers')->insert($record);
-                $existingNames[$key] = true;
+                $record['id'] = DB::table('farmers')->insertGetId($record);
+                $existingNames[$key] = (object) $record;
                 $created++;
                 $firstCode ??= $code;
                 $lastCode = $code;
@@ -111,7 +137,9 @@ class FarmerSpreadsheetController extends Controller
         $message = "Imported {$created} farmer(s) in A–Z order; {$skipped} duplicate(s) skipped.";
         if ($firstCode) $message .= " New Farmer IDs: {$firstCode}".($lastCode !== $firstCode ? " to {$lastCode}." : '.');
 
-        return response()->json(['success' => true, 'count' => $created, 'skipped' => $skipped, 'message' => $message]);
+        if ($updated) $message .= " Updated address details for {$updated} existing farmer record(s).";
+
+        return response()->json(['success' => true, 'count' => $created, 'skipped' => $skipped, 'updated' => $updated, 'message' => $message]);
     }
 
     private function findHeaderRow(array $rows): array

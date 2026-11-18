@@ -5,63 +5,32 @@
 @section('page-heading', 'Carabao Inventory')
 
 @section('content')
-<div x-data="carabaoInventoryPage()" x-init="init()" x-cloak class="inventory-page mating-dashboard min-w-0 bg-slate-50 text-slate-800">
+<div x-data="carabaoInventoryPage()" x-cloak class="inventory-page mating-dashboard min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <div class="pcc-mating-hero mb-7 flex flex-col gap-5 rounded-2xl p-5 text-white shadow-xl sm:p-6 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex items-center gap-4">
-            <div class="pcc-brand-mark hidden sm:flex" aria-hidden="true">
-                <i class="fa-solid fa-cow"></i><span><i class="fa-solid fa-dna"></i></span>
-            </div>
-            <div>
-                <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-blue-100">
-                    <i class="fa-solid fa-house"></i><span>/</span>
-                    <span>CBED Data System</span><span>/</span>
-                    <span>Animal Management</span><span>/</span>
-                    <b class="text-white">Inventory</b>
-                </div>
-                <h1 class="text-2xl font-bold text-white sm:text-3xl">CBED Carabao Inventory</h1>
-                <p class="mt-1 text-sm text-blue-100">Encode animal records, review ownership, and track births and breeding status.</p>
-                <span class="pcc-program-tag"><i class="fa-solid fa-seedling"></i> Animal Management · Inventory</span>
-            </div>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-            <button type="button" @click="exportXLSX()" class="action-secondary">
-                <i class="fa-solid fa-file-export"></i> Export Excel
-            </button>
-            <button type="button" @click="downloadTemplate()" class="action-secondary">
-                <i class="fa-solid fa-download"></i> Download Template
-            </button>
-            <a href="{{ route('imports.cooperative.create') }}" class="action-secondary">
-                <i class="fa-solid fa-file-import"></i> Import Workbook by Cooperative
-            </a>
-            <a href="{{ route('imports.cooperative-workbook.create') }}" class="action-secondary">
-                <i class="fa-solid fa-file-excel"></i> Import All Workbook Tabs
-            </a>
-            <button type="button" @click="openBulk()" class="action-secondary">
-                <i class="fa-solid fa-layer-group"></i> Bulk Add
-            </button>
-            <button type="button" @click="openAdd()" class="action-primary">
-                <i class="fa-solid fa-plus"></i> Add Carabao
-            </button>
-        </div>
-    </div>
-
-    {{-- CONNECTION STATUS --}}
-    <div class="mb-6 flex flex-col justify-between gap-3 rounded-xl border p-4 text-sm sm:flex-row sm:items-center"
-         :class="apiConnected ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'">
-        <div class="flex gap-3">
-            <i class="fa-solid mt-0.5" :class="apiConnected ? 'fa-circle-check' : 'fa-circle-info'"></i>
-            <div>
-                <b x-text="apiConnected ? 'Connected to inventory API' : 'Inventory API not connected'"></b>
-                <p class="mt-1" x-text="apiConnected ? 'Records are loaded from the Laravel database.' : 'No sample or browser-only records are displayed. Check the API connection.'"></p>
-            </div>
-        </div>
-        <button type="button" @click="loadRecords()" class="action-secondary">
+    <x-admin-page-header title="CBED Carabao Inventory" description="Encode animal records, review ownership, and track births and breeding status." section="Animal Management" breadcrumb="Inventory" tag="Animal Management · Inventory">
+        <button type="button" @click="exportXLSX()" class="action-secondary">
+            <i class="fa-solid fa-file-export"></i> Export Excel
+        </button>
+        <button type="button" @click="downloadTemplate()" class="action-secondary">
+            <i class="fa-solid fa-download"></i> Download Template
+        </button>
+        <a href="{{ route('imports.cooperative.create') }}" class="action-secondary">
+            <i class="fa-solid fa-file-import"></i> Import Workbook by Cooperative
+        </a>
+        <a href="{{ route('imports.cooperative-workbook.create') }}" class="action-secondary">
+            <i class="fa-solid fa-file-excel"></i> Import All Workbook Tabs
+        </a>
+        <button type="button" @click="openBulk()" class="cbed-add-button action-secondary">
+            <i class="fa-solid fa-layer-group"></i> Bulk Add
+        </button>
+        <button type="button" @click="openAdd()" class="cbed-add-button action-primary">
+            <i class="fa-solid fa-plus"></i> Add Carabao
+        </button>
+        <button type="button" @click="loadRecords(true)" class="action-secondary">
             <i class="fa-solid fa-rotate"></i> Refresh
         </button>
-    </div>
+    </x-admin-page-header>
 
     {{-- SUMMARY CARDS --}}
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -521,7 +490,7 @@
             <div class="p-5">
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <span class="text-sm font-semibold"><span x-text="bulkRows.length"></span> animal(s)</span>
-                    <button type="button" @click="addBulkRow()" class="rounded-lg border px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i> Add Row</button>
+                    <button type="button" @click="addBulkRow()" class="cbed-add-button rounded-lg border px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i> Add Row</button>
                 </div>
                 <div class="overflow-x-auto rounded-lg border">
                     <table class="min-w-[1100px] w-full text-sm">
@@ -668,7 +637,7 @@ function carabaoInventoryPage() {
         async init() {
             // Inventory animals come from the API; browser storage is only used for milk signals.
             try { localStorage.removeItem('cbed_carabao_inventory_fields_v2'); } catch (e) {}
-            await Promise.all([this.loadRecords(), this.loadTransferLookups()]);
+            await Promise.all([this.loadRecords(true), this.loadTransferLookups()]);
             if (!this.apiConnected) return;
             try {
                 await this.loadMatingRecords();
@@ -1032,12 +1001,12 @@ function carabaoInventoryPage() {
             setTimeout(()=>this.toast.show=false,3500);
         },
 
-        async loadRecords() {
+        async loadRecords(announce = false) {
             try {
                 const response=await fetch(apiUrl,{headers:{'Accept':'application/json'}});
                 if (!response.ok) throw new Error(await this.errorMessage(response));
                 const payload=await response.json();
-                const rows=Array.isArray(payload)?payload:(payload.data||payload.records||[]);
+                const rows=Array.isArray(payload)?payload:(payload?.data??payload?.records);
                 if (!Array.isArray(rows)) throw new Error('The inventory API did not return a record list.');
                 this.records=rows.map(r=>({...emptyRecord(),...r,
                     type_of_entrustment:r.type_of_entrustment||r.entrustment||'',
@@ -1045,11 +1014,20 @@ function carabaoInventoryPage() {
                     province:normalizeProvince(r.province)}));
                 this.apiConnected=true;
                 this.page=1;
+                if (announce) this.$dispatch('cbed-data-status');
             } catch (e) {
                 this.apiConnected=false;
                 this.records=[];
                 console.error('Carabao inventory API load failed:',e);
-                this.notify('Cannot connect to the inventory API. Check Laravel routes/controller. No sample data is shown.','error');
+                if (announce) {
+                    this.$dispatch('cbed-data-status', {
+                        title: 'Inventory records unavailable',
+                        description: 'Use Refresh to try again.',
+                        type: 'error'
+                    });
+                } else {
+                    this.notify('Unable to reload inventory records.','error');
+                }
             }
         },
 
@@ -1575,15 +1553,6 @@ function carabaoInventoryPage() {
 .page-btn:disabled{opacity:.4;cursor:not-allowed}
 
 /* Hero */
-.pcc-mating-hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2)}
-.pcc-mating-hero::after{content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045)}
-.pcc-brand-mark{position:relative;flex:none;width:4.35rem;height:4.35rem;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.34);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.07));color:#ffd05b;font-size:2rem;box-shadow:0 10px 22px rgba(0,28,52,.2)}
-.pcc-brand-mark span{position:absolute;right:-.45rem;bottom:-.4rem;display:grid;width:1.65rem;height:1.65rem;place-items:center;border:2px solid #075785;border-radius:999px;background:#ffd05b;color:#12345a;font-size:.75rem}
-.pcc-program-tag{display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;border:1px solid rgba(255,213,91,.35);border-radius:999px;background:rgba(4,37,68,.24);padding:.35rem .7rem;color:#ffe08a;font-size:.7rem;font-weight:700;letter-spacing:.035em}
-.pcc-mating-hero .action-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;backdrop-filter:blur(8px)}
-.pcc-mating-hero .action-secondary:hover{background:rgba(255,255,255,.2)}
-.pcc-mating-hero .action-primary{background:#ffd05b;color:#12345a;box-shadow:0 7px 16px rgba(4,37,68,.2)}
-.pcc-mating-hero .action-primary:hover{background:#ffdc7d}
 
 /* Stat cards */
 .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}

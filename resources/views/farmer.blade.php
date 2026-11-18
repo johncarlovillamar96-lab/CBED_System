@@ -9,7 +9,6 @@
     {{-- PAGE TITLE: intentionally outside the main Alpine/content div --}}
 <div
     x-data="farmerPage()"
-    x-init="init()"
     x-cloak
     data-farmer-index-url="{{ \Illuminate\Support\Facades\Route::has('admin.farmers.data') ? route('admin.farmers.data') : url('/admin/farmers/data') }}"
     data-farmer-store-url="{{ \Illuminate\Support\Facades\Route::has('admin.farmers.store') ? route('admin.farmers.store') : url('/admin/farmers') }}"
@@ -20,53 +19,33 @@
     class="management-page farmer-dashboard min-w-0 bg-slate-50 text-slate-800"
 >
     {{-- HEADER --}}
-    <div class="management-hero mb-6 flex flex-col gap-4 rounded-2xl p-5 text-white shadow-lg lg:flex-row lg:items-center lg:justify-between sm:p-6">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                <i class="fa-solid fa-house"></i>
-                <span>/</span>
-                <span>CBED Data System</span>
-                <span>/</span>
-                <span class="font-semibold text-slate-700">Farmers</span>
-            </div>
+    <x-admin-page-header title="Farmer Management" description="Cooperative-linked farmer records" section="Workspace" breadcrumb="Farmers">
+        <button type="button" @click="downloadPDFReport()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
+            <i class="fa-solid fa-file-pdf text-red-600"></i> Download PDF Report
+        </button>
 
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Farmer Management
-            </h1>
+        <button type="button"
+            @click="openImportModal()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+            <i class="fa-solid fa-file-import"></i>
+            Import Excel
+        </button>
 
-            <p class="mt-1 text-sm text-slate-500">
-                Live MySQL records · Cooperative-linked farmer data
-            </p>
-        </div>
+        <button type="button"
+            @click="exportCSV()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+            <i class="fa-solid fa-file-export"></i>
+            Export CSV
+        </button>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <button type="button" @click="downloadPDFReport()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-                <i class="fa-solid fa-file-pdf text-red-600"></i> Download PDF Report
-            </button>
-
-            <button type="button"
-                @click="openImportModal()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-                <i class="fa-solid fa-file-import"></i>
-                Import Excel
-            </button>
-
-            <button type="button"
-                @click="exportCSV()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-                <i class="fa-solid fa-file-export"></i>
-                Export CSV
-            </button>
-
-            <button type="button"
-                @click="openBulkModal()"
-                class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#122b4d]">
-                <i class="fa-solid fa-users"></i>
-                Bulk Add Farmers
-            </button>
-        </div>
-    </div>
+        <button type="button"
+            @click="openBulkModal()"
+            class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-users"></i>
+            Bulk Add Farmers
+        </button>
+    </x-admin-page-header>
 
 
     {{-- SUMMARY CARDS --}}
@@ -197,7 +176,7 @@
 
         {{-- TABLE: FARMER COLUMNS --}}
         <div class="overflow-x-auto">
-            <table class="min-w-[1500px] w-full divide-y divide-slate-200 text-left">
+            <table class="min-w-[1750px] w-full divide-y divide-slate-200 text-left">
                 <thead class="bg-slate-100 text-xs uppercase tracking-wider text-slate-600">
                     <tr>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">No.</th>
@@ -210,6 +189,8 @@
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Barangay</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Municipality</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Province</th>
+                        <th class="whitespace-nowrap px-4 py-3.5 font-semibold">District</th>
+                        <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Region</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Cooperative</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Registration Date</th>
                         <th class="whitespace-nowrap px-4 py-3.5 text-right font-semibold">Actions</th>
@@ -240,6 +221,8 @@
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.barangay || '—'"></td>
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.municipality || '—'"></td>
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.province || '—'"></td>
+                            <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.district || '—'"></td>
+                            <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.region || '—'"></td>
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.cooperative || '—'"></td>
                             <td class="whitespace-nowrap px-4 py-4 text-sm text-slate-600" x-text="farmer.registration_date || '—'"></td>
 
@@ -263,7 +246,7 @@
                     </template>
 
                     <tr x-show="filteredFarmers().length === 0">
-                        <td colspan="13" class="px-6 py-14 text-center">
+                        <td colspan="15" class="px-6 py-14 text-center">
                             <i class="fa-solid fa-users text-3xl text-slate-300"></i>
                             <p class="mt-3 font-semibold text-slate-700">No farmer records found</p>
                             <p class="mt-1 text-sm text-slate-500">Try adjusting your filters or add farmer records.</p>
@@ -351,7 +334,7 @@
                 </p>
                 <div class="flex flex-wrap gap-2">
                     <button @click="addBulkRow()"
-                            class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-3 py-2 text-sm font-semibold text-white hover:bg-[#122b4d]">
+                            class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold">
                         <i class="fa-solid fa-plus"></i>
                         Add Row
                     </button>
@@ -673,9 +656,9 @@
                     </select>
                 </div>
                 <p class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-                    Supported files: Excel (.xlsx, .xls). Use a <b>Farmer Name</b> column or separate <b>first_name</b> and <b>last_name</b> columns. New Farmer IDs are assigned alphabetically within the selected cooperative (for example, 1-1, 1-2).
+                    Upload an Excel file (.xlsx, .xls, or .xlsm). For cooperative workbooks, farmer names and addresses are read from BD_ALL.
                 </p>
-                <input type="file" accept=".xlsx,.xls" @change="handleImportFile($event)"
+                <input type="file" accept=".xlsx,.xls,.xlsm" @change="handleImportFile($event)"
                        :disabled="importing || loadingImport"
                        class="block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-semibold">
                 <div x-show="loadingImport" class="flex items-center gap-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
@@ -710,7 +693,6 @@
     {{-- FOOTER --}}
     <div class="mt-6 flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <span>CBED Data System · Farmer Management</span>
-        <span>Live MySQL records · Cooperative-linked farmer data</span>
     </div>
 @endsection
 
@@ -751,12 +733,6 @@
     }
 
     .management-page { background: radial-gradient(circle at 92% 0%,rgba(11,31,58,.06),transparent 25%),#f5f8fc; }
-    .management-hero { position:relative; isolation:isolate; overflow:hidden; background:radial-gradient(circle at 88% 10%,rgba(255,255,255,.14),transparent 20%),linear-gradient(115deg,#07152b,#0b1f3a 55%,#1e477c); }
-    .management-hero h1,.management-hero p,.management-hero span { color:#fff!important; }
-    .management-hero button [class*="text-"],.management-hero a [class*="text-"] { color:#0b1f3a!important; }
-    .management-hero .text-slate-500,.management-hero .text-slate-700 { color:#dbe4ee!important; }
-    .management-hero button,.management-hero a { border-color:rgba(255,255,255,.5)!important;background:#fff!important;color:#0b1f3a!important; }
-    .management-hero button:hover,.management-hero a:hover { background:#eaf0f6!important; }
     .management-page .management-summary-card { border-color:#dbe4ee;background:#fff;color:#0b1f3a;transition:transform .15s ease,box-shadow .15s ease; }
     .management-page .management-summary-card:hover { transform:translateY(-2px);box-shadow:0 12px 24px rgba(11,31,58,.12); }
     .management-page .management-summary-card[class*="ring-blue-"] { background:#fff!important;border-color:#0b1f3a!important;color:#0b1f3a!important; }
@@ -776,12 +752,6 @@
     .management-page .bg-blue-50,.management-page .bg-emerald-50,.management-page .bg-violet-50 { background:#f1f5f9!important; }
     .management-page .border-blue-500 { border-color:#0b1f3a!important; }
     /* PCC-inspired dashboard styling aligned with Mating Attempts */
-    .management-page .management-hero,.semen-bull-page .dashboard-hero { background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2); }
-    .management-page .management-hero::after,.semen-bull-page .dashboard-hero::after { content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045); }
-    .management-page .management-hero button,.management-page .management-hero a { border-color:rgba(255,255,255,.32)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;backdrop-filter:blur(8px); }
-    .management-page .management-hero button:hover,.management-page .management-hero a:hover { background:rgba(255,255,255,.22)!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"] { border-color:#ffd05b!important;background:#ffd05b!important;color:#12345a!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"]:hover { background:#ffdc7d!important; }
     .management-page .management-summary-card,.semen-bull-page .dashboard-stat-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }
     .management-page .management-summary-card:nth-child(2),.semen-bull-page .dashboard-stat-card:nth-child(2) { border-top-color:#e87523!important; }
     .management-page .management-summary-card:nth-child(3),.semen-bull-page .dashboard-stat-card:nth-child(3) { border-top-color:#25835b!important; }
@@ -878,7 +848,7 @@ const registerFarmerPage = () => {
             // Load the table immediately in parallel with location/cooperative data.
             // The slow external PSGC request should not block farmer records.
             await Promise.all([
-                this.loadFarmers(),
+                this.loadFarmers(true),
                 this.loadCooperatives(),
                 this.loadRegionIIILocations()
             ]);
@@ -977,20 +947,15 @@ const registerFarmerPage = () => {
             };
         },
 
-        async loadFarmers() {
+        async loadFarmers(announce = false) {
             this.isLoading = true;
 
             try {
                 const payload = await this.request(this.api.index);
 
                 // FarmerController::data() returns { success, farmers }.
-                const rows = Array.isArray(payload)
-                    ? payload
-                    : (
-                        payload.farmers ??
-                        payload.data ??
-                        []
-                    );
+                const rows = Array.isArray(payload) ? payload : (payload?.farmers ?? payload?.data);
+                if (!Array.isArray(rows)) throw new Error('The server did not return a list of farmers.');
 
                 this.farmers = rows.map(row =>
                     this.normalizeFarmer(row)
@@ -1000,6 +965,7 @@ const registerFarmerPage = () => {
                     this.currentPage,
                     this.totalPages()
                 );
+                if (announce) this.$dispatch('cbed-data-status');
             } catch (error) {
                 console.error('Farmer loading error:', error);
 
@@ -2157,8 +2123,8 @@ const registerFarmerPage = () => {
             if (!file) return;
 
             const extension = file.name.split('.').pop().toLowerCase();
-            if (!['xlsx', 'xls'].includes(extension)) {
-                this.importMessage = 'Please select an Excel file (.xlsx or .xls).';
+            if (!['xlsx', 'xls', 'xlsm'].includes(extension)) {
+                this.importMessage = 'Please select an Excel file (.xlsx, .xls, or .xlsm).';
                 event.target.value = '';
                 return;
             }

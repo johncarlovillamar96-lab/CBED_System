@@ -1152,6 +1152,14 @@ class CooperativeWorkbookImportController extends Controller
                 }
             }
 
+            if ($sheetKey === 'health_nutrition') {
+                $healthFields = \App\Support\HealthWorksheetMapping::fromRow($headerRows[$headerIndex], $values);
+                $sourceData['health_worksheet'] = $healthFields;
+                if (isset($healthFields['remarks']) && in_array('remarks', $columns, true)) {
+                    $data['remarks'] = $this->databaseValue($healthFields['remarks'], 'remarks');
+                }
+            }
+
             if (in_array($sheetKey, ['mating', 'mating_2'], true)
                 && \App\Support\MatingWorksheetMapping::matchesHeaders($headerRows[$headerIndex], $sheetKey)) {
                 $mapped = \App\Support\MatingWorksheetMapping::fromRow($values, $sheetKey);

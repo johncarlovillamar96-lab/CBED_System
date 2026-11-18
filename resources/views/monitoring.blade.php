@@ -1,6 +1,7 @@
 @extends('layouts.admin')
 
 @section('title', 'Monitoring | CBED')
+@section('dataSource', 'database')
 @section('page-heading', 'Monitoring')
 
 @section('content')
@@ -21,12 +22,9 @@
         </div>
     </div>
 
-    <section class="mb-6 flex flex-col justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 sm:flex-row sm:items-center">
-        <div class="flex gap-3"><i class="fa-solid fa-circle-check mt-0.5"></i><div><b>Monitoring database is ready</b><p class="mt-1">Reports save in MySQL. Select a cooperative to load its registered animals from Carabao Inventory.</p></div></div>
-        @if($cooperatives->isEmpty())
-            <span class="rounded-lg bg-amber-100 p-3 text-amber-900">Add a cooperative before creating a monitoring report.</span>
-        @endif
-    </section>
+    @if($cooperatives->isEmpty())
+        <p class="mb-6 rounded-lg bg-amber-100 p-3 text-sm text-amber-900">Add a cooperative before creating a monitoring report.</p>
+    @endif
 
     <div id="monitoring-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-2 sm:p-3" role="dialog" aria-modal="true" aria-labelledby="monitoring-modal-title">
         <form method="POST" action="{{ route('ui.monitoring.reports.store') }}" id="monitoring-form" class="inventory-modal-panel inventory-panel flex max-h-[96vh] w-full max-w-[99vw] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">

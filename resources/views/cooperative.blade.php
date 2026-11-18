@@ -7,7 +7,7 @@
 @section('page-heading', 'Cooperative Management')
 
 @section('content')
-<div x-data="cooperativePage()" x-init="init()" x-cloak
+<div x-data="cooperativePage()" x-cloak
      data-cooperative-index-url="{{ route('admin.cooperatives.data') }}"
      data-cooperative-store-url="{{ route('admin.cooperatives.store') }}"
      data-cooperative-update-url="{{ url('/cooperatives') }}"
@@ -15,46 +15,27 @@
      class="management-page cooperative-dashboard min-w-0 bg-slate-50 text-slate-800">
 
     {{-- Header --}}
-    <div class="management-hero mb-6 flex flex-col gap-4 rounded-2xl p-5 text-white shadow-lg lg:flex-row lg:items-center lg:justify-between sm:p-6">
-        <div>
-            <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                <i class="fa-solid fa-house"></i>
-                <span>/</span>
-                <span>CBED Data System</span>
-                <span>/</span>
-                <span class="font-semibold text-slate-700">Cooperatives</span>
-            </div>
+    <x-admin-page-header title="Cooperative Management" description="Manage cooperative registration, accreditation, classification, and location records." section="Workspace" breadcrumb="Cooperatives">
+        <button type="button" @click="downloadPDFReport()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
+            <i class="fa-solid fa-file-pdf text-red-600"></i> Download PDF Report
+        </button>
 
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-                Cooperative Management
-            </h1>
-            <p class="mt-1 text-sm text-slate-500">
-                Manage cooperative registration, accreditation, classification, and location records.
-            </p>
-        </div>
+        <a href="{{ route('admin.cooperatives.export') }}"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
+            <i class="fa-solid fa-file-excel text-emerald-700"></i> Export XLSX
+        </a>
 
-        <div class="flex flex-wrap gap-2">
-            <button type="button" @click="downloadPDFReport()"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-                <i class="fa-solid fa-file-pdf text-red-600"></i> Download PDF Report
-            </button>
+        <button type="button" @click="showImportModal = true; importFileName = ''"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
+            <i class="fa-solid fa-file-import text-blue-700"></i> Import File
+        </button>
 
-            <a href="{{ route('admin.cooperatives.export') }}"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-                <i class="fa-solid fa-file-excel text-emerald-700"></i> Export XLSX
-            </a>
-
-            <button type="button" @click="showImportModal = true; importFileName = ''"
-                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-                <i class="fa-solid fa-file-import text-blue-700"></i> Import File
-            </button>
-
-            <button type="button" @click="openAddModal()"
-                class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#122b4d]">
-                <i class="fa-solid fa-plus"></i> Add Cooperative
-            </button>
-        </div>
-    </div>
+        <button type="button" @click="openAddModal()"
+            class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-plus"></i> Add Cooperative
+        </button>
+    </x-admin-page-header>
 
     {{-- Summary Cards --}}
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -906,12 +887,6 @@
     }
 
     .management-page { background: radial-gradient(circle at 92% 0%,rgba(11,31,58,.06),transparent 25%),#f5f8fc; }
-    .management-hero { position:relative; isolation:isolate; overflow:hidden; background:radial-gradient(circle at 88% 10%,rgba(255,255,255,.14),transparent 20%),linear-gradient(115deg,#07152b,#0b1f3a 55%,#1e477c); }
-    .management-hero h1,.management-hero p,.management-hero span { color:#fff!important; }
-    .management-hero button [class*="text-"],.management-hero a [class*="text-"] { color:#0b1f3a!important; }
-    .management-hero .text-slate-500,.management-hero .text-slate-700 { color:#dbe4ee!important; }
-    .management-hero button,.management-hero a { border-color:rgba(255,255,255,.5)!important;background:#fff!important;color:#0b1f3a!important; }
-    .management-hero button:hover,.management-hero a:hover { background:#eaf0f6!important; }
     .management-page .management-summary-card { border-color:#dbe4ee;background:#fff;color:#0b1f3a;transition:transform .15s ease,box-shadow .15s ease; }
     .management-page .management-summary-card:hover { transform:translateY(-2px);box-shadow:0 12px 24px rgba(11,31,58,.12); }
     .management-page .management-summary-card > div > div:last-child { background:#0b1f3a!important;color:#fff!important;border-radius:.85rem; }
@@ -927,12 +902,6 @@
     .management-page .text-blue-700,.management-page .text-blue-600,.management-page .text-emerald-700,.management-page .text-violet-600 { color:#0b1f3a!important; }
     .management-page .bg-blue-50,.management-page .bg-emerald-50,.management-page .bg-violet-50 { background:#f1f5f9!important; }
     /* PCC-inspired dashboard styling aligned with Mating Attempts */
-    .management-page .management-hero,.semen-bull-page .dashboard-hero { background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2); }
-    .management-page .management-hero::after,.semen-bull-page .dashboard-hero::after { content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045); }
-    .management-page .management-hero button,.management-page .management-hero a { border-color:rgba(255,255,255,.32)!important;background:rgba(255,255,255,.12)!important;color:#fff!important;backdrop-filter:blur(8px); }
-    .management-page .management-hero button:hover,.management-page .management-hero a:hover { background:rgba(255,255,255,.22)!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"] { border-color:#ffd05b!important;background:#ffd05b!important;color:#12345a!important; }
-    .management-page .management-hero button[class*="bg-[#0b1f3a]"]:hover { background:#ffdc7d!important; }
     .management-page .management-summary-card,.semen-bull-page .dashboard-stat-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }
     .management-page .management-summary-card:nth-child(2),.semen-bull-page .dashboard-stat-card:nth-child(2) { border-top-color:#e87523!important; }
     .management-page .management-summary-card:nth-child(3),.semen-bull-page .dashboard-stat-card:nth-child(3) { border-top-color:#25835b!important; }
@@ -1397,11 +1366,8 @@ document.addEventListener('alpine:init', () => {
                     );
                 }
 
-                const rows = Array.isArray(payload)
-                    ? payload
-                    : Array.isArray(payload.data)
-                        ? payload.data
-                        : [];
+                const rows = Array.isArray(payload) ? payload : payload?.data;
+                if (!Array.isArray(rows)) throw new Error('The server did not return a list of cooperatives.');
 
                 this.cooperatives = rows.map(row => ({
                     ...row,

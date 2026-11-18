@@ -5,59 +5,31 @@
 
 
 @section('content')
-<div x-data="breedingPage()" x-init="init()" x-cloak class="mating-dashboard min-w-0 bg-slate-50 text-slate-800">
+<div x-data="breedingPage()" x-cloak class="mating-dashboard min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <div class="pcc-mating-hero mb-6 flex flex-col gap-4 rounded-2xl p-5 text-white shadow-lg lg:flex-row lg:items-center lg:justify-between sm:p-6">    
-        <div class="flex items-center gap-4">
-            <div class="pcc-brand-mark hidden sm:flex" aria-hidden="true">
-                <i class="fa-solid fa-cow"></i><span><i class="fa-solid fa-dna"></i></span>
-            </div>
-            <div>
-            <div class="mb-2 flex items-center gap-2 text-sm text-blue-100">
-                <i class="fa-solid fa-house"></i><span>/</span>
-                <span>CBED Data System</span><span>/</span>
-                <b class="text-white">Mating</b>
-            </div>
-            <h1 class="text-2xl font-bold text-white sm:text-3xl">Mating & Pregnancy Monitoring</h1>
-            <p class="mt-1 text-sm text-blue-100">Breeding services, pregnancy checks, and yearly performance at a glance.</p>
-            <span class="pcc-program-tag"><i class="fa-solid fa-seedling"></i> Genetic Improvement · AI & Natural Mating</span>
-            </div>
-        </div>
+    <x-admin-page-header title="Mating & Pregnancy Monitoring" description="Breeding services, pregnancy checks, and yearly performance at a glance." section="Animal Management" breadcrumb="Mating" tag="Genetic Improvement · AI & Natural Mating">
+        <button type="button" @click="exportCSV()" class="action-secondary">
+            <i class="fa-solid fa-file-export"></i> Export CSV
+        </button>
 
-        <div class="flex flex-wrap gap-2">
-            <button type="button" @click="exportCSV()" class="action-secondary">
-                <i class="fa-solid fa-file-export"></i> Export CSV
-            </button>
+        <button type="button" @click="downloadTemplate()" class="action-secondary">
+            <i class="fa-solid fa-download"></i> Excel Template
+        </button>
 
-            <button type="button" @click="downloadTemplate()" class="action-secondary">
-                <i class="fa-solid fa-download"></i> Excel Template
-            </button>
+        <label class="action-secondary cursor-pointer">
+            <i class="fa-solid fa-file-excel text-emerald-700"></i>
+            Import Excel (.xlsx)
+            <input type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                class="hidden"
+                @change="importXLSX($event)">
+        </label>
 
-            <label class="action-secondary cursor-pointer">
-                <i class="fa-solid fa-file-excel text-emerald-700"></i>
-                Import Excel (.xlsx)
-                <input type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    class="hidden"
-                    @change="importXLSX($event)">
-            </label>
-
-            <button type="button" @click="openBulk()" class="action-primary">
-                <i class="fa-solid fa-plus"></i> Add Mating Records
-            </button>
-        </div>
-    </div>
-
-    {{-- CONNECTION STATUS --}}
-    <div class="mb-6 flex gap-3 rounded-xl border p-4 text-sm"
-        :class="apiReady ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'">
-        <i class="fa-solid mt-0.5" :class="apiReady ? 'fa-circle-check' : 'fa-circle-info'"></i>
-        <div>
-            <b x-text="apiReady ? 'MySQL API connected' : 'Connecting to breeding API'"></b>
-            <p class="mt-1" x-text="apiMessage"></p>
-        </div>
-    </div>
+        <button type="button" @click="openBulk()" class="cbed-add-button action-primary">
+            <i class="fa-solid fa-plus"></i> Add Mating Records
+        </button>
+    </x-admin-page-header>
 
     {{-- SUMMARY CARDS --}}
     <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -143,7 +115,7 @@
             </label>
             <label class="flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" x-model="overdueCalvesOnly" @change="if(overdueCalvesOnly)showOverdueCalves(filterCooperative);else page=1" class="rounded border-slate-300">
-                Over 300 days, calf drop not reported
+                280+ days, calf drop not reported
             </label>
             <label class="flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" x-model="includeReportedPregnancies" @change="page=1" class="rounded border-slate-300">
@@ -219,7 +191,7 @@
                                 <button type="button" @click="edit(r)" class="mr-1 rounded-lg border px-3 py-2" title="Edit">
                                     <i class="fa-solid fa-pen"></i>
                                 </button>
-                                <button type="button" @click="remove(r.id)" class="rounded-lg px-3 py-2 text-red-600" title="Delete">
+                                <button type="button" @click="confirmDelete(r)" class="rounded-lg px-3 py-2 text-red-600" title="Delete">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </td>
@@ -250,8 +222,8 @@
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Mating & Pregnancy Monitoring</footer>
 
     {{-- BULK ADD / EDIT MODAL --}}
-    <div x-show="showBulk" x-cloak @keydown.escape.window="if(showBulk&&!saving)closeModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
-        <div @click.outside="closeModal()" role="dialog" aria-modal="true" aria-labelledby="mating-modal-title" class="max-h-[95vh] w-full overflow-hidden rounded-2xl bg-white shadow-2xl" :class="editingId?'max-w-3xl':'max-w-[98vw]'">
+    <div x-show="showBulk" x-cloak @keydown.escape.window="if(showBulk&&!saving&&!editingId)closeModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
+        <div @click.outside="if(!editingId)closeModal()" role="dialog" aria-modal="true" aria-labelledby="mating-modal-title" class="max-h-[95vh] w-full overflow-hidden rounded-2xl bg-white shadow-2xl" :class="editingId?'max-w-6xl':'max-w-[98vw]'">
             <div class="flex items-start justify-between border-b p-5">
                 <div>
                     <h3 id="mating-modal-title" class="text-xl font-bold" x-text="editingId?'Edit Mating Record':'Bulk Add Mating Records'"></h3>
@@ -298,7 +270,7 @@
                 @include('partials.mating-edit-form')
 
                 <div x-show="!editingId" class="mb-4 flex flex-wrap justify-end gap-2">
-                    <button type="button" x-show="!editingId" @click="addRow()" class="action-primary">
+                    <button type="button" x-show="!editingId" @click="addRow()" class="cbed-add-button action-primary">
                         <i class="fa-solid fa-plus"></i> Add Row
                     </button>
                 </div>
@@ -490,8 +462,8 @@
                         <p class="help-text">New records start Pending. Positive/Negative PD requires a PD date and confirming technician. Positive PD also requires pregnancy months.</p>
                     </div>
                     <div class="flex justify-end gap-2">
-                        <button type="button" @click="closeModal()" class="action-secondary">Cancel</button>
-                        <button type="button" @click="saveBulk()" :disabled="saving||(editingId&&!bulkRows.length)" class="action-primary">
+                        <button type="button" @click="closeModal()" class="action-secondary" x-text="editingId?'Close':'Cancel'"></button>
+                        <button type="button" @click.stop="editingId ? updateRecord() : saveBulk()" :disabled="saving||(editingId&&!bulkRows.length)" class="action-primary">
                             <i class="fa-solid" :class="saving?'fa-spinner fa-spin':'fa-floppy-disk'"></i>
                             <span x-text="saving?'Saving...':(editingId?'Update Record':'Save to MySQL')"></span>
                         </button>
@@ -534,8 +506,27 @@
     </div>
 
     {{-- NOTIFICATION --}}
-    <div x-show="notice" x-cloak class="fixed bottom-5 right-5 z-[70] max-w-sm rounded-xl px-5 py-3 text-sm font-medium text-white shadow-xl"
-        :class="noticeType==='error'?'bg-rose-700':'bg-slate-900'" x-text="notice"></div>
+    <dialog x-ref="deleteDialog" aria-labelledby="delete-mating-title" aria-describedby="delete-mating-description"
+        @cancel="if(deleting)$event.preventDefault()" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-2xl bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-950/60">
+        <div class="p-6">
+            <div class="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-rose-100 text-rose-700" aria-hidden="true">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <h2 id="delete-mating-title" class="text-lg font-bold">Delete mating record?</h2>
+            <p id="delete-mating-description" class="mt-2 text-sm text-slate-600">This permanently deletes the selected mating record.</p>
+            <dl class="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                <div><dt class="text-slate-500">Animal ID</dt><dd class="break-words font-semibold" x-text="deleteRecord?.animal_id || '—'"></dd></div>
+                <div><dt class="text-slate-500">Mating date</dt><dd class="font-semibold" x-text="displayDate(deleteRecord?.breeding_date)"></dd></div>
+            </dl>
+            <p x-show="deleteError" role="alert" class="mt-3 text-sm text-rose-700" x-text="deleteError"></p>
+            <div class="mt-6 flex justify-end gap-2">
+                <button type="button" autofocus @click="$refs.deleteDialog.close()" :disabled="deleting" class="action-secondary disabled:opacity-50">Cancel</button>
+                <button type="button" @click="remove()" :disabled="deleting" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50" x-text="deleting?'Deleting…':'Delete record'"></button>
+            </div>
+        </div>
+    </dialog>
+
+    @include('partials.action-toast')
 </div>
 @endsection
 
@@ -553,15 +544,6 @@
 .th{padding:1rem}.td{padding:1rem;vertical-align:top}
 .page-btn{border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;font-weight:600}
 .page-btn:disabled{opacity:.4;cursor:not-allowed}
-.pcc-mating-hero{position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(circle at 90% 18%,rgba(255,196,56,.25),transparent 19%),linear-gradient(118deg,#082d50 0%,#075785 55%,#0786a5 100%);box-shadow:0 16px 32px rgba(7,62,99,.2)}
-.pcc-mating-hero::after{content:"";position:absolute;z-index:-1;width:19rem;height:19rem;right:11%;top:-14rem;border:1px solid rgba(255,214,92,.45);border-radius:50%;box-shadow:0 0 0 26px rgba(255,214,92,.08),0 0 0 54px rgba(255,255,255,.045)}
-.pcc-brand-mark{position:relative;flex:none;width:4.35rem;height:4.35rem;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.34);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.07));color:#ffd05b;font-size:2rem;box-shadow:0 10px 22px rgba(0,28,52,.2)}
-.pcc-brand-mark span{position:absolute;right:-.45rem;bottom:-.4rem;display:grid;width:1.65rem;height:1.65rem;place-items:center;border:2px solid #075785;border-radius:999px;background:#ffd05b;color:#12345a;font-size:.75rem}
-.pcc-program-tag{display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;border:1px solid rgba(255,213,91,.35);border-radius:999px;background:rgba(4,37,68,.24);padding:.35rem .7rem;color:#ffe08a;font-size:.7rem;font-weight:700;letter-spacing:.035em}
-.pcc-mating-hero .action-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;backdrop-filter:blur(8px)}
-.pcc-mating-hero .action-secondary:hover{background:rgba(255,255,255,.2)}
-.pcc-mating-hero .action-primary{background:#ffd05b;color:#12345a;box-shadow:0 7px 16px rgba(4,37,68,.2)}
-.pcc-mating-hero .action-primary:hover{background:#ffdc7d}
 .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}
 .pcc-stat-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(7,62,99,.13)}
 .pcc-stat-card:nth-child(2){border-top-color:#e87523}.pcc-stat-card:nth-child(3){border-top-color:#25835b}.pcc-stat-card:nth-child(4){border-top-color:#0786a5}
@@ -598,11 +580,11 @@ function breedingPage(){return {
     },
 
     records:[],cooperatives:[],farmers:[],animals:[],semenBulls:[],
-    totalActiveBulls:0,lookupReady:false,apiReady:false,
-    apiMessage:'Loading data from the server...',loading:false,saving:false,
+    totalActiveBulls:0,lookupReady:false,loading:false,saving:false,
     search:'',filterMatingType:'',filterCooperative:'',filterPD:'',filterDate:'',filterYear:'',unreportedCalvesOnly:false,overdueCalvesOnly:false,includeReportedPregnancies:false,
     selectedCooperative:'',farmerSearch:'',showBulk:false,showView:false,
     bulkRows:[],selected:null,editingId:null,notice:'',noticeType:'success',
+    deleteRecord:null,deleting:false,deleteError:'',
     noticeTimer:null,rowKey:0,page:1,perPage:10,
 
     fields:[
@@ -621,12 +603,13 @@ function breedingPage(){return {
                 this.showOverdueCalves(notificationParams.get('cooperative_id')||'');
                 this.search=notificationParams.get('animal_id')||'';
             }
-            this.apiReady=true;
-            this.apiMessage='Cooperatives, semen bulls, and mating records are connected to MySQL.';
+            this.$dispatch('cbed-data-status');
         }catch(e){
-            this.apiReady=false;
-            this.apiMessage=e.message||'Could not connect to the breeding API.';
-            this.msg(this.apiMessage,'error');
+            this.$dispatch('cbed-data-status', {
+                title: 'Mating records unavailable',
+                description: e.message || 'Reload the page to try again.',
+                type: 'error'
+            });
         }
     },
 
@@ -703,8 +686,8 @@ function breedingPage(){return {
         try{
             const result=await this.request(this.api.records);
             const payload=Array.isArray(result)?result:result?.data;
-            const data=Array.isArray(payload)?payload:
-                (Array.isArray(payload?.data)?payload.data:[]);
+            const data=Array.isArray(payload)?payload:payload?.data;
+            if (!Array.isArray(data)) throw new Error('The server did not return a list of mating records.');
 
             this.records=data.map(r=>this.normalizeRecord(r));
             const localCalves=this.localCalfReports();
@@ -1094,35 +1077,40 @@ function breedingPage(){return {
         return true;
     },
 
+    async updateRecord(){
+        if(this.saving||!this.validateRows())return;
+        this.saving=true;
+
+        try{
+            await this.request(this.api.update+'/'+this.editingId,{
+                method:'PUT',
+                body:JSON.stringify(this.toPayload(this.bulkRows[0]))
+            });
+            this.msg('Mating record updated.');
+            this.closeModal();
+            await this.loadRecords();
+        }catch(e){
+            this.msg(e.message,'error');
+        }finally{
+            this.saving=false;
+        }
+    },
+
     async saveBulk(){
         if(this.saving||!this.validateRows())return;
         this.saving=true;
 
         try{
-            if(this.editingId){
-                await this.request(this.api.update+'/'+this.editingId,{
-                    method:'PUT',
-                    body:JSON.stringify(this.toPayload(this.bulkRows[0]))
-                });
-                this.msg('Mating record updated in MySQL.');
-            }else{
-                const records=this.bulkRows.map(r=>{
-                    const x=this.toPayload(r);
-                    delete x.cooperative_id;
-                    return x;
-                });
-
-                await this.request(this.api.bulk,{
-                    method:'POST',
-                    body:JSON.stringify({
-                        cooperative_id:Number(this.selectedCooperative),
-                        records
-                    })
-                });
-
-                this.msg(records.length+' mating record(s) saved to MySQL.');
-            }
-
+            const records=this.bulkRows.map(r=>{
+                const x=this.toPayload(r);
+                delete x.cooperative_id;
+                return x;
+            });
+            await this.request(this.api.bulk,{
+                method:'POST',
+                body:JSON.stringify({cooperative_id:Number(this.selectedCooperative),records})
+            });
+            this.msg(records.length===1?'Mating record saved.':records.length+' mating records saved.');
             this.closeModal();
             await this.loadRecords();
         }catch(e){
@@ -1180,15 +1168,32 @@ function breedingPage(){return {
         this.bulkRows=[];
     },
 
-    async remove(id){
-        if(!confirm('Delete this mating record from MySQL?'))return;
+    confirmDelete(record){
+        this.deleteRecord=record;
+        this.deleteError='';
+        this.$refs.deleteDialog.showModal();
+    },
 
+    async remove(){
+        if(this.deleting||!this.deleteRecord)return;
+        this.deleting=true;
+        this.deleteError='';
         try{
-            await this.request(this.api.delete+'/'+id,{method:'DELETE'});
+            await this.request(this.api.delete+'/'+this.deleteRecord.id,{method:'DELETE'});
+        }catch(e){
+            this.deleteError=e.message;
+            return;
+        }finally{
+            this.deleting=false;
+        }
+
+        this.$refs.deleteDialog.close();
+        this.deleteRecord=null;
+        try{
             await this.loadRecords();
             this.msg('Mating record deleted.');
         }catch(e){
-            this.msg(e.message,'error');
+            this.msg('Mating record deleted. Refresh the page to update the list.','error');
         }
     },
 

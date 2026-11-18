@@ -180,42 +180,6 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
       if($request->query('table_export')==='csv'){$exportRows=$consolidatedRows->values();return response()->streamDownload(function()use($exportRows){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['No.','Name of Farmer','Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Calf Breeding Method','Calf Sire ID','Calf Monitoring Date','PD','Type of Estrus','Breeding Method','Breeding Sire ID','Breeding Date','Breeding Monitoring Date','Health BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Health Monitoring Date','Ear Tagging','Bolus','Other Service','Other Monitoring Date','Latest Monitoring Date','Remarks']);$date=fn($value)=>$value?Carbon::parse($value)->format('F j, Y'):'–';foreach($exportRows as $index=>$row){$health=$row['health'];$other=$row['other'];$otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ');fputcsv($file,[$index+1,$row['farmer'],$row['animal_id'],$date($row['birth_date']),$row['dam_breed']?:'–',$row['bcs']??'–',$date($row['calf']['date']??null),$row['calf']['sex']??'–',$row['calf']['method']??'–',$row['calf']['sire_id']??'–',$date($row['calf']['monitoring_date']??null),$row['breeding']['pd']??'–',$row['breeding']['estrus']??'–',$row['breeding']['method']??'–',$row['breeding']['sire_id']??'–',$date($row['breeding']['date']??null),$date($row['breeding']['monitoring_date']??null),$health['bcs']['value']??($row['bcs']??'–'),$health['fecalysis']['value']??'–',$health['vaccine']['value']??'–',$health['deworming']['value']??'–',$health['vi_supp']['value']??'–',$health['flushing']['value']??'–',$date($row['health_monitoring_date']),$other['ear_tagging']['value']??($row['tag_number']?:'–'),$other['bolus']['value']??($row['bolus_id']?:'–'),$otherList?:'–',$date($row['other_monitoring_date']),$date($row['monitoring_date']),$row['remarks']?:'–']);}fclose($file);},'animal-monitoring-'.$reportYear.'.csv',['Content-Type'=>'text/csv; charset=UTF-8']);}
       $farmerOptions=$animalDirectory->map(fn($animal)=>trim(implode(' ',array_filter([$animal->first_name??null,$animal->middle_name??null,$animal->last_name??null]))))->filter()->unique()->sort()->values();$tableTotal=$consolidatedRows->count();$tablePerPage=(int)$request->query('table_per_page',25);if(!in_array($tablePerPage,[10,25,50,100],true))$tablePerPage=25;$tablePage=max(1,(int)$request->query('table_page',1));$tablePage=min($tablePage,max(1,(int)ceil($tableTotal/$tablePerPage)));$consolidatedRowsPage=new LengthAwarePaginator($consolidatedRows->forPage($tablePage,$tablePerPage)->values(),$tableTotal,$tablePerPage,$tablePage,['path'=>$request->url(),'query'=>$request->query(),'pageName'=>'table_page']);$liveAnimalTotal=$animalDirectory->count();$technicianOptions=DB::table('mating_records')->whereNotNull('technician')->where('technician','<>','')->distinct()->orderBy('technician')->pluck('technician');
       return view('monitoring',compact('counts','cooperatives','reports','activeReport','calendarReports','calendarReportsByDay','selectedMonth','selectedCooperativeId','reportSearch','reportSpecification','reportAvailability','reportStatus','calendarDaysInMonth','calendarStartOffset','previousMonth','nextMonth','technicianOptions','calendarEvents','calendarEventsByDate','calendarView','selectedDate','monitoringModules','animalAvailability','consolidatedRows','consolidatedRowsPage','tableSearch','tableCooperative','tableFarmer','tableAnimal','tableProvince','tableMunicipality','tableBarangay','tableDateStart','tableDateEnd','tableService','categoryLabels','reportYear','farmerOptions','tablePerPage','liveAnimalTotal','gipSummary','gipReportingDate','dryOffReviewDim'));
- } public function natureOfExit(Request $request){
-     $search=trim((string)$request->query('search',''));
-     $hasFarmerName=Schema::hasColumn('nature_of_exits','farmer_name');
-     $query=DB::table('nature_of_exits as exit_record')
-         ->leftJoin('cooperatives as cooperative','cooperative.id','=','exit_record.cooperative_id')
-         ->leftJoin('carabaos as animal','animal.id','=','exit_record.carabao_id')
-         ->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')
-         ->select('exit_record.id','exit_record.exit_date','exit_record.nature_of_exit','exit_record.remarks')
-         ->selectRaw('cooperative.cooperative_name as cooperative_name')
-         ->selectRaw(($hasFarmerName
-             ? "COALESCE(NULLIF(exit_record.farmer_name, ''), NULLIF(CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), '')), ''))"
-             : "CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), ''))"
-         ).' as farmer_name')
-         ->selectRaw("COALESCE(NULLIF(exit_record.registry_number, ''), NULLIF(animal.registry_number, '')) as registry_number");
-     if($search!=='')$query->where(function($builder)use($search,$hasFarmerName){
-         $like='%'.$search.'%';
-         $builder->where('cooperative.cooperative_name','like',$like)
-             ->orWhereRaw("CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), '')) LIKE ?",[$like])
-             ->orWhere('exit_record.registry_number','like',$like)
-             ->orWhere('animal.registry_number','like',$like)
-             ->orWhere('exit_record.nature_of_exit','like',$like)
-             ->orWhere('exit_record.remarks','like',$like);
-         if($hasFarmerName)$builder->orWhere('exit_record.farmer_name','like',$like);
-     });
-     $rows=$query->orderByDesc('exit_record.exit_date')->orderByDesc('exit_record.id')->paginate(25)->withQueryString();
-     $rows->getCollection()->transform(function($row){
-         if(!empty($row->exit_date))$row->exit_date=Carbon::parse($row->exit_date)->format('F j, Y');
-         return $row;
-     });
-     $summaryCards=DB::table('nature_of_exits')
-         ->select('nature_of_exit as nature')
-         ->selectRaw('COUNT(*) as total')
-         ->groupBy('nature_of_exit')
-         ->orderByDesc('total')
-         ->get();
-     return view('nature-of-exit-records',compact('rows','search','summaryCards'));
  }
  private function milkRecordsQuery(){
      return DB::table('milk_records as record')
@@ -246,22 +210,79 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  }
 
  public function index(\Illuminate\Http\Request $request, $module){
+     if (in_array($module, ['exits', 'nature-of-exit'], true)) return app(AnimalExitController::class)->index($request);
+     if ($module === 'mtd') return app(MtdController::class)->index($request);
      $table=$this->table($module);$allColumns=Schema::getColumnListing($table);$columns=$module==='bcs'?['cooperative_name','farmer_name','record_date','body_condition_score']:collect($allColumns)->reject(fn($column)=>in_array($column,['id','created_at','updated_at']))->values()->all();$search=trim((string)$request->query('search',$request->query('q','')));
      if($module==='health'){
-         $columns=['monitoring_date','registry_id','tag_number','cooperative_name','breed','services','dosage_ml','no_of_visits_monitored','no_of_treatments','remarks','actions'];
+         $columns=['cooperative_name','farmer_name','registry_id','tag_number','breed','monitoring_date','services','dosage_ml','deworming','vitamins_minerals','vaccination','uterine_flushing','ear_tagging','no_of_visits_monitored','no_of_treatments','remarks','actions'];
+         $farmerName = "CONCAT_WS(' ', NULLIF(TRIM(animal_farmer.first_name), ''), NULLIF(TRIM(animal_farmer.middle_name), ''), NULLIF(TRIM(animal_farmer.last_name), ''))";
+         $registryId = "COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(health_records.registry_number, ''), NULLIF(inventory_animal.animal_id, ''))";
          $query=DB::table('health_records')
              ->leftJoin('carabaos as inventory_animal','inventory_animal.id','=','health_records.carabao_id')
              ->leftJoin('farmers as animal_farmer','animal_farmer.id','=','inventory_animal.farmer_id')
              ->leftJoin('cooperatives as animal_cooperative','animal_cooperative.id','=',DB::raw('COALESCE(inventory_animal.cooperative_id, animal_farmer.cooperative_id)'))
              ->select('health_records.id','health_records.carabao_id','health_records.monitoring_date','health_records.remarks','health_records.source_data','inventory_animal.tag_number','inventory_animal.breed')
              ->addSelect('animal_cooperative.cooperative_name as cooperative_name')
-             ->selectRaw("COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(health_records.registry_number, ''), NULLIF(inventory_animal.animal_id, '')) as registry_id");
-         if($search!=='')$query->where(function($builder)use($search){$builder->orWhere('health_records.monitoring_date','like','%'.$search.'%')->orWhere('health_records.remarks','like','%'.$search.'%')->orWhere('inventory_animal.tag_number','like','%'.$search.'%')->orWhere('inventory_animal.breed','like','%'.$search.'%')->orWhere('animal_cooperative.cooperative_name','like','%'.$search.'%')->orWhereRaw("COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(health_records.registry_number, ''), NULLIF(inventory_animal.animal_id, '')) LIKE ?",['%'.$search.'%'])->orWhere('health_records.source_data','like','%'.$search.'%');});
-         $rows=$query->orderByDesc('health_records.id')->paginate(25)->withQueryString();
-         $rows->getCollection()->transform(function($row){$source=$this->decodeHealthSource($row->source_data??null);$row->services=$this->healthServicesArray($source);$row->no_of_visits_monitored=$this->healthActivityCount($source,'no_of_visits_monitored');$row->no_of_treatments=$this->healthActivityCount($source,'no_of_treatments');$row->monitoring_date=$row->monitoring_date?Carbon::parse($row->monitoring_date)->format('F j, Y'):'-';unset($row->source_data);return $row;});
+             ->selectRaw("$farmerName as farmer_name, $registryId as registry_id");
+         $healthFilters = $request->validate([
+             'cooperative_id' => ['nullable', 'integer', 'min:1'],
+             'breed' => ['nullable', 'string', 'max:255'],
+             'date_from' => ['nullable', 'date_format:Y-m-d'],
+             'date_to' => ['nullable', 'date_format:Y-m-d'],
+         ]);
+         $healthCooperatives = (clone $query)->select('animal_cooperative.id', 'animal_cooperative.cooperative_name')
+             ->whereNotNull('animal_cooperative.id')->distinct()->orderBy('animal_cooperative.cooperative_name')->get();
+         $healthBreeds = (clone $query)->select('inventory_animal.breed')->whereNotNull('inventory_animal.breed')
+             ->where('inventory_animal.breed', '!=', '')->distinct()->orderBy('inventory_animal.breed')->pluck('inventory_animal.breed');
+         $query->when($healthFilters['cooperative_id'] ?? null, fn ($builder, $id) => $builder->where('animal_cooperative.id', $id))
+             ->when($healthFilters['breed'] ?? null, fn ($builder, $breed) => $builder->where('inventory_animal.breed', $breed))
+             ->when($healthFilters['date_from'] ?? null, fn ($builder, $date) => $builder->where('health_records.monitoring_date', '>=', $date))
+             ->when($healthFilters['date_to'] ?? null, fn ($builder, $date) => $builder->where('health_records.monitoring_date', '<=', $date));
+         if ($search !== '') {
+             $pattern = '%'.$search.'%';
+             $query->where(function ($builder) use ($pattern, $farmerName, $registryId) {
+                 $builder->where('health_records.monitoring_date', 'like', $pattern)
+                     ->orWhere('health_records.remarks', 'like', $pattern)
+                     ->orWhere('inventory_animal.tag_number', 'like', $pattern)
+                     ->orWhere('inventory_animal.breed', 'like', $pattern)
+                     ->orWhere('animal_cooperative.cooperative_name', 'like', $pattern)
+                     ->orWhereRaw("$farmerName LIKE ?", [$pattern])
+                     ->orWhereRaw("$registryId LIKE ?", [$pattern])
+                     ->orWhere('health_records.source_data', 'like', $pattern);
+             });
+         }
+         $requestedPageSize = $request->query('per_page');
+         $perPage = in_array($requestedPageSize, ['10', '15', '25', '50', '100'], true) ? (int) $requestedPageSize : 15;
+         $rows=$query->orderByDesc('health_records.id')->paginate($perPage)->withQueryString();
+         $rows->getCollection()->transform(function ($row) {
+             $source = $this->decodeHealthSource($row->source_data ?? null);
+             $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
+             $row->worksheet_services = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
+             $row->worksheet_dosage = $worksheet['dosage'] ?? null;
+             foreach (['deworming', 'vitamins_minerals', 'vaccination', 'uterine_flushing', 'ear_tagging'] as $field) {
+                 $row->$field = $worksheet[$field] ?? null;
+             }
+             $row->remarks = $row->remarks ?? ($worksheet['remarks'] ?? null);
+             $row->services = $this->healthServicesArray($source);
+             $row->no_of_visits_monitored = $this->healthActivityCount($source, 'no_of_visits_monitored');
+             $row->no_of_treatments = $this->healthActivityCount($source, 'no_of_treatments');
+             $row->monitoring_date = $row->monitoring_date ? Carbon::parse($row->monitoring_date)->format('F j, Y') : '-';
+             unset($row->source_data);
+
+             return $row;
+         });
          $healthSummary=$this->healthSummary();
          $healthAnimals=DB::table('carabaos as animal')->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(animal.cooperative_id, farmer.cooperative_id)'))->orderBy('animal.registry_number')->orderBy('animal.animal_id')->get(['animal.id','animal.registry_number','animal.animal_id','animal.tag_number','animal.breed','cooperative.cooperative_name'])->map(fn($animal)=>['id'=>$animal->id,'registry_id'=>$animal->registry_number?:$animal->animal_id,'tag_number'=>$animal->tag_number,'breed'=>$animal->breed,'cooperative_name'=>$animal->cooperative_name]);
      }elseif($module==='bcs'){
+         $bcsFilters = $request->validate([
+             'cooperative_id' => ['nullable', 'integer', 'min:1'],
+             'score' => ['nullable', 'numeric'],
+             'date_from' => ['nullable', 'date_format:Y-m-d'],
+             'date_to' => ['nullable', 'date_format:Y-m-d'],
+         ]);
+         $bcsCooperatives = DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name']);
+         $cooperativeId = 'COALESCE(record_cooperative.id, animal_cooperative.id, farmer_cooperative.id)';
+         $cooperativeName = "COALESCE(NULLIF(record_cooperative.cooperative_name, ''), NULLIF(animal_cooperative.cooperative_name, ''), NULLIF(farmer_cooperative.cooperative_name, ''), 'N/A')";
          $query=DB::table('bcs_records as bcs')
              ->leftJoin('carabaos as animal','animal.id','=','bcs.carabao_id')
              ->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')
@@ -269,9 +290,25 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              ->leftJoin('cooperatives as animal_cooperative','animal_cooperative.id','=','animal.cooperative_id')
              ->leftJoin('cooperatives as farmer_cooperative','farmer_cooperative.id','=','farmer.cooperative_id')
              ->select('bcs.id','bcs.record_date','bcs.body_condition_score')
-             ->selectRaw("COALESCE(NULLIF(record_cooperative.cooperative_name, ''), NULLIF(animal_cooperative.cooperative_name, ''), NULLIF(farmer_cooperative.cooperative_name, ''), 'N/A') as cooperative_name")
+             ->selectRaw("$cooperativeName as cooperative_name")
              ->selectRaw("COALESCE(NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(farmer.first_name), ''), NULLIF(TRIM(farmer.middle_name), ''), NULLIF(TRIM(farmer.last_name), ''))), ''), 'N/A') as farmer_name");
-         if($search!=='')$query->where(function($builder)use($search){$builder->where('record_cooperative.cooperative_name','like','%'.$search.'%')->orWhere('animal_cooperative.cooperative_name','like','%'.$search.'%')->orWhere('farmer_cooperative.cooperative_name','like','%'.$search.'%')->orWhereRaw("CONCAT_WS(' ', farmer.first_name, farmer.middle_name, farmer.last_name) LIKE ?",['%'.$search.'%'])->orWhere('bcs.record_date','like','%'.$search.'%')->orWhere('bcs.body_condition_score','like','%'.$search.'%')->orWhere('bcs.registry_number','like','%'.$search.'%')->orWhere('animal.animal_id','like','%'.$search.'%');});
+         if (isset($bcsFilters['cooperative_id'])) $query->whereRaw("$cooperativeId = ?", [$bcsFilters['cooperative_id']]);
+         if (isset($bcsFilters['score'])) $query->where('bcs.body_condition_score', $bcsFilters['score']);
+         if (isset($bcsFilters['date_from'])) $query->where('bcs.record_date', '>=', $bcsFilters['date_from']);
+         if (isset($bcsFilters['date_to'])) $query->where('bcs.record_date', '<=', $bcsFilters['date_to']);
+         foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $term) {
+             $pattern = '%'.$term.'%';
+             $query->where(function ($builder) use ($cooperativeName, $pattern) {
+                 $builder->whereRaw("$cooperativeName LIKE ?", [$pattern])
+                     ->orWhereRaw("CONCAT_WS(' ', farmer.first_name, farmer.middle_name, farmer.last_name) LIKE ?", [$pattern])
+                     ->orWhere('bcs.record_date', 'like', $pattern)->orWhere('bcs.body_condition_score', 'like', $pattern)
+                     ->orWhere('bcs.registry_number', 'like', $pattern)->orWhere('animal.registry_number', 'like', $pattern)
+                     ->orWhere('animal.animal_id', 'like', $pattern)->orWhere('animal.tag_number', 'like', $pattern);
+             });
+         }
+         $bcsSummary = (clone $query)->select([])->selectRaw(
+             'COUNT(*) as records, COUNT(DISTINCT bcs.carabao_id) as animals, AVG(bcs.body_condition_score) as average_score, MAX(bcs.record_date) as latest_date'
+         )->first();
          $rows=$query->orderByDesc('bcs.record_date')->orderByDesc('bcs.id')->paginate(25)->withQueryString();
          $rows->getCollection()->transform(function($row){$row->record_date=$row->record_date?Carbon::parse($row->record_date)->format('d-M-Y'):'-';$row->body_condition_score=$row->body_condition_score??'-';return $row;});
      }elseif($module==='milk'){
@@ -296,6 +333,12 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              'period'=>(string)($filters['period']??''),
          ];
          $milkCooperatives=DB::table('cooperatives')->orderBy('cooperative_name')->get(['id','cooperative_name']);
+         $milkFarmers = DB::table('farmers')->whereNotNull('cooperative_id')->orderBy('last_name')->orderBy('first_name')
+             ->select('id', 'cooperative_id')->selectRaw("CONCAT_WS(' ', first_name, NULLIF(middle_name, ''), last_name) as name")->get();
+         $milkAnimals = DB::table('carabaos')->whereNotNull('farmer_id')->orderBy('animal_id')
+             ->select('id', 'farmer_id', 'animal_name')
+             ->selectRaw("COALESCE(NULLIF(animal_id, ''), NULLIF(registry_number, ''), NULLIF(tag_number, '')) as animal_number")
+             ->get()->filter(fn ($animal) => $animal->animal_number !== null)->values();
          $baseQuery=$this->milkRecordsQuery();
          if($search!=='')$baseQuery->where(function($builder)use($search){
              $like='%'.$search.'%';
@@ -340,11 +383,6 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                  'selected'=>$milkFilters['quarter']===$name,
              ];
          }
-         $maxQuarterProduction=max(array_column($milkQuarterSummaries,'total_production'));
-         foreach($milkQuarterSummaries as &$quarterSummary){
-             $quarterSummary['percent']=$maxQuarterProduction>0?$quarterSummary['total_production']/$maxQuarterProduction*100:0;
-         }
-         unset($quarterSummary);
          $query=(clone $baseQuery)
              ->whereYear('record.record_date',$selectedYear)
              ->selectRaw('YEAR(record.record_date) as year_collected')
@@ -360,6 +398,8 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          ];
          $rows=$query->orderByDesc('record.record_date')->orderByDesc('record.id')->paginate(25)->withQueryString();
          $rows->getCollection()->transform(fn($row)=>$this->decorateMilkRecord($row));
+     }elseif(in_array($module, ['meat', 'manure'], true)){
+         return $this->productIndex($request, $module, $search);
      }elseif($module==='fhpr'){
          $columns=$this->fhprDisplayColumns();
          $records=$this->fhprRecords();
@@ -378,7 +418,40 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      }
      $moduleTitle=$module==='bcs'?'Body Condition Score Records':($module==='milk'?'Milk Production Records':null);
      $bcsScores=$module==='bcs'?DB::table('bcs_records')->whereNotNull('body_condition_score')->distinct()->orderBy('body_condition_score')->pluck('body_condition_score')->map(fn($score)=>number_format((float)$score,2,'.',''))->values():collect();
-     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals'):[])+($module==='milk'?compact('milkSummary','milkCooperatives','milkYears','milkFilters','selectedYear','milkYearlySummaries','milkQuarterSummaries','maxQuarterProduction'):[]));
+     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals','healthFilters','healthCooperatives','healthBreeds'):[])+($module==='milk'?compact('milkSummary','milkCooperatives','milkFarmers','milkAnimals','milkYears','milkFilters','selectedYear','milkYearlySummaries','milkQuarterSummaries'):[])+($module==='bcs'?compact('bcsFilters','bcsCooperatives','bcsSummary'):[]));
+ }
+
+ private function productIndex(Request $request, string $module, string $search)
+ {
+     $moduleTitle = ucfirst($module).' Production';
+
+     $columns = ['cooperative_name', 'actual_date', 'reported_date', 'volume_kg', 'other_source_volume_kg', 'price_per_kg', 'value_php'];
+     $productFilters = $request->validate([
+         'cooperative_id' => ['nullable', 'integer', 'min:1'], 'year' => ['nullable', 'digits:4'],
+         'quarter' => ['nullable', 'in:1,2,3,4'], 'date' => ['nullable', 'date_format:Y-m-d'],
+     ]);
+     $productCooperatives = DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name']);
+     $date = 'COALESCE(record.actual_date, record.reported_date)';
+     $query = DB::table('cooperative_product_records as record')
+         ->leftJoin('cooperatives as cooperative', 'cooperative.id', '=', 'record.cooperative_id')
+         ->where('record.product_type', $module);
+     if ($search !== '') {
+         $pattern = '%'.$search.'%';
+         $query->where(fn ($builder) => $builder->where('cooperative.cooperative_name', 'like', $pattern)
+             ->orWhere('cooperative.cooperative_code', 'like', $pattern)->orWhere('record.source_data', 'like', $pattern));
+     }
+     if (isset($productFilters['cooperative_id'])) $query->where('record.cooperative_id', $productFilters['cooperative_id']);
+     $productYearly = (clone $query)->whereRaw("$date IS NOT NULL")->selectRaw("YEAR($date) as year, SUM(record.volume_kg) as volume")
+         ->groupByRaw("YEAR($date)")->orderByDesc('year')->get();
+     if (isset($productFilters['year'])) $query->whereRaw("YEAR($date) = ?", [$productFilters['year']]);
+     $productQuarterly = (clone $query)->whereRaw("$date IS NOT NULL")->selectRaw("QUARTER($date) as quarter, SUM(record.volume_kg) as volume")
+         ->groupByRaw("QUARTER($date)")->pluck('volume', 'quarter');
+     if (isset($productFilters['quarter'])) $query->whereRaw("QUARTER($date) = ?", [$productFilters['quarter']]);
+     if (isset($productFilters['date'])) $query->whereRaw("$date = ?", [$productFilters['date']]);
+     $productSummary = (clone $query)->selectRaw('SUM(record.volume_kg) as volume, SUM(record.other_source_volume_kg) as other_volume, SUM(record.value_php) as value')->first();
+     $rows = $query->select('record.*', 'cooperative.cooperative_name')->orderByRaw("$date DESC")->orderByDesc('record.id')->paginate(25)->withQueryString();
+
+     return view('modules.index', compact('module', 'moduleTitle', 'columns', 'rows', 'productFilters', 'productCooperatives', 'productYearly', 'productQuarterly', 'productSummary'));
  }
 
  private function decodeHealthSource(?string $sourceData): array
@@ -398,6 +471,10 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
 
  private function healthActivityCount(array $source,string $key): ?int
  {
+     $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
+     if (is_numeric($worksheet[$key] ?? null)) return max(0, (int) $worksheet[$key]);
+     $selected = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
+     if ($key === 'no_of_treatments' && $selected !== []) return count($selected);
      $services=$this->healthServicesArray($source);
      if($key==='no_of_visits_monitored')return 1;
      if($key==='no_of_treatments'&&$services!==[])return count($services);
@@ -416,6 +493,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          preg_match('/uterine.?flush|flush/',$name)===1=>'Uterine Flushing Services',
          preg_match('/fecalysis|\\bfs\\b/',$name)===1=>'Fecalysis Activities',
          preg_match('/ear.?tag/',$name)===1=>'Ear Tagging Activities',
+         preg_match('/artificial insemination|^ai$/',$name)===1=>'Artificial Insemination',
          preg_match('/recruit/',$name)===1=>'Recruitment Activities',
          preg_match('/hands.?on.*milk|milking/',$name)===1=>'Hands-on Milking Activities',
          preg_match('/forage/',$name)===1=>'Forage Demo Activities',
@@ -426,9 +504,23 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  private function healthSummary(): array
  {
      $records=DB::table('health_records')->get(['carabao_id','source_data']);
-     $serviceLabels=['Deworming'=>'Deworming Services','Vitamins'=>'Vitamins Services','Vaccination'=>'Vaccinations','Uterine Flushing'=>'Uterine Flushing Services','Fecalysis'=>'Fecalysis Activities','Ear Tagging'=>'Ear Tagging Activities','Recruitment'=>'Recruitment Activities','Hands-on Milking'=>'Hands-on Milking Activities','Forage Demo'=>'Forage Demo Activities'];$services=array_fill_keys(array_values($serviceLabels),0);
+     $services = array_fill_keys(['Deworming Services', 'Vitamins Services', 'Vaccinations', 'Uterine Flushing Services',
+         'Fecalysis Activities', 'Ear Tagging Activities', 'Artificial Insemination', 'Recruitment Activities',
+         'Hands-on Milking Activities', 'Forage Demo Activities'], 0);
      $visits=0;$treatments=0;
-     foreach($records as $record){$source=$this->decodeHealthSource($record->source_data);$visits+=$this->healthActivityCount($source,'no_of_visits_monitored')??0;$treatments+=$this->healthActivityCount($source,'no_of_treatments')??0;foreach($this->healthServicesArray($source) as $service){$name=$service['type']==='Other Services'?$service['other_service_name']:$service['type'];$serviceLabel=$this->healthServiceSummaryLabel((string)$name);if($serviceLabel)$services[$serviceLabel]++;}}
+     foreach ($records as $record) {
+         $source = $this->decodeHealthSource($record->source_data);
+         $visits += $this->healthActivityCount($source, 'no_of_visits_monitored') ?? 0;
+         $treatments += $this->healthActivityCount($source, 'no_of_treatments') ?? 0;
+         $names = \App\Support\HealthWorksheetMapping::selectedServices(\App\Support\HealthWorksheetMapping::fromSource($source));
+         if ($names === []) {
+             $names = array_map(fn ($service) => $service['type'] === 'Other Services' ? $service['other_service_name'] : $service['type'], $this->healthServicesArray($source));
+         }
+         foreach ($names as $name) {
+             $label = $this->healthServiceSummaryLabel($name);
+             if ($label !== null) $services[$label]++;
+         }
+     }
      return ['animals'=>$records->pluck('carabao_id')->filter()->unique()->count(),'visits'=>$visits,'treatments'=>$treatments,'services'=>$services,'activities'=>$records->count()];
  }
 
@@ -659,11 +751,64 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      return $tagNumber===''||(is_numeric($tagNumber)&&(float)$tagNumber===0.0)?'-':$tagNumber;
  }
 
- public function template($module){abort_if($module==='fhpr',404);if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
+ private const PRODUCT_CSV_COLUMNS = ['cooperative_id', 'actual_date', 'reported_date', 'volume_kg', 'other_source_volume_kg', 'price_per_kg', 'value_php'];
+
+ public function template($module){if(in_array($module,['exits','nature-of-exit'],true))return app(AnimalExitController::class)->download(true);
+     if($module==='mtd')return app(MtdController::class)->download(true);abort_if($module==='fhpr',404);if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=in_array($module,['meat','manure'],true)?self::PRODUCT_CSV_COLUMNS:collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
  public function export($module){
+     if (in_array($module, ['exits', 'nature-of-exit'], true)) return app(AnimalExitController::class)->download(false);
+     if ($module === 'mtd') return app(MtdController::class)->download(false);
+     if (in_array($module, ['meat', 'manure'], true)) return response()->streamDownload(function () use ($module) {
+         $file = fopen('php://output', 'w');
+         fputcsv($file, self::PRODUCT_CSV_COLUMNS);
+         DB::table('cooperative_product_records')->where('product_type', $module)->orderBy('id')->chunk(500, function ($rows) use ($file) {
+             foreach ($rows as $row) fputcsv($file, array_map(fn ($field) => $row->$field, self::PRODUCT_CSV_COLUMNS));
+         });
+         fclose($file);
+     }, $module.'_production_export.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
      $table=$this->table($module);
      if($module==='fhpr'){$cols=$this->fhprDisplayColumns();$rows=$this->fhprRecords();$labels=['animal_identifier'=>'Animal ID','cooperative_name_display'=>'Cooperative','farmer_name'=>'Farmer Name','date_of_birth'=>'Date of Birth','status_updated'=>'Classification'];return response()->streamDownload(function()use($cols,$rows,$labels){$file=fopen('php://output','w');fputcsv($file,array_map(fn($column)=>$labels[$column]??ucwords(str_replace('_',' ',$column)),$cols));foreach($rows as $row)fputcsv($file,array_map(fn($column)=>data_get($row,$column,''),$cols));fclose($file);},'fhpr_export.csv');}
-     if($module==='health')return response()->streamDownload(function(){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['Monitoring Date','Animal Registry ID','Tag Number','Cooperative Name','Breed','Type of Service','Dosage (mL)','No. of Visits / Monitored','No. of Treatments','Service Remarks','Activity Remarks']);DB::table('health_records as record')->leftJoin('carabaos as animal','animal.id','=','record.carabao_id')->leftJoin('farmers as farmer','farmer.id','=','animal.farmer_id')->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(record.cooperative_id, animal.cooperative_id, farmer.cooperative_id)'))->select('record.*','animal.registry_number as animal_registry_number','animal.animal_id','animal.tag_number','animal.breed','cooperative.cooperative_name')->orderBy('record.id')->chunk(500,function($rows)use($file){foreach($rows as $row){$source=$this->decodeHealthSource($row->source_data);$services=$this->healthServicesArray($source);if(!$services)$services=[['type'=>'','other_service_name'=>'','dosage_ml'=>null,'remarks'=>'']];foreach($services as $index=>$service){$type=$service['type']==='Other Services'?($service['other_service_name']?:'Other Services'):$service['type'];fputcsv($file,[$row->monitoring_date?Carbon::parse($row->monitoring_date)->format('F j, Y'):'-',$row->animal_registry_number?:($row->registry_number?:$row->animal_id),$row->tag_number,$row->cooperative_name,$row->breed,$type,$service['dosage_ml']!==null&&$service['dosage_ml']!==''?$service['dosage_ml']:'-',$index===0?$this->healthActivityCount($source,'no_of_visits_monitored'):'',$index===0?$this->healthActivityCount($source,'no_of_treatments'):'',$service['remarks'],$row->remarks]);}}});fclose($file);},'health_export.csv');
+     if ($module === 'health') {
+         return response()->streamDownload(function () {
+             $file = fopen('php://output', 'w');
+             fwrite($file, "\xEF\xBB\xBF");
+             $serviceFields = ['deworming', 'vitamins_minerals', 'vaccination', 'uterine_flushing', 'ear_tagging'];
+             fputcsv($file, ['Monitoring Date', 'Animal Registry ID', 'Tag Number', 'Cooperative Name', 'Breed',
+                 'Type of Service', 'Dosage (mL)', 'No. of Visits / Monitored', 'No. of Treatments', 'Service Remarks', 'Activity Remarks',
+                 'Deworming', 'Vitamins / Mineral Supplements', 'Vaccination', 'Uterine Flushing', 'Ear Tagging']);
+             DB::table('health_records as record')
+                 ->leftJoin('carabaos as animal', 'animal.id', '=', 'record.carabao_id')
+                 ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
+                 ->leftJoin('cooperatives as cooperative', 'cooperative.id', '=', DB::raw('COALESCE(record.cooperative_id, animal.cooperative_id, farmer.cooperative_id)'))
+                 ->select('record.*', 'animal.registry_number as animal_registry_number', 'animal.animal_id', 'animal.tag_number', 'animal.breed', 'cooperative.cooperative_name')
+                 ->orderBy('record.id')->chunk(500, function ($rows) use ($file, $serviceFields) {
+                     foreach ($rows as $row) {
+                         $source = $this->decodeHealthSource($row->source_data);
+                         $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
+                         $importedServices = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
+                         $services = $this->healthServicesArray($source);
+                         if ($importedServices || ! $services) {
+                             $services = [['type' => implode('; ', $importedServices), 'dosage_ml' => $worksheet['dosage'] ?? null, 'remarks' => '']];
+                         } elseif (isset($worksheet['dosage']) && $worksheet['dosage'] !== '') {
+                             $services[0]['dosage_ml'] = $worksheet['dosage'];
+                         }
+                         foreach ($services as $index => $service) {
+                             $type = $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'];
+                             fputcsv($file, [
+                                 $row->monitoring_date ? Carbon::parse($row->monitoring_date)->format('F j, Y') : '-',
+                                 $row->animal_registry_number ?: ($row->registry_number ?: $row->animal_id),
+                                 $row->tag_number, $row->cooperative_name, $row->breed, $type, $service['dosage_ml'] ?? '-',
+                                 $index === 0 ? $this->healthActivityCount($source, 'no_of_visits_monitored') : '',
+                                 $index === 0 ? $this->healthActivityCount($source, 'no_of_treatments') : '',
+                                 $service['remarks'], $row->remarks ?? ($worksheet['remarks'] ?? null),
+                                 ...array_map(fn ($field) => $index === 0 ? ($worksheet[$field] ?? null) : null, $serviceFields),
+                             ]);
+                         }
+                     }
+                 });
+             fclose($file);
+         }, 'health_export.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+     }
      if($module==='milk')return response()->streamDownload(function(){
          if(ob_get_level()>0)ob_clean();
          $file=fopen('php://output','w');
@@ -683,6 +828,108 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      if($module==='health')$cols[]='services';
      return response()->streamDownload(function()use($table,$cols,$module){$file=fopen('php://output','w');fputcsv($file,$cols);$select=$module==='health'?array_merge(array_diff($cols,['services']),['source_data']):$cols;DB::table($table)->select($select)->orderBy('id')->chunk(500,function($rows)use($file,$cols,$module){foreach($rows as $row){$values=(array)$row;if($module==='health')$values['services']=$this->healthServicesSummary($values['source_data']??null);fputcsv($file,array_map(fn($column)=>$values[$column]??'',$cols));}});fclose($file);},$module.'_export.csv');
  }
+ public function storeMilkProduction(Request $request)
+ {
+     $data = $request->validateWithBag('milkProduction', [
+         'cooperative_id' => ['required', 'integer', 'exists:cooperatives,id'],
+         'farmer_id' => ['required', 'integer', \Illuminate\Validation\Rule::exists('farmers', 'id')->where('cooperative_id', $request->integer('cooperative_id'))],
+         'record_date' => ['required', 'date_format:Y-m-d'],
+         'collection_period' => ['required', 'in:AM,PM'],
+         'total_liters' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+         'number_of_cows' => ['required', 'integer', 'min:0', 'max:4294967295'],
+         'carabao_id' => ['exclude_unless:number_of_cows,1', 'nullable', 'integer', \Illuminate\Validation\Rule::exists('carabaos', 'id')->where('farmer_id', $request->integer('farmer_id'))],
+         'price_per_kg' => ['required', 'numeric', 'min:0', 'max:99999999.99'],
+         'milk_traded' => ['required', 'numeric', 'min:0', 'max:9999999999.99'],
+     ]);
+
+     DB::transaction(function () use ($data) {
+         DB::table('cooperatives')->where('id', $data['cooperative_id'])->lockForUpdate()->first();
+         $farmer = DB::table('farmers')->where('id', $data['farmer_id'])->where('cooperative_id', $data['cooperative_id'])->first();
+         if (! $farmer) {
+             throw \Illuminate\Validation\ValidationException::withMessages(['farmer_id' => 'Select a farmer from this cooperative.'])->errorBag('milkProduction');
+         }
+
+         $farmerName = implode(' ', array_filter([$farmer->first_name, $farmer->middle_name, $farmer->last_name]));
+         $existing = DB::table('milk_records')->where('cooperative_id', $data['cooperative_id'])
+             ->where('record_date', $data['record_date'])->where('collection_period', $data['collection_period'])
+             ->where(fn ($query) => $query->where('farmer_id', $farmer->id)
+                 ->orWhere(fn ($legacy) => $legacy->whereNull('farmer_id')->where('farmer_name', $farmerName)))->exists();
+         if ($existing) {
+             throw \Illuminate\Validation\ValidationException::withMessages(['record_date' => 'A record already exists for this farmer, collection date, and AM / PM period.'])->errorBag('milkProduction');
+         }
+
+         DB::table('milk_records')->insert($data + ['farmer_name' => $farmerName, 'created_at' => now(), 'updated_at' => now()]);
+     });
+
+     return redirect()->route('ui.milk', ['year' => substr($data['record_date'], 0, 4)])->with('success', 'Milk production record saved.');
+ }
+
+ private function productProductionRules(bool $import = false): array
+ {
+     return [
+         'cooperative_id' => [$import ? 'nullable' : 'required', 'integer', 'exists:cooperatives,id'],
+         'actual_date' => [$import ? 'nullable' : 'required', 'date_format:Y-m-d'],
+         'reported_date' => ['nullable', 'date_format:Y-m-d'],
+         'volume_kg' => [$import ? 'nullable' : 'required', 'numeric', 'min:0', 'max:9999999999.99'],
+         'other_source_volume_kg' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+         'price_per_kg' => ['nullable', 'numeric', 'min:0', 'max:9999999999.99'],
+         'value_php' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99'],
+     ];
+ }
+
+ public function storeProductProduction(Request $request, string $module)
+ {
+     $data = $request->validateWithBag('productProduction', $this->productProductionRules());
+     DB::table('cooperative_product_records')->insert($data + ['product_type' => $module, 'created_at' => now(), 'updated_at' => now()]);
+
+     return redirect()->route('ui.'.$module, ['year' => substr($data['actual_date'], 0, 4)])->with('success', ucfirst($module).' production record saved.');
+ }
+
+ private function importProductCsv(Request $request, string $module)
+ {
+     $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']]);
+     $file = fopen($request->file('file')->getRealPath(), 'r');
+     $records = [];
+     try {
+         $line = 0;
+         do {
+             $headerRow = fgetcsv($file, 0, ',', '"', '');
+             $line++;
+         } while ($headerRow === [null]);
+         $headers = array_map(fn ($field) => trim($field, "\xEF\xBB\xBF \t"), $headerRow ?: []);
+         if ($headers !== self::PRODUCT_CSV_COLUMNS) {
+             throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'Use the '.ucfirst($module).' Production CSV template.']);
+         }
+         while (($row = fgetcsv($file, 0, ',', '"', '')) !== false) {
+             $line++;
+             if ($row === [null]) continue;
+             if (count($row) !== count($headers)) {
+                 throw \Illuminate\Validation\ValidationException::withMessages(['file' => "Row {$line} has the wrong number of columns."]);
+             }
+             $values = array_map(fn ($value) => trim((string) $value) === '' ? null : trim((string) $value), $row);
+             $validator = \Illuminate\Support\Facades\Validator::make(array_combine($headers, $values), $this->productProductionRules(true));
+             if ($validator->fails()) {
+                 throw \Illuminate\Validation\ValidationException::withMessages(['file' => "Row {$line}: ".$validator->errors()->first()]);
+             }
+             if (array_filter($values, fn ($value) => $value !== null)) $records[] = $validator->validated();
+         }
+     } finally {
+         fclose($file);
+     }
+     if (! $records) throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'The CSV contains no '.$module.' production records.']);
+
+     DB::transaction(function () use ($records, $module) {
+         foreach ($records as $record) {
+             $key = $record + ['product_type' => $module];
+             if (! DB::table('cooperative_product_records')->where($key)->exists()) {
+                 DB::table('cooperative_product_records')->insert($key + ['created_at' => now(), 'updated_at' => now()]);
+             }
+         }
+     });
+
+     return back()->with('success', 'Processed '.count($records).' '.$module.' production record(s).');
+ }
+
  private function importMilkCsv(Request $request){
      $request->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);
      $file=fopen($request->file('file')->getRealPath(),'r');
@@ -814,5 +1061,6 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      return back()->with('success','Imported or updated '.count($records).' milk production record(s).');
  }
 
- public function import(Request $r,$module){abort_if($module==='fhpr',404);if($module==='milk')return $this->importMilkCsv($r);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at'])||($module==='health'&&$c==='remarks'))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
+ public function import(Request $r,$module){if(in_array($module,['exits','nature-of-exit'],true))return app(AnimalExitController::class)->import($r);
+     if($module==='mtd')return app(MtdController::class)->import($r);abort_if($module==='fhpr',404);if($module==='milk')return $this->importMilkCsv($r);if(in_array($module,['meat','manure'],true))return $this->importProductCsv($r,$module);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
 }
