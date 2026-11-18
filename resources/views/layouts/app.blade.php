@@ -10,6 +10,8 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="{{ asset('css/table-drag-scroll.css') }}">
+    <script defer src="{{ asset('js/table-drag-scroll.js') }}"></script>
 
     <style>
         [x-cloak] { display: none !important; }
@@ -108,5 +110,6 @@
 
     {{-- Athena temporarily disabled for local development --}}
 
+    @include('partials.table-pagination-assets')
 </body>
 </html>

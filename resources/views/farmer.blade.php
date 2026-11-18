@@ -192,7 +192,7 @@
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">District</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Region</th>
                         <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Cooperative</th>
-                        <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Registration Date</th>
+                        <th class="whitespace-nowrap px-4 py-3.5 font-semibold">Date Register</th>
                         <th class="whitespace-nowrap px-4 py-3.5 text-right font-semibold">Actions</th>
                     </tr>
                 </thead>
@@ -228,17 +228,17 @@
 
                             <td class="whitespace-nowrap px-4 py-4 text-right">
                                 <div class="flex justify-end gap-1.5">
-                                    <button @click="viewFarmer(farmer)" title="View"
+                                    <button type="button" @click="viewFarmer(farmer)" title="View" aria-label="View farmer"
                                             class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100">
-                                        <i class="fa-solid fa-eye"></i>
+                                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                     </button>
-                                    <button @click="editFarmer(farmer)" title="Edit"
+                                    <button type="button" @click="editFarmer(farmer)" title="Edit" aria-label="Edit farmer"
                                             class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
-                                        <i class="fa-solid fa-pen"></i>
+                                        <i class="fa-solid fa-pen" aria-hidden="true"></i>
                                     </button>
-                                    <button @click="deleteFarmer(farmer)" title="Delete"
+                                    <button type="button" @click="deleteFarmer(farmer)" title="Delete" aria-label="Delete farmer"
                                             class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
-                                        <i class="fa-solid fa-trash"></i>
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             </td>
@@ -258,41 +258,7 @@
 
       
         {{-- Pagination --}}
-        <div class="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-slate-500">
-                Showing
-                <span class="font-semibold text-slate-700"
-                    x-text="filteredFarmers().length ? (currentPage - 1) * perPage + 1 : 0"></span>
-                to
-                <span class="font-semibold text-slate-700"
-                    x-text="Math.min(currentPage * perPage, filteredFarmers().length)"></span>
-                of
-                <span class="font-semibold text-slate-700"
-                    x-text="filteredFarmers().length"></span>
-                farmers
-            </p>
-
-            <div class="flex items-center gap-2">
-                <button type="button"
-                    @click="previousPage()"
-                    :disabled="currentPage <= 1"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                    <i class="fa-solid fa-chevron-left mr-1"></i> Previous
-                </button>
-
-                <span class="px-2 text-sm font-semibold text-slate-700">
-                    Page <span x-text="currentPage"></span>
-                    of <span x-text="totalPages()"></span>
-                </span>
-
-                <button type="button"
-                    @click="nextPage()"
-                    :disabled="currentPage >= totalPages()"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                    Next <i class="fa-solid fa-chevron-right ml-1"></i>
-                </button>
-            </div>
-        </div>
+        @include('partials.table-pagination', ['count' => 'filteredFarmers().length', 'page' => 'currentPage', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => NULL])
 
 
 
@@ -779,7 +745,7 @@ const registerFarmerPage = () => {
         farmers: [],
         cooperatives: [],
         currentPage: 1,
-        perPage: 10,
+        perPage: 15,
         activeCard: '',
 
         bulkModalOpen: false,
@@ -937,9 +903,7 @@ const registerFarmerPage = () => {
                     row.cooperative ||
                     '',
 
-                registration_date: row.registration_date
-                    ? String(row.registration_date).slice(0, 10)
-                    : '',
+                registration_date: String(row.registration_date || row.created_at || '').slice(0, 10),
 
                 birthday: row.birthday
                     ? String(row.birthday).slice(0, 10)
@@ -1572,18 +1536,6 @@ const registerFarmerPage = () => {
             );
         },
 
-        previousPage() {
-            if (this.currentPage > 1) {
-                this.currentPage--;
-            }
-        },
-
-        nextPage() {
-            if (this.currentPage < this.totalPages()) {
-                this.currentPage++;
-            }
-        },
-
         availableYears() {
             return [
                 ...new Set(
@@ -1749,7 +1701,7 @@ const registerFarmerPage = () => {
                 { label: 'Municipality', value: farmer.municipality },
                 { label: 'Province', value: farmer.province },
                 { label: 'Cooperative / Association', value: farmer.cooperative },
-                { label: 'Registration Date', value: farmer.registration_date }
+                { label: 'Date Register', value: farmer.registration_date }
             ];
         },
 
@@ -2324,7 +2276,7 @@ const registerFarmerPage = () => {
                                 <th>Barangay</th>
                                 <th>Municipality</th>
                                 <th>Province</th>
-                                <th>Registration Date</th>
+                                <th>Date Register</th>
                             </tr>
                         </thead>
                         <tbody>

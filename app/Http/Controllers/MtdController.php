@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\TablePagination;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -43,7 +44,7 @@ class MtdController extends Controller
         }
         $mtdSummary = (clone $query)->selectRaw('COUNT(*) as records, COUNT(DISTINCT mtd.carabao_id) as animals, SUM(mtd.bulk_kg) as bulk')->first();
         $rows = $query->select('mtd.*', 'cooperative.cooperative_name')->selectRaw("$owner as farmer_name, $animalId as animal_identifier")
-            ->orderByDesc('mtd.test_date')->orderByDesc('mtd.id')->paginate(25)->withQueryString();
+            ->orderByDesc('mtd.test_date')->orderByDesc('mtd.id')->paginate(TablePagination::size($request))->withQueryString();
         $rows->through($this->withTeatResults(...));
         $mtdCooperatives = DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name']);
         $mtdFarmers = DB::table('farmers')->whereNotNull('cooperative_id')->orderBy('last_name')->orderBy('first_name')

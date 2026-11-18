@@ -306,33 +306,7 @@
         </div>
 
         {{-- Pagination --}}
-        <div class="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-slate-500">
-                Showing
-                <span class="font-semibold text-slate-700"
-                    x-text="filteredCooperatives().length ? (page - 1) * perPage + 1 : 0"></span>
-                to
-                <span class="font-semibold text-slate-700"
-                    x-text="Math.min(page * perPage, filteredCooperatives().length)"></span>
-                of
-                <span class="font-semibold text-slate-700" x-text="filteredCooperatives().length"></span>
-                cooperatives
-            </p>
-
-            <div class="flex items-center gap-2">
-                <button type="button" @click="previousPage()" :disabled="page <= 1"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                    <i class="fa-solid fa-chevron-left mr-1"></i> Previous
-                </button>
-                <span class="whitespace-nowrap px-2 text-sm font-semibold text-slate-700">
-                    Page <span x-text="page"></span> of <span x-text="totalPages()"></span>
-                </span>
-                <button type="button" @click="nextPage()" :disabled="page >= totalPages()"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">
-                    Next <i class="fa-solid fa-chevron-right ml-1"></i>
-                </button>
-            </div>
-        </div>
+        @include('partials.table-pagination', ['count' => 'filteredCooperatives().length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => NULL])
     </div>
 
     {{-- Add / Edit Modal --}}
@@ -982,7 +956,7 @@ document.addEventListener('alpine:init', () => {
         ],
 
         page: 1,
-        perPage: 10,
+        perPage: 15,
 
         showFormModal: false,
         showDetailModal: false,
@@ -1638,14 +1612,6 @@ document.addEventListener('alpine:init', () => {
                     this.filteredCooperatives().length / this.perPage
                 )
             );
-        },
-
-        nextPage() {
-            if (this.page < this.totalPages()) this.page++;
-        },
-
-        previousPage() {
-            if (this.page > 1) this.page--;
         },
 
         availableValues(field) {

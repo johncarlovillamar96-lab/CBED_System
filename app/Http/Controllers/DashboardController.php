@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\InventoryClassification;
+use App\Support\MilkProductionRecords;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $tables = [
             'farmers',
@@ -26,11 +29,43 @@ class DashboardController extends Controller
                 ? DB::table($table)->count()
                 : 0;
         }
-        $milkTotal = Schema::hasTable('milk_records') ? (float) DB::table('milk_records')->sum('total_liters') : 0;
+        $currentYear = now('Asia/Manila')->year;
+        $milkYear = $currentYear;
+        $milkYears = collect([$currentYear]);
+        $cooperativeMilk = collect();
+        if (Schema::hasTable('milk_records')) {
+            $milkYears = DB::table('milk_records')
+                ->whereNotNull('record_date')
+                ->whereNotNull('total_liters')
+                ->selectRaw('YEAR(record_date) as production_year')
+                ->distinct()
+                ->pluck('production_year')
+                ->map(fn ($year) => (int) $year)
+                ->push($currentYear)
+                ->unique()
+                ->sortDesc()
+                ->values();
+
+            $requestedYear = $request->query('milk_year');
+            if (in_array($requestedYear, $milkYears->map(fn ($year) => (string) $year)->all(), true)) {
+                $milkYear = (int) $requestedYear;
+            }
+
+            $cooperativeMilk = MilkProductionRecords::query()
+                ->where('record.record_date', '>=', sprintf('%04d-01-01', $milkYear))
+                ->where('record.record_date', '<', sprintf('%04d-01-01', $milkYear + 1))
+                ->whereNotNull('record.total_liters')
+                ->select('cooperative.cooperative_name')
+                ->selectRaw('SUM(record.total_liters) as total_liters')
+                ->groupBy('cooperative.id', 'cooperative.cooperative_name')
+                ->orderByRaw('CASE WHEN cooperative.id IS NULL THEN 1 ELSE 0 END')
+                ->orderBy('cooperative.cooperative_name')
+                ->get();
+        }
+        $milkTotal = $cooperativeMilk->sum('total_liters');
 
         $animalSummary = [
             'live' => 0, 'dead' => 0, 'pregnant' => 0, 'breedable' => 0, 'lactating' => 0, 'dry' => 0,
-            'breeding_age_females' => 1321, // User-verified total for the complete workbook set.
             'parity' => 0, 'animals' => 0, 'parity_0' => 0, 'parity_1' => 0,
             'parity_2' => 0, 'parity_3' => 0, 'parity_4_plus' => 0,
         ];
@@ -50,7 +85,9 @@ class DashboardController extends Controller
 
             $classificationSummary = DB::table('carabaos')
                 ->get(['classification'])
-                ->groupBy(fn ($animal) => trim((string) ($animal->classification ?? '')) ?: 'Unclassified')
+                ->map(fn ($animal) => trim((string) $animal->classification))
+                ->reject(fn ($classification) => $classification === '' || strcasecmp($classification, 'Unclassified') === 0)
+                ->groupBy(fn ($classification) => $classification)
                 ->map(fn ($animals, $classification) => (object) [
                     'classification' => $classification,
                     'total' => $animals->count(),
@@ -59,10 +96,23 @@ class DashboardController extends Controller
                 ->values();
 
             $animals = DB::table('carabaos as animal')
-                ->select('animal.id', 'animal.province', 'animal.status', 'animal.classification');
+                ->select('animal.id', 'animal.province', 'animal.status', 'animal.sex', 'animal.classification')
+                ->addSelect(Schema::hasColumn('carabaos', 'nature_of_exit')
+                    ? 'animal.nature_of_exit'
+                    : DB::raw('NULL as nature_of_exit'));
 
             if (Schema::hasColumn('carabaos', 'exit_reason')) {
                 $animals->addSelect('animal.exit_reason');
+            }
+            if (Schema::hasColumns('fhpr_records', ['carabao_id', 'days_in_milk'])) {
+                $animals->addSelect([
+                    'days_in_milk' => DB::table('fhpr_records')
+                        ->select('days_in_milk')
+                        ->whereColumn('carabao_id', 'animal.id')
+                        ->whereNotNull('days_in_milk')
+                        ->orderByDesc('id')
+                        ->limit(1),
+                ]);
             }
 
             foreach ($animals->get() as $animal) {
@@ -94,11 +144,7 @@ class DashboardController extends Controller
                         $provincialSummary[$province]['pregnant']++;
                     }
 
-                    $breedingAgeFemaleClasses = [
-                        'heifer', 'heiferpregnant', 'yearlingheifer', 'cowdry',
-                        'cowdrypregnant', 'cowlactating', 'cowlactatingpregnant',
-                    ];
-                    if (in_array($classification, $breedingAgeFemaleClasses, true)) {
+                    if (InventoryClassification::isLiveBreedableFemale($animal)) {
                         $animalSummary['breedable']++;
                         $provincialSummary[$province]['breedable']++;
                     }
@@ -112,6 +158,9 @@ class DashboardController extends Controller
             $provincialSummary = array_values($provincialSummary);
         }
 
-        return view('dashboard', compact('counts', 'animalSummary', 'classificationSummary', 'provincialSummary', 'milkTotal'));
+        return view('dashboard', compact(
+            'counts', 'animalSummary', 'classificationSummary', 'provincialSummary',
+            'milkTotal', 'milkYear', 'milkYears', 'cooperativeMilk',
+        ));
     }
 }

@@ -313,22 +313,7 @@
         </div>
 
         {{-- PAGINATION --}}
-        <div class="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-slate-500">
-                Showing
-                <span x-text="filteredCarabaos().length ? ((page-1)*perPage)+1 : 0"></span>
-                to
-                <span x-text="Math.min(page*perPage, filteredCarabaos().length)"></span>
-                of <span x-text="filteredCarabaos().length"></span> carabaos
-            </p>
-            <div class="flex items-center gap-2">
-                <button type="button" @click="previousPage()" :disabled="page <= 1"
-                    class="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">Previous</button>
-                <span class="px-2 text-sm">Page <span x-text="page"></span> of <span x-text="totalPages()"></span></span>
-                <button type="button" @click="nextPage()" :disabled="page >= totalPages()"
-                    class="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">Next</button>
-            </div>
-        </div>
+        @include('partials.table-pagination', ['count' => 'filteredCarabaos().length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => NULL])
     </section>
 
     <div class="mt-6 flex flex-col gap-2 border-t border-slate-200 pt-4 text-xs text-slate-500 sm:flex-row sm:justify-between">
@@ -718,7 +703,7 @@ document.addEventListener('alpine:init', () => {
         saving: false,
         loadError: '',
         page: 1,
-        perPage: 10,
+        perPage: 15,
 
         showAddModal: false,
         showDetailModal: false,
@@ -1425,14 +1410,6 @@ document.addEventListener('alpine:init', () => {
                 1,
                 Math.ceil(this.filteredCarabaos().length / this.perPage)
             );
-        },
-
-        nextPage() {
-            if (this.page < this.totalPages()) this.page++;
-        },
-
-        previousPage() {
-            if (this.page > 1) this.page--;
         },
 
         resetFilters() {

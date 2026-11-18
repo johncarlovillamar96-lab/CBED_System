@@ -1,0 +1,18 @@
+@media screen {
+    .cbed-table-scroll-fallback {
+        display: block;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+    }
+
+    .cbed-table-drag-surface {
+        cursor: default;
+    }
+
+    html.cbed-table-dragging,
+    html.cbed-table-dragging * {
+        cursor: default !important;
+        user-select: none !important;
+    }
+}

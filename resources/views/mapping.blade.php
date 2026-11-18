@@ -82,7 +82,7 @@
         </div>
 
         <div class="cbed-scrollbar overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-100 text-left text-sm">
+            <table data-table-pagination class="min-w-full divide-y divide-slate-100 text-left text-sm">
                 <thead class="bg-slate-50">
                     <tr>
                         <template x-for="header in headers" :key="header">

@@ -6,7 +6,7 @@
 
 @section('content')
 <div class="management-page dashboard-page min-w-0 bg-slate-50 text-slate-800">
-    <x-admin-page-header title="Nature of Exit" description="Review cooperative animal exit records and summaries." section="Animal Management" :tag="now()->format('F d, Y')" tag-icon="fa-regular fa-calendar" />
+    <x-admin-page-header title="Nature of Exit" description="Review cooperative animal exit records and summaries." section="Animal Management" />
 
     <section class="dashboard-status-section mb-7">
         <div class="mb-3">
@@ -83,9 +83,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="mt-3">
-            {{ $rows->links() }}
-        </div>
+        @include('partials.server-table-pagination', ['paginator' => $rows])
     </section>
 </div>
 @endsection

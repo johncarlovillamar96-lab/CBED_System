@@ -12,21 +12,18 @@
     $isPaginator = method_exists($rows, 'total');
     $totalRecords = $isPaginator ? $rows->total() : $rows->count();
     $currentPageRows = $rows->count();
+    $currentPage = $isPaginator ? $rows->currentPage() : 1;
     $totalFields = count($columns ?? []) + (($module ?? null) === 'bcs' ? 1 : 0);
-    $currentPage = method_exists($rows, 'currentPage') ? $rows->currentPage() : 1;
-    $lastPage = method_exists($rows, 'lastPage') ? $rows->lastPage() : 1;
-    $firstItem = method_exists($rows, 'firstItem') ? ($rows->firstItem() ?? 0) : ($currentPageRows ? 1 : 0);
-    $lastItem = method_exists($rows, 'lastItem') ? ($rows->lastItem() ?? 0) : $currentPageRows;
 
     $searchValue = request('search', in_array($module, ['health', 'bcs'], true) ? request('q', '') : '');
     $isProduct = in_array($module, ['meat', 'manure'], true);
     $productLabel = ucfirst($module);
-    $detailedSearch = $isProduct || in_array($module, ['health', 'bcs', 'mtd', 'exits'], true);
+    $detailedSearch = $isProduct || in_array($module, ['health', 'bcs', 'fhpr', 'mtd', 'exits'], true);
 
     $moduleDescriptions = [
         'bcs' => 'Review dated body condition score measurements and their animal registry references.',
         'milk' => 'Review milk production by cooperative, farmer, actual collection date, and AM/PM period.',
-        'fhpr' => 'Manage and monitor farm health and production records.',
+        'fhpr' => 'Review breeding and reproductive records.',
         'mtd' => 'Manage milk test day records and production information.',
         'exits' => 'Monitor animal exits, transfers, and disposal records.',
         'meat' => 'Manage meat production and related records.',
@@ -43,6 +40,14 @@
         ['title' => 'Rows on This Page', 'value' => number_format($currentPageRows), 'description' => 'Currently displayed', 'icon' => 'fa-list-check'],
         ['title' => 'Current Page', 'value' => $currentPage, 'description' => 'Pagination position', 'icon' => 'fa-file-lines'],
     ];
+    if ($module === 'fhpr') {
+        $summaryCards = [
+            ['title' => 'Breeding Records', 'value' => number_format($totalRecords), 'description' => 'Records matching current filters', 'icon' => 'fa-clipboard-list'],
+            ['title' => 'Female Animals', 'value' => number_format($fhprSummary['animals']), 'description' => 'Unique animals in the results', 'icon' => 'fa-cow'],
+            ['title' => 'Positive PD', 'value' => number_format($fhprSummary['positive']), 'description' => 'Animals whose latest PD result is positive', 'icon' => 'fa-heart-pulse'],
+            ['title' => 'AI Recorded', 'value' => number_format($fhprSummary['with_ai']), 'description' => 'Animals with a recorded AI service', 'icon' => 'fa-syringe'],
+        ];
+    }
     if ($module === 'bcs') {
         $summaryCards = [
             ['title' => 'BCS Records', 'value' => number_format($bcsSummary->records), 'description' => 'Records matching current filters', 'icon' => 'fa-clipboard-list'],
@@ -72,7 +77,7 @@
 <div class="mating-dashboard management-page min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <x-admin-page-header :title="$pageTitle" :description="$pageDescription" :section="in_array($module, ['farmers', 'cooperatives'], true) ? 'Workspace' : 'Animal Management'" :tag="now()->format($module === 'fhpr' ? 'F j,Y' : 'F d, Y')" tag-icon="fa-regular fa-calendar">
+    <x-admin-page-header :title="$pageTitle" :description="$pageDescription" :section="in_array($module, ['farmers', 'cooperatives'], true) ? 'Workspace' : 'Animal Management'">
         <a href="{{ route('modules.export', $module) }}" class="action-secondary">
             <i class="fa-solid fa-file-export"></i> {{ in_array($module, ['milk', 'bcs', 'meat', 'manure', 'mtd', 'exits'], true) ? 'Export' : 'Export CSV' }}
         </a>
@@ -284,13 +289,13 @@
         {{-- SEARCH --}}
         <form method="GET" action="{{ url()->current() }}"
               class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ $detailedSearch ? 'xl:grid-cols-8' : 'xl:grid-cols-6' }}">
-            @if($module === 'health')
+            @if(in_array($module, ['health', 'fhpr'], true))
                 <input type="hidden" name="per_page" value="{{ $rows->perPage() }}">
             @endif
             <div class="sm:col-span-2 {{ $detailedSearch ? 'xl:col-span-2' : 'xl:col-span-4' }}">
                 <label for="search" class="filter-label">{{ $detailedSearch ? 'Search Records' : 'Search' }}</label>
                 <input id="search" type="search" name="search" value="{{ $searchValue }}"
-                       class="filter-input" placeholder="{{ match($module) { 'health' => 'Farmer, registry ID, tag, or service', 'bcs', 'mtd' => 'Farmer, cooperative, animal ID, or tag', 'exits' => 'Farmer, animal, or exit reason', 'milk' => 'Cooperative or farmer name...', 'meat', 'manure' => 'Cooperative name or code', default => 'Search records...' } }}">
+                       class="filter-input" placeholder="{{ match($module) { 'health' => 'Farmer, registry ID, tag, or service', 'bcs', 'mtd' => 'Farmer, cooperative, animal ID, or tag', 'fhpr' => 'Animal ID, tag, farmer, or cooperative', 'exits' => 'Farmer, animal, or exit reason', 'milk' => 'Cooperative or farmer name...', 'meat', 'manure' => 'Cooperative name or code', default => 'Search records...' } }}">
             </div>
             @if($module === 'health')
                 <div>
@@ -313,6 +318,27 @@
                 </div>
                 <div><label for="health-date-from" class="filter-label">Monitoring Date From</label><input id="health-date-from" type="date" name="date_from" value="{{ $healthFilters['date_from'] ?? '' }}" class="filter-input"></div>
                 <div><label for="health-date-to" class="filter-label">Monitoring Date To</label><input id="health-date-to" type="date" name="date_to" value="{{ $healthFilters['date_to'] ?? '' }}" class="filter-input"></div>
+            @elseif($module === 'fhpr')
+                <div>
+                    <label for="fhpr-cooperative-filter" class="filter-label">Cooperative</label>
+                    <select id="fhpr-cooperative-filter" name="cooperative_id" class="filter-input">
+                        <option value="">All Cooperatives</option>
+                        @foreach ($fhprCooperatives as $cooperative)
+                            <option value="{{ $cooperative->_filter_cooperative_id }}" @selected((int) ($fhprFilters['cooperative_id'] ?? 0) === (int) $cooperative->_filter_cooperative_id)>{{ $cooperative->cooperative_name_display }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @foreach (['classification' => 'Classification', 'pregnancy_status' => 'PD Result', 'mating_type' => 'Mating Type'] as $filter => $label)
+                    <div>
+                        <label for="fhpr-{{ $filter }}-filter" class="filter-label">{{ $label }}</label>
+                        <select id="fhpr-{{ $filter }}-filter" name="{{ $filter }}" class="filter-input">
+                            <option value="">Any {{ $label }}</option>
+                            @foreach ($fhprOptions[$filter] as $value)
+                                <option value="{{ $value }}" @selected(($fhprFilters[$filter] ?? null) === $value)>{{ $value }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                @endforeach
             @elseif($module === 'bcs')
                 <div>
                     <label for="bcs-cooperative-filter" class="filter-label">Cooperative</label>
@@ -397,7 +423,7 @@
                 <button type="submit" class="action-primary {{ $module === 'milk' ? 'h-11' : '' }}">
                     <i class="fa-solid fa-magnifying-glass"></i> {{ $detailedSearch ? 'Apply Filters' : 'Search' }}
                 </button>
-                @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
+                @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'fhpr' && array_filter($fhprFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
                     <a href="{{ url()->current() }}" class="action-secondary">
                         <i class="fa-solid fa-xmark"></i> Clear
                     </a>
@@ -406,8 +432,8 @@
         </form>
 
         {{-- TABLE --}}
-        <div class="overflow-x-auto {{ $module === 'fhpr' ? 'fhpr-table-scroll' : '' }}" @if($module === 'fhpr') tabindex="0" role="region" aria-label="FHPR table with frozen animal details" @endif>
-            <table class="w-full min-w-max text-left text-sm {{ $module === 'fhpr' ? 'fhpr-data-table' : '' }}">
+        <div class="overflow-x-auto {{ $module === 'fhpr' ? 'fhpr-table-scroll' : '' }}" @if($module === 'fhpr') tabindex="0" role="region" aria-label="Breeding Summary table with frozen animal details" @endif>
+            <table @unless($isPaginator) data-table-pagination @endunless class="w-full min-w-max text-left text-sm {{ $module === 'fhpr' ? 'fhpr-data-table' : '' }}">
                 <thead class="bg-slate-100 text-xs uppercase text-slate-600">
                     <tr>
                         <th class="th whitespace-nowrap">No.</th>
@@ -604,64 +630,14 @@
             </table>
         </div>
 
-        {{-- PAGINATION --}}
-        <div class="flex flex-col justify-between gap-3 border-t px-5 py-4 sm:flex-row sm:items-center">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p class="text-sm text-slate-500">
-                    Showing <b>{{ $firstItem }}</b>–<b>{{ $lastItem }}</b>
-                    of <b>{{ number_format($totalRecords) }}</b>
-                    @if($module === 'health')
-                        (<b>{{ number_format($healthSummary['activities']) }}</b> total)
-                    @else
-                        records
-                    @endif
-                </p>
-                @if($module === 'health')
-                    <form method="get" action="{{ url('/health') }}" data-health-page-size>
-                        @foreach(array_filter($healthFilters) as $field => $value)
-                            <input type="hidden" name="{{ $field }}" value="{{ $value }}">
-                        @endforeach
-                        @if($searchValue !== '')
-                            <input type="hidden" name="search" value="{{ $searchValue }}">
-                        @endif
-                        <label class="flex items-center gap-2 text-sm text-slate-500">
-                            Rows per page
-                            <select name="per_page" class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
-                                @foreach([10, 15, 25, 50, 100] as $size)
-                                    <option value="{{ $size }}" @selected($rows->perPage() === $size)>{{ $size }}</option>
-                                @endforeach
-                            </select>
-                        </label>
-                        <noscript><button type="submit" class="page-btn">Apply</button></noscript>
-                    </form>
-                @endif
-            </div>
-
-            @if($isPaginator)
-                @php
-                    $prevUrl = $rows->previousPageUrl();
-                    $nextUrl = $rows->nextPageUrl();
-                    $qs = request()->except('page');
-                    if ($prevUrl) { $prevUrl = $rows->appends($qs)->previousPageUrl(); }
-                    if ($nextUrl) { $nextUrl = $rows->appends($qs)->nextPageUrl(); }
-                @endphp
-                <div class="flex items-center gap-2">
-                    @if($prevUrl)
-                        <a href="{{ $prevUrl }}" @if($module === 'health') data-health-page="previous" @endif class="page-btn">Previous</a>
-                    @else
-                        <span class="page-btn" aria-disabled="true" style="opacity:.4;cursor:not-allowed">Previous</span>
-                    @endif
-
-                    <span class="text-sm" @if($module === 'health') data-health-page-status tabindex="-1" @endif>Page <b>{{ $currentPage }}</b> of <b>{{ $lastPage }}</b></span>
-
-                    @if($nextUrl)
-                        <a href="{{ $nextUrl }}" @if($module === 'health') data-health-page="next" @endif class="page-btn">Next</a>
-                    @else
-                        <span class="page-btn" aria-disabled="true" style="opacity:.4;cursor:not-allowed">Next</span>
-                    @endif
-                </div>
-            @endif
-        </div>
+        @if ($isPaginator)
+            @include('partials.server-table-pagination', [
+                'paginator' => $rows,
+                'isHealthPager' => $module === 'health',
+                'filterParams' => $module === 'health' ? array_filter($healthFilters + ['search' => $searchValue]) : null,
+                'unfilteredTotal' => $module === 'health' ? $healthSummary['activities'] : null,
+            ])
+        @endif
         @if($module === 'health')
             <p data-health-pagination-message role="status" class="px-5 text-sm text-slate-600"></p>
         @endif
@@ -1113,7 +1089,7 @@ function fhprDryOffEditor(url, date, displayDate, recordId) {
 .action-primary{background:#0b1f3a;color:#fff}.action-primary:hover{background:#122b4d}
 .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.action-secondary:hover{background:#f1f5f9}
 .th{padding:1rem}.td{padding:1rem;vertical-align:top}
-.fhpr-table-scroll{max-height:70vh;overflow:auto;isolation:isolate;--fhpr-no:56px;--fhpr-cooperative:220px;--fhpr-farmer:200px;--fhpr-animal:170px}
+.fhpr-table-scroll{overflow-x:auto;isolation:isolate;--fhpr-no:56px;--fhpr-cooperative:220px;--fhpr-farmer:200px;--fhpr-animal:170px}
 .fhpr-data-table{border-collapse:separate;border-spacing:0}
 .fhpr-data-table thead th{position:sticky;top:0;z-index:20;background:#103c60}
 .fhpr-data-table tr>:nth-child(-n+4){position:sticky;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere}
@@ -1126,8 +1102,6 @@ function fhprDryOffEditor(url, date, displayDate, recordId) {
 .fhpr-data-table thead th:nth-child(-n+4){z-index:30;background:#103c60}
 .fhpr-data-table tbody td[colspan]{position:static;width:auto;max-width:none;box-shadow:none}
 @media(max-width:640px){.fhpr-table-scroll{--fhpr-no:40px;--fhpr-cooperative:80px;--fhpr-farmer:80px;--fhpr-animal:96px}.fhpr-data-table tr>:nth-child(-n+4){padding:.75rem .375rem;font-size:.7rem}}
-.page-btn{display:inline-flex;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;font-weight:600;color:#334155;background:#fff}
-a.page-btn:hover{background:#f1f5f9}
 .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}
 .pcc-stat-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(7,62,99,.13)}
 .pcc-stat-card:nth-child(2){border-top-color:#e87523}.pcc-stat-card:nth-child(3){border-top-color:#25835b}.pcc-stat-card:nth-child(4){border-top-color:#0786a5}

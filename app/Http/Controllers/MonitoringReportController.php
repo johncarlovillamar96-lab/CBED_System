@@ -34,18 +34,7 @@ class MonitoringReportController extends Controller
     {
         abort_unless(DB::table('cooperatives')->where('id', $cooperative)->exists(), 404);
 
-        $exitedAnimalIds = DB::table('nature_of_exits')
-            ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
-            ->pluck('carabao_id')->all();
-
-        $animals = DB::table('carabaos as animal')
-            ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
-            ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperative])
-            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
-            ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
-            ->whereNull('animal.death_date')
-            ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
-            ->whereNotIn('animal.id', $exitedAnimalIds)
+        $animals = $this->eligibleAnimals($cooperative)
             ->orderBy('animal.registry_number')
             ->orderBy('animal.bolus_id')
             ->orderBy('animal.id')
@@ -133,6 +122,27 @@ class MonitoringReportController extends Controller
                 'farmer_name' => trim(implode(' ', array_filter([$animal->first_name, $animal->middle_name, $animal->last_name]))),
             ];
         }));
+    }
+
+    private function eligibleAnimals(int $cooperativeId): \Illuminate\Database\Query\Builder
+    {
+        $exitPattern = 'out|dead|deceas|culled|sold|transfer|dispos|exit';
+        $animals = DB::table('carabaos as animal')
+            ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
+            ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
+            ->whereNull('animal.death_date')
+            ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", [$exitPattern])
+            ->whereNotExists(fn ($query) => $query->from('nature_of_exits')
+                ->whereColumn('nature_of_exits.carabao_id', 'animal.id')
+                ->whereRaw("LOWER(COALESCE(nature_of_exits.nature_of_exit, '')) REGEXP ?", [$exitPattern]));
+
+        if (Schema::hasColumn('carabaos', 'nature_of_exit')) {
+            $animals->whereRaw("LOWER(COALESCE(animal.nature_of_exit, '')) NOT REGEXP ?", [$exitPattern]);
+        }
+
+        return $animals;
     }
 
     public function store(Request $request)
@@ -308,52 +318,38 @@ class MonitoringReportController extends Controller
             'rows.*.unavailability_reason' => ['nullable', 'in:Not Present,Transferred,Sick,Dead,Sold,Other'],
             'rows.*.monitoring_specification' => ['nullable', 'in:calf_monitoring,breeding,health_nutrition,dry_off'],
             'rows.*.monitoring_data' => ['nullable', 'array'],
+            'rows.*.monitoring_services' => ['nullable', 'array:calf_monitoring,breeding,health_nutrition,dry_off'],
+            'rows.*.monitoring_services.*' => ['required', 'json'],
             'rows.*.remarks' => ['nullable', 'string', 'max:2000'],
         ];
         if ($creating) $rules['cooperative_id'] = ['required', 'integer', 'exists:cooperatives,id'];
         $validated = $request->validate($rules);
-        $bcsScores = $this->bcsScoreOptions();
-        foreach ($validated['rows'] as $index => $row) {
-            if (($row['availability_status'] ?? 'available') === 'unavailable') continue;
-            if (($row['body_condition_score'] ?? null) === null || $row['body_condition_score'] === '') continue;
-            $score = number_format((float) $row['body_condition_score'], 2, '.', '');
-            if (! in_array($score, $bcsScores, true)) {
-                abort(422, 'Animal row '.($index + 1).': choose a BCS value that exists in the current BCS records.');
-            }
-        }
 
-        $cooperativeId = $creating
-            ? (int) $validated['cooperative_id']
-            : (int) DB::table('monitoring_reports')->where('id', (int) $request->route('report'))->value('cooperative_id');
-        $excludedAnimalIds = DB::table('nature_of_exits')
-            ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
-            ->pluck('carabao_id')->all();
-        $expectedIds = DB::table('carabaos as animal')
-            ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
-            ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
-            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
-            ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
-            ->whereNull('animal.death_date')
-            ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])
-            ->whereNotIn('animal.id', $excludedAnimalIds)
-            ->pluck('animal.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
         $submittedIds = collect($validated['rows'])->pluck('carabao_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
 
-        if ($creating && $expectedIds !== $submittedIds) {
-            abort(422, 'The animal list changed. Reload the cooperative roster before saving this report.');
-        }
-        if (! $creating) {
+        if ($creating) {
+            $eligibleCount = $this->eligibleAnimals((int) $validated['cooperative_id'])
+                ->whereIn('animal.id', $submittedIds)->count();
+            abort_unless($eligibleCount === count($submittedIds), 422, 'One or more selected animals are no longer eligible. Reload the cooperative roster.');
+        } else {
             $reportId = (int) $request->route('report');
             $reportIds = DB::table('monitoring_report_details')->where('monitoring_report_id', $reportId)
                 ->pluck('carabao_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
             if ($reportIds !== $submittedIds) abort(422, 'The report animal list changed. Reload the report before saving.');
         }
 
-        foreach ($validated['rows'] as $index => $row) {
+        foreach ($validated['rows'] as $index => &$row) {
             if (($row['availability_status'] ?? 'available') !== 'unavailable') {
                 $this->validateSpecification($row['monitoring_specification'] ?? null, $row['monitoring_data'] ?? [], $index);
+                foreach ($row['monitoring_services'] ?? [] as $service => $payload) {
+                    $data = json_decode($payload, true);
+                    abort_unless(is_array($data), 422, 'Invalid monitoring service details.');
+                    $this->validateSpecification($service, $data, $index);
+                    $row['monitoring_services'][$service] = $data;
+                }
             }
         }
+        unset($row);
 
         return $validated;
     }
@@ -466,6 +462,14 @@ class MonitoringReportController extends Controller
             $availability = $row['availability_status'] ?? 'available';
             $specification = $availability === 'unavailable' ? null : ($row['monitoring_specification'] ?? null);
             $details = $availability === 'unavailable' ? [] : ($row['monitoring_data'] ?? []);
+            $services = $availability === 'available' ? ($row['monitoring_services'] ?? []) : [];
+            $previousDetails = json_decode((string) ($existing->monitoring_data ?? ''), true) ?: [];
+            $additional = $previousDetails['_additional_services'] ?? [];
+            if ($services !== []) {
+                $specification = array_key_first($services);
+                $details = $services[$specification];
+                unset($services[$specification]);
+            }
             $hasBcsInput = array_key_exists('body_condition_score', $row);
             $bodyConditionScore = $availability === 'unavailable'
                 ? ($existing->body_condition_score ?? null)
@@ -505,6 +509,21 @@ class MonitoringReportController extends Controller
             $result = $availability === 'unavailable'
                 ? ['monitoring_status' => 'unavailable']
                 : $this->syncDestination($detail, $animal, $specification, $details, $monitoringDate, $reportId);
+            if ($additional !== [] || $services !== []) {
+                $primaryData = json_decode((string) DB::table('monitoring_report_details')->where('id', $detailId)->value('monitoring_data'), true) ?: [];
+            }
+            foreach ($services as $service => $data) {
+                $serviceDetail = clone $detail;
+                $serviceDetail->destination_module = $additional[$service]['destination_module'] ?? null;
+                $serviceDetail->destination_record_id = $additional[$service]['destination_record_id'] ?? null;
+                $serviceDetail->destination_inventory_id = $additional[$service]['destination_inventory_id'] ?? null;
+                $additional[$service] = ['data' => $data] + $this->syncDestination(
+                    $serviceDetail, $animal, $service, $data, $monitoringDate, $reportId
+                );
+            }
+            if ($additional !== []) {
+                $result['monitoring_data'] = json_encode($primaryData + ['_additional_services' => $additional], JSON_UNESCAPED_UNICODE);
+            }
             DB::table('monitoring_report_details')->where('id', $detailId)->update($result + ['updated_at' => now()]);
             $this->syncInventoryClassification($animal);
         }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Database\Query\Builder;
+use App\Support\TablePagination;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -38,7 +39,7 @@ class AnimalExitController extends Controller
             SUM(LOWER(TRIM(nature_of_exit)) IN ('culled', 'cull', 'culling')) as culled,
             SUM(LOWER(TRIM(nature_of_exit)) IN ('sold', 'sale')) as sold,
             SUM(LOWER(TRIM(nature_of_exit)) IN ('dead', 'death', 'deceased')) as deaths")->first();
-        $rows = $query->orderByDesc('exit_date')->orderByDesc('record_id')->orderByDesc('carabao_id')->paginate(25)->withQueryString();
+        $rows = $query->orderByDesc('exit_date')->orderByDesc('record_id')->orderByDesc('carabao_id')->paginate(TablePagination::size($request))->withQueryString();
         $rows->through($this->withLocation(...));
         $exitCooperatives = DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name']);
         $exitFarmers = DB::table('farmers')->whereNotNull('cooperative_id')->orderBy('last_name')->orderBy('first_name')

@@ -89,7 +89,7 @@
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Sex</label><select x-model="filterSex" @change="page=1" class="filter-input"><option value="">All Calf Sexes</option><option value="Male">Male</option><option value="Female">Female</option></select></div>
             <div><label class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Reported Year</label><select x-model="filterYear" @change="page=1" class="filter-input"><option value="">All Years</option><template x-for="v in reportedYearOptions()" :key="v"><option :value="String(v)" x-text="v"></option></template></select></div>
         </div>
-        <div class="max-h-[72vh] overflow-auto" role="region" aria-label="Calf records table" tabindex="0">
+        <div class="overflow-x-auto" role="region" aria-label="Calf records table" tabindex="0">
             <table class="calf-records-table w-full min-w-[1900px] text-left text-sm">
                 <thead class="text-xs uppercase tracking-wide">
                     <tr>
@@ -115,7 +115,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="flex flex-col justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center"><p class="text-sm text-slate-500">Showing <b x-text="filteredRecords.length ? ((page-1)*perPage+1) : 0"></b>–<b x-text="Math.min(page*perPage,filteredRecords.length)"></b> of <b x-text="filteredRecords.length"></b> filtered records (<b x-text="allRecords.length"></b> total)</p><div class="flex items-center gap-2"><button type="button" @click="page=Math.max(1,page-1)" :disabled="page<=1" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Previous</button><span class="px-2 text-sm text-slate-600">Page <b x-text="page"></b> of <b x-text="totalPages()"></b></span><button type="button" @click="page=Math.min(totalPages(),page+1)" :disabled="page>=totalPages()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div>
+        @include('partials.table-pagination', ['count' => 'filteredRecords.length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => 'records.length'])
     </section>
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Calf Records</footer>
 
@@ -325,7 +325,7 @@
 function calfDropPage() {
     return {
         storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoading: false, search: '', filterProvince: '', filterBreed: '', filterSex: '', filterYear: '',
-        showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 10,
+        showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 15,
         showMatingPicker: false, dueMatings: [], loadingDueMatings: false, dueMatingsError: '',
         calfCooperatives: [], calfFarmers: [], calfInventory: [],
         cooperativePickerOpen: false, cooperativeQuery: '',

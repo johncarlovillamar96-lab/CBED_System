@@ -28,7 +28,7 @@
                     <label x-show="r.mating_type==='AI'" class="text-sm font-medium text-slate-700">Estrus / Heat *
                         <select x-model="r.heat_status" class="form-input mt-1"><option value="">Select</option><option>ES</option><option>NH</option><option>FTAI</option></select>
                     </label>
-                    <label class="text-sm font-medium text-slate-700 sm:col-span-2">Mating Technician *<input x-model.trim="r.mating_technician" class="form-input mt-1" placeholder="Technician name"></label>
+                    <label class="text-sm font-medium text-slate-700 sm:col-span-2">Mating Technician<input x-model.trim="r.mating_technician" class="form-input mt-1" placeholder="Technician name"></label>
                 </div>
             </fieldset>
 

@@ -8,27 +8,18 @@
 <div x-data="carabaoInventoryPage()" x-cloak class="inventory-page mating-dashboard min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <x-admin-page-header title="CBED Carabao Inventory" description="Encode animal records, review ownership, and track births and breeding status." section="Animal Management" breadcrumb="Inventory" tag="Animal Management · Inventory">
+    <x-admin-page-header title="CBED Carabao Inventory" description="Encode animal records, review ownership, and track births and breeding status." section="Animal Management" breadcrumb="Inventory">
         <button type="button" @click="exportXLSX()" class="action-secondary">
             <i class="fa-solid fa-file-export"></i> Export Excel
         </button>
         <button type="button" @click="downloadTemplate()" class="action-secondary">
             <i class="fa-solid fa-download"></i> Download Template
         </button>
-        <a href="{{ route('imports.cooperative.create') }}" class="action-secondary">
-            <i class="fa-solid fa-file-import"></i> Import Workbook by Cooperative
-        </a>
-        <a href="{{ route('imports.cooperative-workbook.create') }}" class="action-secondary">
-            <i class="fa-solid fa-file-excel"></i> Import All Workbook Tabs
-        </a>
         <button type="button" @click="openBulk()" class="cbed-add-button action-secondary">
             <i class="fa-solid fa-layer-group"></i> Bulk Add
         </button>
         <button type="button" @click="openAdd()" class="cbed-add-button action-primary">
             <i class="fa-solid fa-plus"></i> Add Carabao
-        </button>
-        <button type="button" @click="loadRecords(true)" class="action-secondary">
-            <i class="fa-solid fa-rotate"></i> Refresh
         </button>
     </x-admin-page-header>
 
@@ -98,7 +89,7 @@
         <div class="mt-5 border-t border-slate-100 pt-4">
             <h3 class="mb-3 text-sm font-bold text-slate-800">Breedable, Pregnant & Lactating by Province</h3>
             <div class="overflow-x-auto rounded-lg border border-slate-200">
-                <table class="min-w-full text-sm">
+                <table class="inventory-province-summary min-w-full text-sm">
                     <thead class="text-left text-xs uppercase"><tr><th class="px-4 py-3">Province</th><th class="px-4 py-3">Live Animals</th><th class="px-4 py-3">Breedable</th><th class="px-4 py-3">Pregnant</th><th class="px-4 py-3">Lactating</th><th class="px-4 py-3">Action</th></tr></thead>
                     <tbody class="divide-y divide-slate-100">
                         <template x-for="item in provincialSummary" :key="item.province">
@@ -273,26 +264,7 @@
         </div>
 
         {{-- PAGINATION --}}
-        <div class="flex flex-col justify-between gap-3 border-t px-5 py-4 sm:flex-row sm:items-center">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p class="text-sm text-slate-500">
-                    Showing <b x-text="filteredRecords.length?((page-1)*perPage+1):0"></b>–<b x-text="Math.min(page*perPage,filteredRecords.length)"></b>
-                    of <b x-text="filteredRecords.length"></b>
-                    (<b x-text="records.length"></b> total)
-                </p>
-                <label class="flex items-center gap-2 text-sm text-slate-500">
-                    Rows per page
-                    <select x-model.number="perPage" @change="page=1" class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
-                        <option :value="10">10</option><option :value="25">25</option><option :value="50">50</option><option :value="100">100</option>
-                    </select>
-                </label>
-            </div>
-            <div class="flex items-center gap-2">
-                <button type="button" @click="page=Math.max(1,page-1)" :disabled="page<=1" class="page-btn">Previous</button>
-                <span class="text-sm">Page <b x-text="page"></b> of <b x-text="totalPages"></b></span>
-                <button type="button" @click="page=Math.min(totalPages,page+1)" :disabled="page>=totalPages" class="page-btn">Next</button>
-            </div>
-        </div>
+        @include('partials.table-pagination', ['count' => 'filteredRecords.length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages', 'unfilteredCount' => 'records.length'])
     </section>
 
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Carabao Inventory</footer>
@@ -484,7 +456,7 @@
     <div x-cloak x-show="showBulk" x-transition.opacity class="inventory-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" @keydown.escape.window="showBulk=false">
         <div @click.outside="showBulk=false" class="inventory-modal-panel max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div class="inventory-modal-header flex items-center justify-between border-b p-5">
-                <div><h3 class="text-lg font-bold">Bulk Add Carabaos</h3><p class="text-sm text-slate-500">Enter multiple records below, or use Import Workbook by Cooperative to match farmers and animals.</p></div>
+                <div><h3 class="text-lg font-bold">Bulk Add Carabaos</h3><p class="text-sm text-slate-500">Enter multiple records below.</p></div>
                 <button type="button" @click="showBulk=false"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="p-5">
@@ -623,7 +595,7 @@ function carabaoInventoryPage() {
         provinceFilter: 'all',
         birthYearFilter: 'all',
         page: 1,
-        perPage: 10,
+        perPage: 15,
         showForm: false,
         showBulk: false,
         showView: false,
@@ -1022,7 +994,7 @@ function carabaoInventoryPage() {
                 if (announce) {
                     this.$dispatch('cbed-data-status', {
                         title: 'Inventory records unavailable',
-                        description: 'Use Refresh to try again.',
+                        description: 'Reload the page to try again.',
                         type: 'error'
                     });
                 } else {
@@ -1548,9 +1520,6 @@ function carabaoInventoryPage() {
 .action-primary,.action-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.5rem;padding:.625rem 1rem;font-size:.875rem;font-weight:600}
 .action-primary{background:#0b1f3a;color:#fff}.action-primary:hover{background:#122b4d}
 .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.action-secondary:hover{background:#f1f5f9}
-.page-btn{border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;padding:.5rem .75rem;font-size:.875rem;font-weight:600;color:#334155}
-.page-btn:hover:not(:disabled){background:#f1f5f9}
-.page-btn:disabled{opacity:.4;cursor:not-allowed}
 
 /* Hero */
 
@@ -1567,9 +1536,10 @@ function carabaoInventoryPage() {
 .inventory-panel{border-color:#dce6ed;box-shadow:0 7px 24px rgba(15,45,67,.06)}
 .inventory-panel thead,.inventory-panel thead th{background:#103c60;color:#fff;font-weight:700}
 .inventory-panel thead th{border-bottom:3px solid #e8b22f}
+.inventory-panel .inventory-province-summary thead,.inventory-panel .inventory-province-summary thead th{background:#f8fafc;color:#475569}
+.inventory-panel .inventory-province-summary thead th{border-bottom:1px solid #e2e8f0}
 .inventory-panel tbody tr{transition:background-color .14s ease}
 .inventory-panel tbody tr:hover{background:#f0f8fb}
-.inventory-table-scroll{max-height:72vh}
 .inventory-data-table{border-collapse:separate;border-spacing:0}
 .inventory-data-table thead th{position:sticky;top:0;z-index:20}
 .inventory-data-table tbody tr:nth-child(even){background:#f8fafc}

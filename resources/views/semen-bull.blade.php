@@ -57,7 +57,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="flex flex-col justify-between gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center"><p class="text-sm text-slate-500">Showing <b x-text="filteredBulls().length ? ((page - 1) * perPage + 1) : 0"></b>–<b x-text="Math.min(page * perPage, filteredBulls().length)"></b> of <b x-text="filteredBulls().length"></b> filtered records (<b x-text="bulls.length"></b> total)</p><div class="flex items-center gap-2"><label class="text-sm text-slate-500">Rows</label><select x-model.number="perPage" @change="page=1" class="filter-input !w-20"><option :value="10">10</option><option :value="25">25</option><option :value="50">50</option><option :value="100">100</option></select><button type="button" @click="page=Math.max(1,page-1)" :disabled="page<=1" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Previous</button><span class="px-2 text-sm text-slate-600">Page <b x-text="page"></b> of <b x-text="totalPages()"></b></span><button type="button" @click="page=Math.min(totalPages(),page+1)" :disabled="page>=totalPages()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div>
+        @include('partials.table-pagination', ['count' => 'filteredBulls().length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => NULL])
     </section>
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Semen Bull Management</footer>
 
@@ -138,7 +138,7 @@ function semenBullPage(){
         bulls:[], search:'', filterBreed:'', filterStatus:'', filterSource:'',
         showForm:false, showView:false, showDelete:false, selected:null, editingKey:null,
         loading:false, saving:false, deleting:false, errorMessage:'', notice:'', noticeType:'success', noticeTimer:null,
-        page:1, perPage:10,
+        page:1, perPage: 15,
         fields:['id','name','breed','registration','dob','source','sire','dam','semenUsed','status','remarks'],
         form:{id:'',name:'',breed:'',registration:'',dob:'',source:'',sire:'',dam:'',status:'Active',semenUsed:0,remarks:''},
 

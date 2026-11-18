@@ -31,7 +31,7 @@ class CooperativeWorkbookImportController extends Controller
         ['key' => 'bd_all', 'label' => 'BD_ALL', 'module' => 'Carabao Inventory', 'table' => 'carabaos', 'aliases' => ['bdall']],
         ['key' => 'bd_out', 'label' => 'BD_Out', 'module' => 'Nature of Exit', 'table' => 'nature_of_exits', 'aliases' => ['bdout']],
         ['key' => 'bcs', 'label' => 'BCS', 'module' => 'Body Condition Score', 'table' => 'bcs_records', 'aliases' => ['bcs']],
-        ['key' => 'fhpr_breeding', 'label' => 'FHPR_Breeding', 'module' => 'FHPR Summary', 'table' => 'fhpr_records', 'aliases' => ['fhprbreeding']],
+        ['key' => 'fhpr_breeding', 'label' => 'FHPR_Breeding', 'module' => 'Breeding Summary', 'table' => 'fhpr_records', 'aliases' => ['fhprbreeding']],
         ['key' => 'mating', 'label' => 'Mating', 'module' => 'Mating Attempts', 'table' => 'mating_records', 'aliases' => ['mating', 'matingattempts']],
         ['key' => 'mating_2', 'label' => 'Mating (2)', 'module' => 'Mating Attempts', 'table' => 'mating_records', 'aliases' => ['mating2']],
         ['key' => 'health_nutrition', 'label' => 'Health Nutrition', 'module' => 'Health & Nutrition', 'table' => 'health_records', 'aliases' => ['healthnutrition']],
@@ -213,12 +213,18 @@ class CooperativeWorkbookImportController extends Controller
         $file = $data['file'];
         $hash = hash_file('sha256', $file->getRealPath());
         $duplicate = DB::table('cooperative_workbook_batch_files')
-            ->where('batch_id', $batchId)
             ->where('file_hash', $hash)
+            ->where(fn ($query) => $query->where('batch_id', $batchId)->orWhere('status', 'completed'))
+            ->orderByDesc('id')
             ->first();
         if ($duplicate) {
+            $alreadyImported = $duplicate->status === 'completed';
+
             return response()->json([
                 'duplicate' => true,
+                'message' => $alreadyImported
+                    ? "This workbook is already in the system. The uploaded file matches the contents of \"{$duplicate->original_filename}\"."
+                    : "This workbook is already staged as \"{$duplicate->original_filename}\". Both files have the same contents.",
                 'file' => $this->bulkFileResponse($duplicate),
             ]);
         }

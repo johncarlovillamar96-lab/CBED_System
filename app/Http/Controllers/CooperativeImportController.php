@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\FarmerImportAddress;
+use App\Support\ImportAcquisition;
 use App\Support\SpreadsheetWorksheetReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -119,6 +121,7 @@ class CooperativeImportController extends Controller
     private function importInventoryRecords(array $records, int $coopId): array
     {
         return DB::transaction(function () use ($records, $coopId) {
+            DB::table('cooperatives')->where('id', $coopId)->lockForUpdate()->first();
             $seq = (int) DB::table('farmers')->where('cooperative_id', $coopId)->max('cooperative_sequence');
             $farmers = 0;
             $animals = 0;
@@ -153,8 +156,16 @@ class CooperativeImportController extends Controller
                     continue;
                 }
 
+                $acquisition = [
+                    'acquisition_date' => $this->date($this->value($row, 'date_of_acquisition')),
+                    'acquisition_cost' => ImportAcquisition::cost($row['acquisition_cost'] ?? null),
+                ];
                 $farmer = null;
                 if ($name !== '') {
+                    $address = array_filter(
+                        array_intersect_key($row, FarmerImportAddress::HEADERS),
+                        fn ($value) => $value !== null
+                    );
                     $key = $this->normalize($name);
                     $matches = collect($farmersByName[$key] ?? [])->unique('id')->values();
                     abort_if($matches->count() > 1, 422, "More than one existing farmer in this cooperative matches '{$name}'. Resolve the duplicate farmer records before importing.");
@@ -167,6 +178,8 @@ class CooperativeImportController extends Controller
                             'farmer_code' => $coopId.'-'.$seq,
                             'first_name' => '',
                             'last_name' => $name,
+                            ...$address,
+                            ...$acquisition,
                             'created_at' => now(), 'updated_at' => now(),
                         ]);
                         $farmer = DB::table('farmers')->find($farmerId);
@@ -177,6 +190,18 @@ class CooperativeImportController extends Controller
                         }
                         $farmers++;
                     } else {
+                        $changes = array_filter(
+                            $address,
+                            fn ($value, $field) => $value !== $farmer->$field,
+                            ARRAY_FILTER_USE_BOTH
+                        );
+                        $changes += ImportAcquisition::updates($acquisition, $farmer);
+                        if ($changes) {
+                            DB::table('farmers')->where('id', $farmer->id)->update($changes + ['updated_at' => now()]);
+                            foreach ($changes as $field => $value) {
+                                $farmer->$field = $value;
+                            }
+                        }
                         $matched++;
                     }
                 }
@@ -219,7 +244,6 @@ class CooperativeImportController extends Controller
                 }
 
                 $birthDate = $this->date($this->value($row, 'birthday'));
-                $acquisitionCost = str_replace(',', '', $this->value($row, 'acquisition_cost') ?? '');
                 $noClassification = \App\Support\InventoryClassification::isExcluded($status, $this->value($row, 'nature_of_exit'));
                 $animalData = [
                     'farmer_id' => $farmer?->id,
@@ -243,9 +267,8 @@ class CooperativeImportController extends Controller
                     'municipality' => $this->value($row, 'municipality'),
                     'province' => $this->value($row, 'province'),
                     'district' => $this->value($row, 'district'),
-                    'region' => $this->value($row, 'region') ?: 'Region III',
-                    'acquisition_date' => $this->date($this->value($row, 'date_of_acquisition')),
-                    'acquisition_cost' => is_numeric($acquisitionCost) ? $acquisitionCost : null,
+                    'region' => $this->value($row, 'region') ?: 'III',
+                    ...$acquisition,
                     ...$this->inventoryDetails($row),
                     'status' => $status,
                     'reproductive_status' => $this->value($row, 'reproductive'),
@@ -391,13 +414,9 @@ class CooperativeImportController extends Controller
                 'birth_place' => $get(['birth place', 'birthday place', 'place of birth']),
                 'breeder' => $get(['breeder', 'name of breeder']),
                 'association_coop_institution' => $get(['association/coop/institution', 'association / coop / institution', 'name of association/coop/institution', 'association coop institution', 'association/cooperative/institution']),
-                'barangay' => $get(['barangay', 'brgy']),
-                'municipality' => $get(['municipality', 'city/municipality']),
-                'province' => $get(['province']),
-                'district' => $get(['district']),
-                'region' => $get(['region']),
-                'date_of_acquisition' => $get(['date of acquisition', 'acquisition date']),
-                'acquisition_cost' => $get(['acquisition cost', 'aquisition cost']),
+                ...FarmerImportAddress::fromHeaders($get),
+                'date_of_acquisition' => $get(ImportAcquisition::DATE_HEADERS),
+                'acquisition_cost' => $get(ImportAcquisition::COST_HEADERS),
                 'nature_of_exit' => $get(['nature for exit', 'nature of exit']),
                 'entrustment' => $get(['type of entrustment', 'entrustment']),
                 'ownership_status' => $get(['ownership status']),

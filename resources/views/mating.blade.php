@@ -8,7 +8,7 @@
 <div x-data="breedingPage()" x-cloak class="mating-dashboard min-w-0 bg-slate-50 text-slate-800">
 
     {{-- PAGE HEADER --}}
-    <x-admin-page-header title="Mating & Pregnancy Monitoring" description="Breeding services, pregnancy checks, and yearly performance at a glance." section="Animal Management" breadcrumb="Mating" tag="Genetic Improvement · AI & Natural Mating">
+    <x-admin-page-header title="Mating & Pregnancy Monitoring" description="Breeding services, pregnancy checks, and yearly performance at a glance." section="Animal Management" breadcrumb="Mating">
         <button type="button" @click="exportCSV()" class="action-secondary">
             <i class="fa-solid fa-file-export"></i> Export CSV
         </button>
@@ -129,16 +129,21 @@
             <button type="button" @click="showReportedPregnancies()" class="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 font-semibold text-blue-800 hover:bg-blue-100">Show reported records</button>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[2500px] text-left text-sm">
+        <div class="mating-table-scroll overflow-x-auto">
+            <table class="mating-records-table w-full min-w-[2500px] table-fixed text-left text-sm">
+                <colgroup>
+                    <col class="mating-width-no"><col class="mating-width-cooperative"><col class="mating-width-farmer">
+                    <col class="mating-width-animal"><col class="mating-width-date"><col class="mating-width-type">
+                    <col span="16">
+                </colgroup>
                 <thead class="bg-slate-100 text-xs uppercase text-slate-600">
                     <tr>
-                        <th class="th">No.</th>
-                        <th class="th">Cooperative</th>
-                        <th class="th">Farmer</th>
-                        <th class="th">Animal ID</th>
-                        <th class="th">Mating Date</th>
-                        <th class="th">Mating Type</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-no">No.</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-cooperative">Cooperative</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-farmer">Farmer</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-animal">Animal ID</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-date">Mating Date</th>
+                        <th scope="col" class="th mating-frozen mating-frozen-type">Mating Type</th>
                         <th class="th">Bull ID</th>
                         <th class="th">Bull Name</th>
                         <th class="th">Straws</th>
@@ -160,12 +165,12 @@
                 <tbody class="divide-y divide-slate-100">
                     <template x-for="(r,i) in paginatedRecords()" :key="r.id">
                         <tr class="hover:bg-blue-50/50">
-                            <td class="td text-slate-500" x-text="(page-1)*perPage+i+1"></td>
-                            <td class="td" x-text="r.cooperative||'—'"></td>
-                            <td class="td" x-text="r.farmer||'—'"></td>
-                            <td class="td font-bold" x-text="r.animal_id||'—'"></td>
-                            <td class="td" x-text="displayDate(r.breeding_date)"></td>
-                            <td class="td"><span class="pcc-type-pill" :class="r.mating_type==='NM'?'pcc-type-nm':'pcc-type-ai'" x-text="r.mating_type==='NM'?'NM · Natural':'AI · Artificial Insemination'"></span></td>
+                            <td class="td mating-frozen mating-frozen-no text-slate-500" x-text="(page-1)*perPage+i+1"></td>
+                            <td class="td mating-frozen mating-frozen-cooperative" x-text="r.cooperative||'—'"></td>
+                            <td class="td mating-frozen mating-frozen-farmer" x-text="r.farmer||'—'"></td>
+                            <td class="td mating-frozen mating-frozen-animal font-bold" x-text="r.animal_id||'—'"></td>
+                            <td class="td mating-frozen mating-frozen-date" x-text="displayDate(r.breeding_date)"></td>
+                            <td class="td mating-frozen mating-frozen-type"><span class="pcc-type-pill" :class="r.mating_type==='NM'?'pcc-type-nm':'pcc-type-ai'" x-text="r.mating_type==='NM'?'NM · Natural':'AI · Artificial Insemination'"></span></td>
                             <td class="td" x-text="r.bull_id||'—'"></td>
                             <td class="td" x-text="r.bull_name||'—'"></td>
                             <td class="td" x-text="r.mating_type==='AI'?(r.straws||'—'):'—'"></td>
@@ -204,25 +209,13 @@
             </table>
         </div>
 
-        <div class="flex flex-col justify-between gap-3 border-t px-5 py-4 sm:flex-row sm:items-center">
-            <p class="text-sm text-slate-500">
-                Showing <b x-text="filteredRecords().length?((page-1)*perPage+1):0"></b>–
-                <b x-text="Math.min(page*perPage,filteredRecords().length)"></b>
-                of <b x-text="filteredRecords().length"></b>
-                (<b x-text="records.length"></b> total)
-            </p>
-            <div class="flex items-center gap-2">
-                <button type="button" @click="page=Math.max(1,page-1)" :disabled="page<=1" class="page-btn">Previous</button>
-                <span class="text-sm">Page <b x-text="page"></b> of <b x-text="totalPages()"></b></span>
-                <button type="button" @click="page=Math.min(totalPages(),page+1)" :disabled="page>=totalPages()" class="page-btn">Next</button>
-            </div>
-        </div>
+        @include('partials.table-pagination', ['count' => 'filteredRecords().length', 'page' => 'page', 'size' => 'perPage', 'pages' => 'totalPages()', 'unfilteredCount' => 'records.length'])
     </section>
 
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · Mating & Pregnancy Monitoring</footer>
 
     {{-- BULK ADD / EDIT MODAL --}}
-    <div x-show="showBulk" x-cloak @keydown.escape.window="if(showBulk&&!saving&&!editingId)closeModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
+    <div x-show="showBulk" x-cloak @keydown.escape.window="if(showBulk&&!saving&&!editingId&&!$refs.pendingPdDialog.open)closeModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
         <div @click.outside="if(!editingId)closeModal()" role="dialog" aria-modal="true" aria-labelledby="mating-modal-title" class="max-h-[95vh] w-full overflow-hidden rounded-2xl bg-white shadow-2xl" :class="editingId?'max-w-6xl':'max-w-[98vw]'">
             <div class="flex items-start justify-between border-b p-5">
                 <div>
@@ -238,32 +231,27 @@
             </div>
 
             <div class="max-h-[calc(95vh-90px)] overflow-auto p-4 sm:p-5">
-                <div class="mb-5 grid grid-cols-1 gap-4 rounded-xl border bg-slate-50 p-4" :class="editingId?'':'md:grid-cols-3'">
-                    <div>
-                        <label class="form-label" x-text="editingId?'Cooperative':'Cooperative *'"></label>
-                        <input x-show="editingId" readonly aria-label="Cooperative" :value="bulkRows[0]?.cooperative || cooperatives.find(c=>String(c.id)===selectedCooperative)?.name || ''" class="form-input bg-slate-100">
-                        <select x-show="!editingId" :disabled="!!editingId" x-model="selectedCooperative" @change="cooperativeChanged()" class="form-input">
-                            <option value="">Select cooperative</option>
-                            <template x-for="c in cooperatives" :key="c.id">
-                                <option :value="String(c.id)" x-text="c.name"></option>
-                            </template>
-                        </select>
+                <div class="mb-5 grid grid-cols-1 items-start gap-3 rounded-xl border bg-slate-50 p-4" :class="editingId?'':'md:grid-cols-2'">
+                    <div class="min-w-0">
+                        <label x-show="editingId" class="form-label" for="mating-edit-cooperative">Cooperative</label>
+                        <input id="mating-edit-cooperative" x-show="editingId" readonly :value="bulkRows[0]?.cooperative || cooperatives.find(c=>String(c.id)===selectedCooperative)?.name || ''" class="form-input h-11 bg-slate-100">
+                        <div x-show="!editingId">
+                            <span class="form-label">Select Cooperative *</span>
+                            <x-mating-search-picker label="Cooperative" placeholder="Select cooperative" items="cooperatives"
+                                selected="selectedCooperative" on-select="value => { selectedCooperative = value; cooperativeChanged(); }" />
+                        </div>
                     </div>
-                    <div x-show="!editingId">
-                        <label class="form-label">Filter Farmers</label>
-                        <input x-model="farmerSearch" class="form-input" placeholder="Search farmer name">
-                    </div>
-                    <div x-show="!editingId">
-                        <label class="form-label">Database Lookup Status</label>
-                        <div class="rounded-lg border bg-white p-3">
+                    <div x-show="!editingId" class="min-w-0">
+                        <span id="mating-lookup-label" class="form-label">Database Lookup Status</span>
+                        <div role="status" aria-labelledby="mating-lookup-label" class="flex h-11 items-center rounded-lg border border-slate-300 bg-white px-3">
                             <p class="text-sm" :class="lookupReady?'text-emerald-700':'text-amber-700'"
                                 x-text="lookupReady?'Database lookup lists loaded':'Select a cooperative to load farmers'"></p>
-                            <div class="mt-3 flex items-center justify-between border-t pt-3">
-                                <span class="text-sm text-slate-600">Active bulls</span>
-                                <span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700" x-text="totalActiveBulls"></span>
-                            </div>
-                            <p class="mt-1 text-xs text-slate-500"><span x-text="semenBulls.length"></span> bull records loaded into the selector.</p>
                         </div>
+                    </div>
+                    <div x-show="!editingId" class="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-xs text-slate-600 md:col-span-2">
+                        <span>Active bulls</span>
+                        <span class="rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700" x-text="totalActiveBulls"></span>
+                        <span><span x-text="semenBulls.length"></span> loaded into the selector</span>
                     </div>
                 </div>
 
@@ -291,7 +279,7 @@
                                 <th class="p-3">2nd Cycle (18–21 Days)</th>
                                 <th class="p-3">Expected PD (60 Days)</th>
                                 <th class="p-3">Expected PD (90 Days)</th>
-                                <th class="p-3">Mating Technician *</th>
+                                <th class="p-3">Mating Technician</th>
                                 <th class="p-3">PD Date</th>
                                 <th class="p-3">PD Result</th>
 
@@ -309,13 +297,8 @@
                             <template x-for="(r,i) in bulkRows" :key="r._key">
                                 <tr class="align-top">
                                     <td class="min-w-56 p-2">
-                                        <select x-model="r.farmer_id" @change="farmerChanged(r)" class="form-input">
-                                            <option value="">Select farmer</option>
-                                            <template x-for="f in filteredFarmers()" :key="f.id">
-                                                <option :value="String(f.id)" x-text="f.name"></option>
-                                            </template>
-                                        </select>
-                                        <p class="help-text" x-text="r.farmer||''"></p>
+                                        <x-mating-search-picker label="Farmer" placeholder="Select farmer" items="farmers"
+                                            selected="r.farmer_id" on-select="value => { r.farmer_id = value; farmerChanged(r); }" />
                                     </td>
 
                                     <td class="min-w-48 p-2">
@@ -438,7 +421,14 @@
                                     </td>
 
                                     <td class="min-w-48 p-2">
-                                        <input x-model="r.remarks" class="form-input" placeholder="Remarks">
+                                        <div class="flex items-center gap-2">
+                                            <input x-model="r.remarks" class="form-input min-w-0" placeholder="Remarks">
+                                            <button x-show="pendingPdRecord(r)" type="button" @click="openPendingPd(r)"
+                                                class="shrink-0 whitespace-nowrap rounded-lg border border-amber-400 bg-amber-100 px-2 py-2 text-xs font-bold text-amber-950 shadow-[0_0_10px_#f59e0b] hover:bg-amber-200 motion-safe:animate-pulse">
+                                                <i class="fa-solid fa-bell" aria-hidden="true"></i> Pending PD
+                                            </button>
+                                            <span x-show="!pendingPdRecord(r) && activePositivePdRecord(r)" class="shrink-0 whitespace-nowrap rounded-lg bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700">Positive PD</span>
+                                        </div>
                                     </td>
 
                                     <td class="p-2">
@@ -470,6 +460,47 @@
                     </div>
                 </div>
             </div>
+            <dialog x-ref="pendingPdDialog" aria-labelledby="pending-pd-title"
+                @keydown.escape.stop @cancel="if (pdSaving) $event.preventDefault()"
+                class="m-auto max-h-[90vh] w-11/12 max-w-xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+                <form @submit.prevent="savePendingPd()">
+                    <header class="flex items-center justify-between gap-4 border-b p-5">
+                        <div>
+                            <h3 id="pending-pd-title" class="text-lg font-bold text-slate-900">Update Pending PD</h3>
+                            <p class="mt-1 text-sm text-slate-600" x-text="pdDraft ? pdDraft.animal_id + ' · Mating on ' + displayDate(pdDraft.breeding_date) : ''"></p>
+                        </div>
+                        <button type="button" @click="$refs.pendingPdDialog.close()" :disabled="pdSaving" aria-label="Close PD update" class="rounded-lg p-2 hover:bg-slate-100">
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                    </header>
+                    <template x-if="pdDraft">
+                        <div class="grid gap-4 p-5 sm:grid-cols-2">
+                            <label class="text-sm font-semibold">PD Result
+                                <select x-model="pdDraft.pd_result" @change="pdChanged(pdDraft)" required class="form-input mt-1">
+                                    <option value="">Select result</option><option>Negative</option><option>Positive</option>
+                                </select>
+                            </label>
+                            <label class="text-sm font-semibold">PD Date
+                                <input type="date" x-model="pdDraft.pd_date" :min="pdDraft.breeding_date || null" required class="form-input mt-1">
+                            </label>
+                            <label class="text-sm font-semibold sm:col-span-2">PD Technician
+                                <input type="text" x-model.trim="pdDraft.pd_technician" maxlength="255" required class="form-input mt-1">
+                            </label>
+                            <label x-show="pdDraft.pd_result === 'Positive'" class="text-sm font-semibold">Months of Pregnancy
+                                <input type="number" x-model="pdDraft.pregnancy_months" min="1" max="11" step="1" :required="pdDraft.pd_result === 'Positive'" class="form-input mt-1">
+                            </label>
+                            <label x-show="pdDraft.pd_result === 'Positive'" class="text-sm font-semibold">Expected Calving
+                                <input type="date" x-model="pdDraft.expected_calving" class="form-input mt-1">
+                            </label>
+                            <p x-show="pdError" role="alert" class="text-sm text-rose-700 sm:col-span-2" x-text="pdError"></p>
+                        </div>
+                    </template>
+                    <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
+                        <button type="button" @click="$refs.pendingPdDialog.close()" :disabled="pdSaving" class="action-secondary">Cancel</button>
+                        <button type="submit" :disabled="pdSaving" class="action-primary" x-text="pdSaving ? 'Updating…' : 'Update PD Result'"></button>
+                    </footer>
+                </form>
+            </dialog>
         </div>
     </div>
 
@@ -542,8 +573,6 @@
 .action-primary{background:#0b1f3a;color:#fff}.action-primary:hover{background:#122b4d}
 .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.action-secondary:hover{background:#f1f5f9}
 .th{padding:1rem}.td{padding:1rem;vertical-align:top}
-.page-btn{border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem .75rem;font-size:.875rem;font-weight:600}
-.page-btn:disabled{opacity:.4;cursor:not-allowed}
 .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}
 .pcc-stat-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(7,62,99,.13)}
 .pcc-stat-card:nth-child(2){border-top-color:#e87523}.pcc-stat-card:nth-child(3){border-top-color:#25835b}.pcc-stat-card:nth-child(4){border-top-color:#0786a5}
@@ -554,8 +583,40 @@
 .pcc-records-panel>div:first-child{border-bottom-color:#e3ebf0}
 .pcc-records-panel thead{background:#103c60!important;color:#fff!important;border-bottom:3px solid #e8b22f}
 .pcc-records-panel .th{color:#fff!important}
+.mating-table-scroll{container-type:inline-size}
+.mating-records-table{
+    --mating-no:3.5rem;--mating-cooperative:12rem;--mating-farmer:10rem;
+    --mating-animal:8rem;--mating-date:9rem;--mating-type:11rem;
+    border-collapse:separate;border-spacing:0;
+}
+.mating-width-no{width:var(--mating-no)}
+.mating-width-cooperative{width:var(--mating-cooperative)}
+.mating-width-farmer{width:var(--mating-farmer)}
+.mating-width-animal{width:var(--mating-animal)}
+.mating-width-date{width:var(--mating-date)}
+.mating-width-type{width:var(--mating-type)}
+.mating-records-table :is(th,td){overflow-wrap:anywhere}
+.mating-records-table .mating-frozen{position:sticky;padding-inline:.625rem;box-shadow:1px 0 0 #e2e8f0}
+.mating-records-table tbody td{border-bottom:1px solid #f1f5f9}
+.mating-records-table tbody .mating-frozen{z-index:2;background-color:#fff}
+.pcc-records-panel .mating-records-table tbody tr:hover .mating-frozen{background-color:#f0f8fb}
+.mating-records-table thead .mating-frozen{z-index:3;background:#103c60;box-shadow:none}
+.mating-records-table thead th{border-bottom:3px solid #e8b22f}
+.mating-frozen-no{left:0}
+.mating-frozen-cooperative{left:var(--mating-no)}
+.mating-frozen-farmer{left:calc(var(--mating-no) + var(--mating-cooperative))}
+.mating-frozen-animal{left:calc(var(--mating-no) + var(--mating-cooperative) + var(--mating-farmer))}
+.mating-frozen-date{left:calc(var(--mating-no) + var(--mating-cooperative) + var(--mating-farmer) + var(--mating-animal))}
+.mating-frozen-type{left:calc(var(--mating-no) + var(--mating-cooperative) + var(--mating-farmer) + var(--mating-animal) + var(--mating-date))}
+@container (max-width:760px){
+    .mating-records-table :is(.mating-frozen-date,.mating-frozen-type){position:static;box-shadow:none}
+}
+@container (max-width:540px){
+    .mating-records-table :is(.mating-frozen-farmer,.mating-frozen-animal){position:static;box-shadow:none}
+}
 .pcc-records-panel .filter-input:focus{border-color:#0786a5;box-shadow:0 0 0 3px rgba(7,134,165,.14)}
 .pcc-type-pill{display:inline-flex;align-items:center;white-space:nowrap;border-radius:999px;padding:.35rem .65rem;font-size:.7rem;font-weight:800}
+.mating-records-table .pcc-type-pill{white-space:normal}
 .pcc-type-ai{background:#fff0e3;color:#a94b0b}.pcc-type-nm{background:#e6f5eb;color:#176342}
 .pcc-records-panel tbody tr{transition:background-color .14s ease}.pcc-records-panel tbody tr:hover{background:#f0f8fb}
 </style>
@@ -565,6 +626,33 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
+function matingSearchPicker() {
+    return {
+        open: false,
+        query: '',
+        matches(items) {
+            const normalize = value => String(value ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+            const query = normalize(this.query).trim();
+            return items.filter(item => normalize(item.name).includes(query));
+        },
+        togglePicker() {
+            this.open = !this.open;
+            if (this.open) {
+                this.query = '';
+                this.$nextTick(() => this.$refs.search.focus());
+            }
+        },
+        closePicker() {
+            this.open = false;
+            this.$refs.trigger.focus();
+        },
+        choose(id, selected, onSelect) {
+            if (String(id) !== String(selected)) onSelect(String(id));
+            this.closePicker();
+        },
+    };
+}
+
 function breedingPage(){return {
     api:{
         csrfToken:@js(csrf_token()),
@@ -582,10 +670,11 @@ function breedingPage(){return {
     records:[],cooperatives:[],farmers:[],animals:[],semenBulls:[],
     totalActiveBulls:0,lookupReady:false,loading:false,saving:false,
     search:'',filterMatingType:'',filterCooperative:'',filterPD:'',filterDate:'',filterYear:'',unreportedCalvesOnly:false,overdueCalvesOnly:false,includeReportedPregnancies:false,
-    selectedCooperative:'',farmerSearch:'',showBulk:false,showView:false,
+    selectedCooperative:'',showBulk:false,showView:false,
     bulkRows:[],selected:null,editingId:null,notice:'',noticeType:'success',
+    pdDraft:null,pdSaving:false,pdError:'',
     deleteRecord:null,deleting:false,deleteError:'',
-    noticeTimer:null,rowKey:0,page:1,perPage:10,
+    noticeTimer:null,rowKey:0,page:1,perPage: 15,
 
     fields:[
         'cooperative','farmer','animal_id','breeding_date','mating_type',
@@ -722,6 +811,7 @@ function breedingPage(){return {
             cooperative:c.cooperative_name||c.name||r.cooperative_name||'',
             farmer:fullName||r.farmer_name||f.farmer_name||f.name||'',
             animal_id:a.animal_id||a.bolus||r.animal_id||r.registry_number||'',
+            registry_number:r.registry_number||a.registry_number||'',
             breeding_date:this.dateOnly(r.breeding_date||r.mating_date),
             mating_type:this.normalizeMatingType(r.mating_type),
             semen_bull_id:r.semen_bull_id?String(r.semen_bull_id):'',
@@ -766,9 +856,9 @@ function breedingPage(){return {
     },
 
     async cooperativeChanged(){
+        const cooperativeId = this.selectedCooperative;
         this.farmers=[];
         this.animals=[];
-        this.farmerSearch='';
         this.lookupReady=false;
 
         for(const r of this.bulkRows){
@@ -779,13 +869,14 @@ function breedingPage(){return {
             r._animals=[];
         }
 
-        if(!this.selectedCooperative)return;
+        if(!cooperativeId)return;
 
         try{
             const u=new URL(this.api.farmers,window.location.origin);
-            u.searchParams.set('cooperative_id',this.selectedCooperative);
+            u.searchParams.set('cooperative_id',cooperativeId);
 
             const res=await this.request(u.toString());
+            if (this.selectedCooperative !== cooperativeId) return;
             const data=Array.isArray(res)?res:(Array.isArray(res.data)?res.data:(res.data?.data||[]));
 
             this.farmers=data.filter(f=>String(f.cooperative_id??'')===this.selectedCooperative).map(f=>({
@@ -797,30 +888,28 @@ function breedingPage(){return {
 
             this.lookupReady=true;
         }catch(e){
-            this.msg(e.message,'error');
+            if (this.selectedCooperative === cooperativeId) this.msg(e.message,'error');
         }
     },
 
-    filteredFarmers(){
-        const q=this.farmerSearch.toLowerCase().trim();
-        return this.farmers.filter(f=>!q||f.name.toLowerCase().includes(q));
-    },
-
     async farmerChanged(row){
+        const cooperativeId = this.selectedCooperative;
+        const farmerId = String(row.farmer_id);
         const f=this.farmers.find(x=>x.id===String(row.farmer_id));
         row.farmer=f?f.name:'';
         row.carabao_id='';
         row.animal_id='';
         row._animals=[];
 
-        if(!row.farmer_id||!this.selectedCooperative)return;
+        if(!farmerId||!cooperativeId)return;
 
         try{
             const u=new URL(this.api.carabaos,window.location.origin);
-            u.searchParams.set('cooperative_id',this.selectedCooperative);
-            u.searchParams.set('farmer_id',row.farmer_id);
+            u.searchParams.set('cooperative_id',cooperativeId);
+            u.searchParams.set('farmer_id',farmerId);
 
             const res=await this.request(u.toString());
+            if (this.selectedCooperative !== cooperativeId || String(row.farmer_id) !== farmerId) return;
             const data=Array.isArray(res)?res:(Array.isArray(res.data)?res.data:(res.data?.data||[]));
 
             row._animals=data.filter(a=>{
@@ -831,11 +920,11 @@ function breedingPage(){return {
             }).map(a=>({
                 id:String(a.id),
                 animal_id:a.animal_id||a.bolus||'',
-                label:(a.animal_id||a.bolus||('Animal '+a.id))+
-                    (a.classification?' — '+a.classification:'')
+                registry_number:a.registry_number||'',
+                label:a.animal_id||a.bolus||('Animal '+a.id)
             }));
         }catch(e){
-            this.msg(e.message,'error');
+            if (this.selectedCooperative === cooperativeId && String(row.farmer_id) === farmerId) this.msg(e.message,'error');
         }
     },
 
@@ -844,6 +933,66 @@ function breedingPage(){return {
     animalChanged(r){
         const a=this.animalsForFarmer(r).find(x=>String(x.id)===String(r.carabao_id));
         r.animal_id=a?a.animal_id:'';
+    },
+
+    pdRecordsFor(row) {
+        if (!row.carabao_id) return [];
+        const selected = this.animalsForFarmer(row).find(animal => animal.id === String(row.carabao_id));
+        const key = value => String(value ?? '').trim().toLowerCase();
+        const identifiers = [row.animal_id, selected?.registry_number].map(key).filter(Boolean);
+        return this.records.filter(record =>
+            record.carabao_id === String(row.carabao_id) ||
+            (!record.carabao_id && record.cooperative_id === this.selectedCooperative
+                && identifiers.includes(key(record.registry_number || record.animal_id)))
+        ).sort((a, b) => (b.breeding_date || b.pd_date).localeCompare(a.breeding_date || a.pd_date) || Number(b.id) - Number(a.id));
+    },
+
+    pendingPdRecord(row) {
+        return this.pdRecordsFor(row).find(record => record.pd_result === 'Pending');
+    },
+
+    activePositivePdRecord(row) {
+        const latest = this.pdRecordsFor(row)[0];
+        return latest?.pd_result === 'Positive' && !latest.actual_calving && !latest.calf_drop_reported
+            && !latest.pregnancy_followup_complete ? latest : null;
+    },
+
+    openPendingPd(row) {
+        const record = this.pendingPdRecord(row);
+        if (!record) return;
+        this.pdDraft = {...record, animal_id: row.animal_id || record.animal_id, pd_result: ''};
+        this.pdError = '';
+        this.$refs.pendingPdDialog.showModal();
+    },
+
+    async savePendingPd() {
+        if (this.pdSaving || !this.pdDraft) return;
+        const draft = this.pdDraft;
+        this.pdSaving = true;
+        this.pdError = '';
+        try {
+            await this.request(`${this.api.update}/${draft.id}/pd`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    pd_result: draft.pd_result,
+                    pd_date: draft.pd_date,
+                    pd_technician: draft.pd_technician,
+                    pregnancy_months: draft.pd_result === 'Positive' ? Number(draft.pregnancy_months) : null,
+                    expected_calving_date: draft.pd_result === 'Positive' ? (draft.expected_calving || null) : null,
+                }),
+            });
+            const updated = this.records.find(record => record.id === draft.id);
+            if (updated) {
+                for (const field of ['pd_result', 'pd_date', 'pd_technician', 'pregnancy_months', 'expected_calving']) updated[field] = draft[field];
+            }
+            this.$refs.pendingPdDialog.close();
+            this.msg(draft.pd_result === 'Negative' ? 'PD updated to Negative. Continue with the new mating record.' : 'PD updated to Positive.');
+            await this.loadRecords().catch(() => {});
+        } catch (error) {
+            this.pdError = error.message;
+        } finally {
+            this.pdSaving = false;
+        }
     },
 
     emptyRow(){
@@ -862,11 +1011,11 @@ function breedingPage(){return {
     openBulk(){
         this.editingId=null;
         this.selectedCooperative='';
-        this.farmerSearch='';
         this.farmers=[];
         this.bulkRows=[this.emptyRow()];
         this.showBulk=true;
         this.lookupReady=false;
+        this.loadRecords().catch(error => this.msg(error.message, 'error'));
     },
 
     addRow(){this.bulkRows.push(this.emptyRow());},
@@ -1021,12 +1170,11 @@ function breedingPage(){return {
                 !r.carabao_id ||
                 !r.breeding_date ||
                 !r.mating_type ||
-                (r.mating_type==='AI'&&!r.heat_status) ||
-                !String(r.mating_technician || '').trim()
+                (r.mating_type==='AI'&&!r.heat_status)
             ) {
                 this.msg(
                     'Row ' + row +
-                    ': Farmer, female animal, mating date, mating type, technician, and estrus/heat for AI are required.',
+                    ': Farmer, female animal, mating date, mating type, and estrus/heat for AI are required.',
                     'error'
                 );
                 return false;
@@ -1098,6 +1246,16 @@ function breedingPage(){return {
 
     async saveBulk(){
         if(this.saving||!this.validateRows())return;
+        for (const [index, row] of this.bulkRows.entries()) {
+            if (this.pendingPdRecord(row)) {
+                this.msg(`Row ${index + 1}: Update the Pending PD beside Remarks before saving.`, 'error');
+                return;
+            }
+            if (this.activePositivePdRecord(row)) {
+                this.msg(`Row ${index + 1}: This animal has an active Positive PD result.`, 'error');
+                return;
+            }
+        }
         this.saving=true;
 
         try{
@@ -1108,7 +1266,7 @@ function breedingPage(){return {
             });
             await this.request(this.api.bulk,{
                 method:'POST',
-                body:JSON.stringify({cooperative_id:Number(this.selectedCooperative),records})
+                body:JSON.stringify({cooperative_id:Number(this.selectedCooperative),records,check_pending_pd:true})
             });
             this.msg(records.length===1?'Mating record saved.':records.length+' mating records saved.');
             this.closeModal();
@@ -1123,7 +1281,6 @@ function breedingPage(){return {
     async edit(r){
         this.editingId=r.id;
         this.selectedCooperative=String(r.cooperative_id||'');
-        this.farmerSearch='';
         this.farmers=[];
         this.bulkRows=[];
         this.showBulk=true;

@@ -8,7 +8,7 @@
 @section('content')
 
 <div class="management-page dashboard-page min-w-0 bg-slate-50 text-slate-800">
-<x-admin-page-header title="Welcome to CBED Data System" description="Monitor farmers, carabaos, and enterprise development activities." breadcrumb="Dashboard" :tag="now()->format('F d, Y')" tag-icon="fa-regular fa-calendar" />
+<x-admin-page-header title="Welcome to CBED Data System" description="Monitor farmers, carabaos, and enterprise development activities." breadcrumb="Dashboard" />
 
 <!-- Statistics -->
 <div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -57,7 +57,7 @@
             <div>
                 <p class="text-sm font-medium text-slate-500">Milk Production</p>
                 <h3 class="mt-3 text-3xl font-bold text-slate-800">{{ number_format($milkTotal ?? 0, 1) }} L</h3>
-                <p class="mt-2 text-xs text-slate-400">Recorded production</p>
+                <p class="mt-2 text-xs text-slate-400">Recorded production in {{ $milkYear }}</p>
             </div>
             <div class="dashboard-stat-icon flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-xl text-orange-600">
                 <i class="fa-solid fa-droplet"></i>
@@ -68,13 +68,13 @@
 </div>
 
 <section class="dashboard-status-section mb-7">
-    <div class="mb-3"><h2 class="text-lg font-bold text-slate-800">Animal status summary</h2><p class="text-sm text-slate-500">Current inventory classifications and verified source totals</p></div>
+    <div class="mb-3"><h2 class="text-lg font-bold text-slate-800">Animal status summary</h2><p class="text-sm text-slate-500">Current inventory classifications and animal counts</p></div>
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
         @foreach([
             'live' => ['Live', 'border-emerald-200 bg-emerald-50', 'text-emerald-700'],
             'dead' => ['Dead', 'border-rose-200 bg-rose-50', 'text-rose-700'],
             'pregnant' => ['Pregnant', 'border-violet-200 bg-violet-50', 'text-violet-700'],
-            'breeding_age_females' => ['Breeding-age females', 'border-indigo-200 bg-indigo-50', 'text-indigo-700'],
+            'breedable' => ['Breedable', 'border-indigo-200 bg-indigo-50', 'text-indigo-700'],
             'lactating' => ['Lactating', 'border-sky-200 bg-sky-50', 'text-sky-700'],
             'dry' => ['Cow Dry', 'border-amber-200 bg-amber-50', 'text-amber-700'],
             'parity_1' => ['Parity 1+', 'border-indigo-200 bg-indigo-50', 'text-indigo-700'],
@@ -90,26 +90,18 @@
         <h2 class="text-lg font-bold text-slate-800">Animal classification breakdown</h2>
         <p class="text-sm text-slate-500">Counts for every classification recorded in the animal inventory</p>
     </div>
-    <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table class="min-w-full text-left text-sm">
-            <thead class="bg-slate-50 text-xs uppercase text-slate-500">
-                <tr>
-                    <th class="px-4 py-3 font-semibold">Classification</th>
-                    <th class="px-4 py-3 text-right font-semibold">Animals</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-                @forelse($classificationSummary as $classification)
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-4 py-3 font-medium text-slate-700">{{ $classification->classification }}</td>
-                        <td class="px-4 py-3 text-right font-semibold text-slate-800">{{ number_format($classification->total) }}</td>
-                    </tr>
-                @empty
-                    <tr><td colspan="2" class="px-4 py-6 text-center text-slate-500">No classified animals in the inventory.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+    @if (count($classificationSummary))
+        <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
+            @foreach ($classificationSummary as $classification)
+                <div class="cbed-card dashboard-status-card border border-slate-200 bg-white p-4">
+                    <dt class="break-words text-xs font-medium text-slate-600">{{ $classification->classification }}</dt>
+                    <dd class="mt-2 text-2xl font-bold tabular-nums text-slate-800">{{ number_format($classification->total) }}</dd>
+                </div>
+            @endforeach
+        </dl>
+    @else
+        <p class="cbed-card border border-slate-200 bg-white p-4 text-sm text-slate-500">No classified animals in the inventory.</p>
+    @endif
 </section>
 
 <section class="dashboard-status-section mb-7">
@@ -152,51 +144,45 @@
 <!-- Overview and quick actions -->
 <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
 
-    <section x-data="cooperativeMilkSummary()" x-init="init()" class="cbed-card dashboard-panel overflow-hidden rounded-xl border p-6 xl:col-span-2">
-        <div class="mb-6 flex items-center justify-between">
+    <section id="dashboard-milk-production" class="cbed-card dashboard-panel overflow-hidden rounded-xl border p-6 xl:col-span-2">
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 class="font-bold text-slate-800">Program Overview</h2>
-                <p class="mt-1 text-xs text-slate-500">
-                    Annual milk yield by cooperative
-                </p>
+                <h2 class="font-bold text-slate-800">Milk Production</h2>
+                <p class="mt-1 text-xs text-slate-500">Annual milk yield by cooperative</p>
             </div>
-            <i class="fa-solid fa-chart-line text-xl text-blue-600" aria-hidden="true"></i>
+            <form method="get" action="{{ url()->current() }}#dashboard-milk-production">
+                <label class="flex items-center gap-2 text-sm font-medium text-slate-600">
+                    Year
+                    <select name="milk_year" onchange="this.form.submit()" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                        @foreach ($milkYears as $year)
+                            <option value="{{ $year }}" @selected($year === $milkYear)>{{ $year }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <noscript><button type="submit" class="cbed-page-button">Apply</button></noscript>
+            </form>
         </div>
 
         <div class="overflow-x-auto rounded-xl border border-slate-200">
             <table class="min-w-full text-left text-sm">
                 <thead class="bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
-                        <th class="sticky left-0 bg-slate-50 px-4 py-3 font-semibold">Cooperative</th>
-                        <template x-for="year in years" :key="year">
-                            <th class="whitespace-nowrap px-4 py-3 text-right font-semibold" x-text="year + ' (L)'"></th>
-                        </template>
-                        <th class="whitespace-nowrap px-4 py-3 text-right font-semibold text-blue-700">Total (L)</th>
+                        <th scope="col" class="px-4 py-3 font-semibold">Cooperative</th>
+                        <th scope="col" class="whitespace-nowrap px-4 py-3 text-right font-semibold text-blue-700">{{ $milkYear }} Total (L)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    <template x-for="cooperative in cooperatives" :key="cooperative.name">
+                    @forelse ($cooperativeMilk as $cooperative)
                         <tr class="hover:bg-slate-50">
-                            <th scope="row" class="sticky left-0 whitespace-nowrap bg-white px-4 py-3 text-left font-semibold text-slate-700" x-text="cooperative.name"></th>
-                            <template x-for="year in years" :key="year">
-                                <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums text-slate-600" x-text="(cooperative.yields[year] || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></td>
-                            </template>
-                            <td class="whitespace-nowrap px-4 py-3 text-right font-bold tabular-nums text-blue-700" x-text="cooperative.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></td>
+                            <th scope="row" class="px-4 py-3 font-semibold text-slate-700">{{ $cooperative->cooperative_name ?: 'Cooperative not assigned' }}</th>
+                            <td class="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums text-slate-800">{{ number_format($cooperative->total_liters, 2) }}</td>
                         </tr>
-                    </template>
-                    <tr x-show="loading">
-                        <td :colspan="years.length + 2" class="px-4 py-8 text-center text-slate-500">Loading milk production summary…</td>
-                    </tr>
-                    <tr x-show="!loading && error">
-                        <td :colspan="years.length + 2" class="px-4 py-8 text-center text-rose-700" x-text="error"></td>
-                    </tr>
-                    <tr x-show="!loading && !error && cooperatives.length === 0">
-                        <td :colspan="years.length + 2" class="px-4 py-8 text-center text-slate-500">No cooperative milk production records found in this browser.</td>
-                    </tr>
+                    @empty
+                        <tr><td colspan="2" class="px-4 py-8 text-center text-slate-500">No milk production recorded for {{ $milkYear }}.</td></tr>
+                    @endforelse
                 </tbody>
             </table>
         </div>
-        <p class="mt-3 text-xs text-slate-400">Milk yields are summed from the records saved on this browser’s Milk Production page.</p>
     </section>
 
     <section class="cbed-card dashboard-panel overflow-hidden rounded-xl border p-6">
@@ -278,70 +264,6 @@
     .management-page .management-summary-card [class*="text-blue-"],.management-page .management-summary-card [class*="text-emerald-"],.management-page .management-summary-card [class*="text-violet-"] { color:#0b1f3a!important; }
     .dashboard-status-section h2 { color:#0b1f3a; }
 </style>
-@endpush
-
-@push('scripts')
-<script>
-    function cooperativeMilkSummary() {
-        return {
-            loading: true,
-            error: '',
-            years: [],
-            cooperatives: [],
-            init() {
-                this.load();
-                window.addEventListener('storage', event => {
-                    if (event.key === 'cbed_milk_production_records' || event.key === null) this.load();
-                });
-            },
-            load() {
-                this.loading = true;
-                this.error = '';
-                try {
-                    const saved = localStorage.getItem('cbed_milk_production_records');
-                    const records = saved === null ? [] : JSON.parse(saved);
-                    if (!Array.isArray(records)) throw new Error('Milk production data must be a list of records.');
-
-                    const groups = new Map();
-                    const years = new Set();
-                    records.forEach(record => {
-                        if (!record || typeof record !== 'object') return;
-                        const year = String(record.production_date || '').slice(0, 4);
-                        if (!/^\d{4}$/.test(year)) return;
-                        if (record.milk_volume === null || record.milk_volume === undefined || String(record.milk_volume).trim() === '') return;
-                        const yieldLiters = Number(record.milk_volume);
-                        if (!Number.isFinite(yieldLiters)) return;
-
-                        const name = String(record.cooperative || '').trim() || 'Cooperative not specified';
-                        if (!groups.has(name)) groups.set(name, new Map());
-                        const annualYields = groups.get(name);
-                        annualYields.set(year, (annualYields.get(year) || 0) + yieldLiters);
-                        years.add(year);
-                    });
-
-                    this.years = [...years].sort((a, b) => Number(a) - Number(b));
-                    this.cooperatives = [...groups.entries()]
-                        .map(([name, annualYields]) => {
-                            const yields = Object.fromEntries(annualYields);
-                            return {
-                                name,
-                                yields,
-                                total: [...annualYields.values()].reduce((sum, value) => sum + value, 0)
-                            };
-                        })
-                        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-                } catch (error) {
-                    this.years = [];
-                    this.cooperatives = [];
-                    this.error = 'Could not load milk production records from this browser.';
-                    console.error('Dashboard milk production summary failed:', error);
-                } finally {
-                    this.loading = false;
-                }
-            }
-        };
-    }
-</script>
 @endpush
 
 @endsection

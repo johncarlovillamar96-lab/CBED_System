@@ -1,5 +1,6 @@
 <?php
 namespace App\Http\Controllers;
+use App\Support\TablePagination;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -167,25 +168,15 @@ class ModuleController extends Controller {
       if($tableMunicipality!=='')$consolidatedRows=$consolidatedRows->filter(fn($r)=>str_contains(mb_strtolower((string)$r['municipality']),mb_strtolower($tableMunicipality)));
       if($tableBarangay!=='')$consolidatedRows=$consolidatedRows->filter(fn($r)=>str_contains(mb_strtolower((string)$r['barangay']),mb_strtolower($tableBarangay)));
 
-$gipRows=collect(array_values($consolidated));
-if($tableCooperative!=='')$gipRows=$gipRows->filter(fn($r)=>str_contains(mb_strtolower($r['cooperative']),mb_strtolower($tableCooperative)));
-if($tableProvince!=='')$gipRows=$gipRows->filter(fn($r)=>str_contains(mb_strtolower((string)$r['province']),mb_strtolower($tableProvince)));
-if($tableMunicipality!=='')$gipRows=$gipRows->filter(fn($r)=>str_contains(mb_strtolower((string)$r['municipality']),mb_strtolower($tableMunicipality)));
-$gipClassCounts=$gipRows->countBy('classification');
-$gipSummary=['CowDryPregnant'=>(int)$gipClassCounts->get('CowDryPregnant',0),'CowLactatingPregnant'=>(int)$gipClassCounts->get('CowLactatingPregnant',0),'HeiferPregnant'=>(int)$gipClassCounts->get('HeiferPregnant',0),'Total Pregnant'=>(int)$gipClassCounts->get('CowDryPregnant',0)+(int)$gipClassCounts->get('CowLactatingPregnant',0)+(int)$gipClassCounts->get('HeiferPregnant',0),'CowDry'=>(int)$gipClassCounts->get('CowDry',0),'CowLactating'=>(int)$gipClassCounts->get('CowLactating',0),'Heifer'=>(int)$gipClassCounts->get('Heifer',0),'Total Breeding-age Female'=>0,'Total Live Female'=>$gipRows->count()];
-$gipSummary['Total Breeding-age Female']=$gipSummary['CowDryPregnant']+$gipSummary['CowLactatingPregnant']+$gipSummary['HeiferPregnant']+$gipSummary['CowDry']+$gipSummary['CowLactating']+$gipSummary['Heifer'];
 if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows->filter(function($r)use($tableDateStart,$tableDateEnd){$values=array_filter(array_merge([$r['monitoring_date']??null,$r['bcs_date']??null,$r['calf']['date']??null,$r['calf']['monitoring_date']??null,$r['breeding']['date']??null,$r['breeding']['monitoring_date']??null,$r['health_monitoring_date']??null,$r['other_monitoring_date']??null],collect($r['health'])->pluck('date')->all(),collect($r['other'])->pluck('date')->all()));return collect($values)->contains(fn($v)=>($tableDateStart===''||(string)$v>=$tableDateStart)&&($tableDateEnd===''||(string)$v<=$tableDateEnd));});
      if($tableService!=='')$consolidatedRows=$consolidatedRows->filter(function($r)use($tableService){return match($tableService){'calf_monitoring'=>!empty($r['calf']),'breeding'=>!empty($r['breeding']),'health_nutrition'=>!empty($r['health']),'other_services'=>!empty($r['other']),default=>true};});
       if($request->query('table_export')==='xlsx'){$exportRows=$consolidatedRows->values();$spreadsheet=new \PhpOffice\PhpSpreadsheet\Spreadsheet();$sheet=$spreadsheet->getActiveSheet();$sheet->setTitle('Animal Monitoring');$sheet->fromArray(['No.','Name of Farmer'],null,'A1');$sheet->setCellValue('C1','Animal Information');$sheet->mergeCells('C1:F1');$sheet->setCellValue('G1','Calf Monitoring');$sheet->mergeCells('G1:K1');$sheet->setCellValue('L1','Breeding');$sheet->mergeCells('L1:Q1');$sheet->setCellValue('R1','Health and Nutrition');$sheet->mergeCells('R1:X1');$sheet->setCellValue('Y1','Other Services');$sheet->mergeCells('Y1:AB1');$sheet->fromArray(['Latest Monitoring Date','Remarks'],null,'AC1');$sheet->mergeCells('A1:A2');$sheet->mergeCells('B1:B2');$sheet->mergeCells('AC1:AC2');$sheet->mergeCells('AD1:AD2');$headers=['Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Breeding Method','Sire ID','Monitoring Date','PD','Type of Estrus','Breeding Method','Sire ID','Breeding Date','Monitoring Date','BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Monitoring Date','Ear Tagging','Bolus','Other Service','Monitoring Date'];$sheet->fromArray($headers,null,'C2');$date=fn($value)=>$value?Carbon::parse($value)->format('F j, Y'):'–';foreach($exportRows as $index=>$row){$health=$row['health'];$other=$row['other'];$otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ');$values=[$index+1,$row['farmer'],$row['animal_id'],$date($row['birth_date']),$row['dam_breed']?:'–',$row['bcs']??'–',$date($row['calf']['date']??null),$row['calf']['sex']??'–',$row['calf']['method']??'–',$row['calf']['sire_id']??'–',$date($row['calf']['monitoring_date']??null),$row['breeding']['pd']??'–',$row['breeding']['estrus']??'–',$row['breeding']['method']??'–',$row['breeding']['sire_id']??'–',$date($row['breeding']['date']??null),$date($row['breeding']['monitoring_date']??null),$health['bcs']['value']??($row['bcs']??'–'),$health['fecalysis']['value']??'–',$health['vaccine']['value']??'–',$health['deworming']['value']??'–',$health['vi_supp']['value']??'–',$health['flushing']['value']??'–',$date($row['health_monitoring_date']),$other['ear_tagging']['value']??($row['tag_number']?:'–'),$other['bolus']['value']??($row['bolus_id']?:'–'),$otherList?:'–',$date($row['other_monitoring_date']),$date($row['monitoring_date']),$row['remarks']?:'–'];$sheet->fromArray($values,null,'A'.(3+$index));}$lastRow=max(3,2+$exportRows->count());$sheet->getStyle('A1:AD'.$lastRow)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);$sheet->getStyle('A1:AD2')->getFont()->setBold(true);$sheet->getStyle('A1:AD2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);$sheet->getStyle('A1:AD2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);$sheet->getStyle('A1:AD'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);foreach(range('A','Z') as $column)$sheet->getColumnDimension($column)->setWidth(in_array($column,['A'],true)?6:14);foreach(['AA','AB','AC','AD'] as $column)$sheet->getColumnDimension($column)->setWidth(16);$sheet->freezePane('C3');$sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_LEGAL)->setFitToWidth(1)->setFitToHeight(0);$sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1,2);return response()->streamDownload(function()use($spreadsheet){(new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');},'animal-monitoring-'.$reportYear.'.xlsx',['Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);}
       if($request->query('table_export')==='csv'){$exportRows=$consolidatedRows->values();return response()->streamDownload(function()use($exportRows){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['No.','Name of Farmer','Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Calf Breeding Method','Calf Sire ID','Calf Monitoring Date','PD','Type of Estrus','Breeding Method','Breeding Sire ID','Breeding Date','Breeding Monitoring Date','Health BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Health Monitoring Date','Ear Tagging','Bolus','Other Service','Other Monitoring Date','Latest Monitoring Date','Remarks']);$date=fn($value)=>$value?Carbon::parse($value)->format('F j, Y'):'–';foreach($exportRows as $index=>$row){$health=$row['health'];$other=$row['other'];$otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ');fputcsv($file,[$index+1,$row['farmer'],$row['animal_id'],$date($row['birth_date']),$row['dam_breed']?:'–',$row['bcs']??'–',$date($row['calf']['date']??null),$row['calf']['sex']??'–',$row['calf']['method']??'–',$row['calf']['sire_id']??'–',$date($row['calf']['monitoring_date']??null),$row['breeding']['pd']??'–',$row['breeding']['estrus']??'–',$row['breeding']['method']??'–',$row['breeding']['sire_id']??'–',$date($row['breeding']['date']??null),$date($row['breeding']['monitoring_date']??null),$health['bcs']['value']??($row['bcs']??'–'),$health['fecalysis']['value']??'–',$health['vaccine']['value']??'–',$health['deworming']['value']??'–',$health['vi_supp']['value']??'–',$health['flushing']['value']??'–',$date($row['health_monitoring_date']),$other['ear_tagging']['value']??($row['tag_number']?:'–'),$other['bolus']['value']??($row['bolus_id']?:'–'),$otherList?:'–',$date($row['other_monitoring_date']),$date($row['monitoring_date']),$row['remarks']?:'–']);}fclose($file);},'animal-monitoring-'.$reportYear.'.csv',['Content-Type'=>'text/csv; charset=UTF-8']);}
-      $farmerOptions=$animalDirectory->map(fn($animal)=>trim(implode(' ',array_filter([$animal->first_name??null,$animal->middle_name??null,$animal->last_name??null]))))->filter()->unique()->sort()->values();$tableTotal=$consolidatedRows->count();$tablePerPage=(int)$request->query('table_per_page',25);if(!in_array($tablePerPage,[10,25,50,100],true))$tablePerPage=25;$tablePage=max(1,(int)$request->query('table_page',1));$tablePage=min($tablePage,max(1,(int)ceil($tableTotal/$tablePerPage)));$consolidatedRowsPage=new LengthAwarePaginator($consolidatedRows->forPage($tablePage,$tablePerPage)->values(),$tableTotal,$tablePerPage,$tablePage,['path'=>$request->url(),'query'=>$request->query(),'pageName'=>'table_page']);$liveAnimalTotal=$animalDirectory->count();$technicianOptions=DB::table('mating_records')->whereNotNull('technician')->where('technician','<>','')->distinct()->orderBy('technician')->pluck('technician');
-      return view('monitoring',compact('counts','cooperatives','reports','activeReport','calendarReports','calendarReportsByDay','selectedMonth','selectedCooperativeId','reportSearch','reportSpecification','reportAvailability','reportStatus','calendarDaysInMonth','calendarStartOffset','previousMonth','nextMonth','technicianOptions','calendarEvents','calendarEventsByDate','calendarView','selectedDate','monitoringModules','animalAvailability','consolidatedRows','consolidatedRowsPage','tableSearch','tableCooperative','tableFarmer','tableAnimal','tableProvince','tableMunicipality','tableBarangay','tableDateStart','tableDateEnd','tableService','categoryLabels','reportYear','farmerOptions','tablePerPage','liveAnimalTotal','gipSummary','gipReportingDate','dryOffReviewDim'));
+      $farmerOptions=$animalDirectory->map(fn($animal)=>trim(implode(' ',array_filter([$animal->first_name??null,$animal->middle_name??null,$animal->last_name??null]))))->filter()->unique()->sort()->values();$tableTotal=$consolidatedRows->count();$tablePerPage=TablePagination::size($request, 'table_per_page');$tablePage=max(1,(int)$request->query('table_page',1));$tablePage=min($tablePage,max(1,(int)ceil($tableTotal/$tablePerPage)));$consolidatedRowsPage=new LengthAwarePaginator($consolidatedRows->forPage($tablePage,$tablePerPage)->values(),$tableTotal,$tablePerPage,$tablePage,['path'=>$request->url(),'query'=>$request->query(),'pageName'=>'table_page']);$liveAnimalTotal=$animalDirectory->count();$technicianOptions=DB::table('mating_records')->whereNotNull('technician')->where('technician','<>','')->distinct()->orderBy('technician')->pluck('technician');
+      return view('monitoring',compact('counts','cooperatives','reports','activeReport','calendarReports','calendarReportsByDay','selectedMonth','selectedCooperativeId','reportSearch','reportSpecification','reportAvailability','reportStatus','calendarDaysInMonth','calendarStartOffset','previousMonth','nextMonth','technicianOptions','calendarEvents','calendarEventsByDate','calendarView','selectedDate','monitoringModules','animalAvailability','consolidatedRows','consolidatedRowsPage','tableSearch','tableCooperative','tableFarmer','tableAnimal','tableProvince','tableMunicipality','tableBarangay','tableDateStart','tableDateEnd','tableService','categoryLabels','reportYear','farmerOptions','tablePerPage','liveAnimalTotal','gipReportingDate'));
  }
  private function milkRecordsQuery(){
-     return DB::table('milk_records as record')
-         ->leftJoin('carabaos as animal','animal.id','=','record.carabao_id')
-         ->leftJoin('farmers as farmer','farmer.id','=',DB::raw('COALESCE(record.farmer_id, animal.farmer_id)'))
-         ->leftJoin('cooperatives as cooperative','cooperative.id','=',DB::raw('COALESCE(record.cooperative_id, farmer.cooperative_id, animal.cooperative_id)'))
+     return \App\Support\MilkProductionRecords::query()
          ->select(
              'record.id','record.record_date','record.collection_period','record.total_liters',
              'record.number_of_cows','record.price_per_kg','record.milk_traded',
@@ -251,8 +242,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                      ->orWhere('health_records.source_data', 'like', $pattern);
              });
          }
-         $requestedPageSize = $request->query('per_page');
-         $perPage = in_array($requestedPageSize, ['10', '15', '25', '50', '100'], true) ? (int) $requestedPageSize : 15;
+         $perPage = TablePagination::size($request);
          $rows=$query->orderByDesc('health_records.id')->paginate($perPage)->withQueryString();
          $rows->getCollection()->transform(function ($row) {
              $source = $this->decodeHealthSource($row->source_data ?? null);
@@ -309,7 +299,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          $bcsSummary = (clone $query)->select([])->selectRaw(
              'COUNT(*) as records, COUNT(DISTINCT bcs.carabao_id) as animals, AVG(bcs.body_condition_score) as average_score, MAX(bcs.record_date) as latest_date'
          )->first();
-         $rows=$query->orderByDesc('bcs.record_date')->orderByDesc('bcs.id')->paginate(25)->withQueryString();
+         $rows=$query->orderByDesc('bcs.record_date')->orderByDesc('bcs.id')->paginate(TablePagination::size($request))->withQueryString();
          $rows->getCollection()->transform(function($row){$row->record_date=$row->record_date?Carbon::parse($row->record_date)->format('d-M-Y'):'-';$row->body_condition_score=$row->body_condition_score??'-';return $row;});
      }elseif($module==='milk'){
          $filters=$request->validate([
@@ -396,29 +386,62 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              'total_traded'=>(float)$summary->total_traded,
              'total_value'=>(float)$summary->total_value,
          ];
-         $rows=$query->orderByDesc('record.record_date')->orderByDesc('record.id')->paginate(25)->withQueryString();
+         $rows=$query->orderByDesc('record.record_date')->orderByDesc('record.id')->paginate(TablePagination::size($request))->withQueryString();
          $rows->getCollection()->transform(fn($row)=>$this->decorateMilkRecord($row));
      }elseif(in_array($module, ['meat', 'manure'], true)){
          return $this->productIndex($request, $module, $search);
      }elseif($module==='fhpr'){
          $columns=$this->fhprDisplayColumns();
          $records=$this->fhprRecords();
-         if($search!=='')$records=$records->filter(function($row)use($columns,$search){
-             foreach($columns as $column){
-                 if(str_contains(Str::lower((string)data_get($row,$column,'')),Str::lower($search)))return true;
-                 if($column==='date_of_birth'&&str_contains(Str::lower((string)($row->_date_of_birth_search??'')),Str::lower($search)))return true;
+         $fhprFilters=$request->validate([
+             'cooperative_id' => ['nullable', 'integer', 'min:1'],
+             'classification' => ['nullable', 'string', 'max:150'],
+             'pregnancy_status' => ['nullable', 'string', 'max:100'],
+             'mating_type' => ['nullable', 'string', 'max:100'],
+         ]);
+         $fhprCooperatives=$records->whereNotNull('_filter_cooperative_id')
+             ->unique('_filter_cooperative_id')->sortBy('cooperative_name_display', SORT_NATURAL | SORT_FLAG_CASE);
+         $filterColumns=['classification' => 'status_updated', 'pregnancy_status' => 'pregnancy_status', 'mating_type' => 'ai_or_n'];
+         $fhprOptions=[];
+         foreach($filterColumns as $filter => $column){
+             $fhprOptions[$filter]=$records->pluck($column)->filter(fn($value)=>filled($value))
+                 ->unique()->sort(SORT_NATURAL | SORT_FLAG_CASE)->values();
+         }
+         $searchColumns=[...$columns, '_date_search', '_date_of_birth_search', '_inventory_animal_id', '_inventory_registry_number', '_inventory_tag_number', '_inventory_bolus_id'];
+         $searchTerms=Str::of($search)->ascii()->lower()->squish()->explode(' ')->filter(fn($term)=>$term!=='');
+         $records=$records->filter(function($row)use($fhprFilters,$filterColumns,$searchColumns,$searchTerms){
+             if(isset($fhprFilters['cooperative_id']) && (int)$row->_filter_cooperative_id !== (int)$fhprFilters['cooperative_id']){
+                 return false;
              }
-             return str_contains(Str::lower((string)($row->_date_search??'')),Str::lower($search));
+             foreach($filterColumns as $filter => $column){
+                 if(filled($fhprFilters[$filter]??null) && $row->{$column} !== $fhprFilters[$filter]){
+                     return false;
+                 }
+             }
+             if($searchTerms->isEmpty())return true;
+             $values=array_map(fn($column)=>(string)($row->{$column}??''),$searchColumns);
+             $haystack=Str::lower(Str::ascii(implode(' ', $values)));
+             return $searchTerms->every(fn($term)=>str_contains($haystack,$term));
          })->values();
-         $records->each(function($row){unset($row->_date_of_birth_search,$row->_date_search);});
-         $page=LengthAwarePaginator::resolveCurrentPage();$perPage=15;$total=$records->count();
+         $fhprSummary=[
+             'animals' => $records->unique('carabao_id')->count(),
+             'positive' => $records->where('pregnancy_status', 'Positive')->unique('carabao_id')->count(),
+             'with_ai' => $records->where('ai_count', '>', 0)->unique('carabao_id')->count(),
+         ];
+         $perPage=TablePagination::size($request);$total=$records->count();
+         $page=min(LengthAwarePaginator::resolveCurrentPage(),max(1,(int)ceil($total/$perPage)));
          $rows=new LengthAwarePaginator($records->slice(($page-1)*$perPage,$perPage)->values(),$total,$perPage,$page,['path'=>$request->url(),'query'=>$request->query()]);
      }else{
-         $query=DB::table($table);if(in_array($module,['meat','manure'],true))$query->where('product_type',$module);if($search!=='')$query->where(function($builder)use($columns,$search){foreach($columns as $column)$builder->orWhere($column,'like','%'.$search.'%');});$rows=$query->orderByDesc('id')->paginate(25)->withQueryString();
+         $query=DB::table($table);if(in_array($module,['meat','manure'],true))$query->where('product_type',$module);if($search!=='')$query->where(function($builder)use($columns,$search){foreach($columns as $column)$builder->orWhere($column,'like','%'.$search.'%');});$rows=$query->orderByDesc('id')->paginate(TablePagination::size($request))->withQueryString();
      }
-     $moduleTitle=$module==='bcs'?'Body Condition Score Records':($module==='milk'?'Milk Production Records':null);
+     $moduleTitle=match($module){
+         'bcs' => 'Body Condition Score Records',
+         'milk' => 'Milk Production Records',
+         'fhpr' => 'Breeding Summary',
+         default => null,
+     };
      $bcsScores=$module==='bcs'?DB::table('bcs_records')->whereNotNull('body_condition_score')->distinct()->orderBy('body_condition_score')->pluck('body_condition_score')->map(fn($score)=>number_format((float)$score,2,'.',''))->values():collect();
-     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals','healthFilters','healthCooperatives','healthBreeds'):[])+($module==='milk'?compact('milkSummary','milkCooperatives','milkFarmers','milkAnimals','milkYears','milkFilters','selectedYear','milkYearlySummaries','milkQuarterSummaries'):[])+($module==='bcs'?compact('bcsFilters','bcsCooperatives','bcsSummary'):[]));
+     return view('modules.index',compact('module','table','rows','columns','moduleTitle','bcsScores')+($module==='health'?compact('healthSummary','healthAnimals','healthFilters','healthCooperatives','healthBreeds'):[])+($module==='milk'?compact('milkSummary','milkCooperatives','milkFarmers','milkAnimals','milkYears','milkFilters','selectedYear','milkYearlySummaries','milkQuarterSummaries'):[])+($module==='bcs'?compact('bcsFilters','bcsCooperatives','bcsSummary'):[])+($module==='fhpr'?compact('fhprFilters','fhprCooperatives','fhprOptions','fhprSummary'):[]));
  }
 
  private function productIndex(Request $request, string $module, string $search)
@@ -449,7 +472,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      if (isset($productFilters['quarter'])) $query->whereRaw("QUARTER($date) = ?", [$productFilters['quarter']]);
      if (isset($productFilters['date'])) $query->whereRaw("$date = ?", [$productFilters['date']]);
      $productSummary = (clone $query)->selectRaw('SUM(record.volume_kg) as volume, SUM(record.other_source_volume_kg) as other_volume, SUM(record.value_php) as value')->first();
-     $rows = $query->select('record.*', 'cooperative.cooperative_name')->orderByRaw("$date DESC")->orderByDesc('record.id')->paginate(25)->withQueryString();
+     $rows = $query->select('record.*', 'cooperative.cooperative_name')->orderByRaw("$date DESC")->orderByDesc('record.id')->paginate(TablePagination::size($request))->withQueryString();
 
      return view('modules.index', compact('module', 'moduleTitle', 'columns', 'rows', 'productFilters', 'productCooperatives', 'productYearly', 'productQuarterly', 'productSummary'));
  }
@@ -676,7 +699,9 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          ->leftJoin('cooperatives as cooperative',function($join){
              $join->on('cooperative.id','=',DB::raw('COALESCE(inventory_animal.cooperative_id, inventory_farmer.cooperative_id, fhpr_records.cooperative_id)'));
          })
-         ->select('fhpr_records.*','inventory_animal.sex as sex','inventory_animal.classification as status_updated')
+         ->select('fhpr_records.*','inventory_animal.sex as sex','inventory_animal.classification as status_updated',
+             'cooperative.id as _filter_cooperative_id','inventory_animal.animal_id as _inventory_animal_id',
+             'inventory_animal.registry_number as _inventory_registry_number')
          ->addSelect('latest_ai.last_ai_date as last_ai_date')
          ->selectRaw('COALESCE(latest_ai.ai_count, 0) as ai_count')
          ->selectSub($latestPd,'pregnancy_status')
@@ -687,8 +712,13 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          ->selectSub((clone $latestMating)->select('bull_id'),'sire_used')
          ->selectSub((clone $latestMating)->select('source_data'),'_latest_mating_source')
          ->selectRaw("COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(inventory_animal.animal_id, ''), NULLIF(fhpr_records.registry_number, ''), 'N/A') as animal_identifier")
-         ->selectRaw("COALESCE(NULLIF(TRIM(cooperative.cooperative_name), ''), 'N/A') as cooperative_name_display")
-         ->get();
+         ->selectRaw("COALESCE(NULLIF(TRIM(cooperative.cooperative_name), ''), 'N/A') as cooperative_name_display");
+     foreach (['tag_number', 'bolus_id'] as $column) {
+         if (Schema::hasColumn('carabaos', $column)) {
+             $records->addSelect("inventory_animal.$column as _inventory_$column");
+         }
+     }
+     $records=$records->get();
      $records->each(function($row)use($dateColumns){
          $lactationStart=\App\Support\FhprLactation::start($row);
          $row->_lactation_start_date=$lactationStart?->toDateString();
@@ -734,7 +764,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      $ordered->each(function($row)use($dateColumns){
          $row->tag_number=$this->displayFhprTagNumber($row->tag_number??null);
          foreach($dateColumns as $column)$row->{$column}=$this->formatFhprDate($row->{$column}??null);
-         unset($row->carabao_id,$row->cooperative_id,$row->registry_number,$row->source_data,$row->_pregnancy_mating_date,$row->_latest_mating_source);
+         unset($row->cooperative_id,$row->registry_number,$row->source_data,$row->_pregnancy_mating_date,$row->_latest_mating_source);
      });
      return $ordered;
  }

@@ -66,7 +66,8 @@ Route::view('/milk-production', 'milk-production')->name('ui.milk-production');
 Route::view('/mil-test', 'mil-test')->name('ui.mil-test');
 Route::get('/nature-of-exit', [AnimalExitController::class, 'index'])->name('ui.nature-of-exit');
 Route::view('/mapping', 'mapping')->name('ui.mapping');
-Route::view('/admin/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
+Route::view('/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
+Route::permanentRedirect('/admin/carabao-inventory', '/carabao-inventory');
 Route::view('/admin/semen-bulls', 'semen-bull')->name('admin.semen-bulls');
 Route::get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
 Route::patch('/fhpr/{id}/dry-off-date', [ModuleController::class, 'updateFhprDryOffDate'])->whereNumber('id')->name('fhpr.dry-off.update');
@@ -461,6 +462,7 @@ $matingApiRules = [
     'pd_technician' => ['nullable', 'string', 'max:255'], 'expected_calving_date' => ['nullable', 'date'],
     'actual_calving_date' => ['nullable', 'date'], 'remarks' => ['nullable', 'string', 'max:2000'],
 ];
+$pendingMatingPdValues = ['', 'pending', 'null', 'n/a', 'na', '?'];
 $persistMatingRecord = function (array $data, ?int $recordId = null) {
     $animal = DB::table('carabaos as animal')->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
         ->where('animal.id', (int) $data['carabao_id'])
@@ -487,7 +489,7 @@ $persistMatingRecord = function (array $data, ?int $recordId = null) {
     $fields = [
         'carabao_id' => $animal->id, 'cooperative_id' => $actualCooperativeId, 'registry_number' => $animal->registry_number ?: $animal->animal_id,
         'mating_date' => $data['breeding_date'], 'mating_type' => in_array($data['mating_type'], ['NM', 'Natural Mating'], true) ? 'NM' : 'AI',
-        'bull_id' => $data['bull_id'] ?: ($bull->bull_id ?? null), 'semen_bull_id' => $bull->id ?? null,
+        'bull_id' => ($data['bull_id'] ?? null) ?: ($bull->bull_id ?? null), 'semen_bull_id' => $bull->id ?? null,
         'technician' => $data['mating_technician'] ?? null, 'pregnancy_check_date' => $data['pd_date'] ?? null,
         'pregnancy_result' => $data['pd_result'] ?? 'Pending', 'expected_calving_date' => $data['expected_calving_date'] ?? null,
         'actual_calving_date' => $data['actual_calving_date'] ?? null, 'remarks' => $data['remarks'] ?? null,
@@ -507,11 +509,25 @@ Route::post('/admin/breeding-api/records', function (Request $request) use ($mat
     $id = DB::transaction(fn () => $persistMatingRecord($data));
     return response()->json(['message' => 'Mating record saved.', 'id' => $id], 201);
 })->name('admin.breeding-api.store');
-Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($matingApiRules, $persistMatingRecord) {
-    $rules = ['cooperative_id' => $matingApiRules['cooperative_id'], 'records' => ['required', 'array', 'min:1', 'max:1000']];
+Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($matingApiRules, $persistMatingRecord, $pendingMatingPdValues) {
+    $rules = ['cooperative_id' => $matingApiRules['cooperative_id'], 'records' => ['required', 'array', 'min:1', 'max:1000'], 'check_pending_pd' => ['sometimes', 'boolean']];
     foreach ($matingApiRules as $field => $fieldRules) if ($field !== 'cooperative_id') $rules['records.*.'.$field] = $fieldRules;
     $data = $request->validate($rules);
-    $ids = DB::transaction(function () use ($data, $persistMatingRecord) {
+    $ids = DB::transaction(function () use ($data, $persistMatingRecord, $pendingMatingPdValues) {
+        if (! empty($data['check_pending_pd'])) {
+            $animalIds = collect($data['records'])->pluck('carabao_id')->unique();
+            $animals = DB::table('carabaos')->whereIn('id', $animalIds)->orderBy('id')->lockForUpdate()
+                ->get(['id', 'animal_id', 'registry_number']);
+            $registryIds = $animals->flatMap(fn ($animal) => [$animal->registry_number, $animal->animal_id])
+                ->map(fn ($identifier) => strtolower(trim((string) $identifier)))->filter()->unique()->values();
+            $pending = DB::table('mating_records')
+                ->whereIn(DB::raw("LOWER(TRIM(COALESCE(pregnancy_result, '')))"), $pendingMatingPdValues)
+                ->where(fn ($query) => $query->whereIn('carabao_id', $animalIds)
+                    ->orWhere(fn ($legacy) => $legacy->whereNull('carabao_id')->where('cooperative_id', $data['cooperative_id'])
+                        ->whereIn(DB::raw('LOWER(TRIM(registry_number))'), $registryIds)))
+                ->lockForUpdate()->first(['registry_number', 'carabao_id']);
+            abort_if($pending, 422, 'Update the pending PD result for '.($pending?->registry_number ?: 'the selected animal').' before saving.');
+        }
         return collect($data['records'])->map(function ($record) use ($data, $persistMatingRecord) {
             $record['cooperative_id'] = $data['cooperative_id'];
             return $persistMatingRecord($record);
@@ -519,6 +535,42 @@ Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($
     });
     return response()->json(['message' => 'Mating records saved.', 'ids' => $ids], 201);
 })->name('admin.breeding-api.bulk');
+Route::patch('/admin/breeding-api/records/{id}/pd', function (Request $request, int $id) use ($pendingMatingPdValues) {
+    $data = $request->validate([
+        'pd_result' => ['required', 'in:Positive,Negative'],
+        'pd_date' => ['required', 'date_format:Y-m-d'],
+        'pd_technician' => ['required', 'string', 'max:255'],
+        'pregnancy_months' => ['nullable', 'required_if:pd_result,Positive', 'integer', 'min:1', 'max:11'],
+        'expected_calving_date' => ['nullable', 'date_format:Y-m-d'],
+    ]);
+    DB::transaction(function () use ($id, $data, $pendingMatingPdValues) {
+        $record = DB::table('mating_records')->find($id);
+        abort_unless($record, 404, 'Mating record not found.');
+        if ($record->carabao_id) DB::table('carabaos')->where('id', $record->carabao_id)->lockForUpdate()->first(['id']);
+        $record = DB::table('mating_records')->lockForUpdate()->find($id);
+        abort_unless($record, 404, 'Mating record not found.');
+        abort_unless(in_array(strtolower(trim((string) $record->pregnancy_result)), $pendingMatingPdValues, true), 409, 'This PD result was already updated. Refresh the records before trying again.');
+        abort_if($record->mating_date && $data['pd_date'] < $record->mating_date, 422, 'The PD date must be on or after the mating date.');
+
+        $positive = $data['pd_result'] === 'Positive';
+        $source = json_decode((string) $record->source_data, true);
+        $source = is_array($source) ? $source : ($record->source_data ? ['original_source_data' => $record->source_data] : []);
+        $fields = $source['mating_api_fields'] ?? $source['monitoring_fields'] ?? [];
+        $source['mating_api_fields'] = array_replace(is_array($fields) ? $fields : [], [
+            'pd_technician' => $data['pd_technician'],
+            'pregnancy_months' => $positive ? $data['pregnancy_months'] : null,
+        ]);
+        DB::table('mating_records')->where('id', $id)->update([
+            'pregnancy_result' => $data['pd_result'],
+            'pregnancy_check_date' => $data['pd_date'],
+            'expected_calving_date' => $positive ? ($data['expected_calving_date'] ?? null) : null,
+            'source_data' => json_encode($source, JSON_UNESCAPED_UNICODE),
+            'updated_at' => now(),
+        ]);
+        if ($record->carabao_id) \App\Support\FhprClassification::syncAnimal((int) $record->carabao_id);
+    });
+    return response()->json(['message' => 'PD result updated.']);
+})->whereNumber('id')->name('admin.breeding-api.pd');
 Route::put('/admin/breeding-api/records/{id}', function (Request $request, int $id) use ($matingApiRules, $persistMatingRecord) {
     $data = $request->validate($matingApiRules);
     DB::transaction(fn()=>$persistMatingRecord($data, $id));

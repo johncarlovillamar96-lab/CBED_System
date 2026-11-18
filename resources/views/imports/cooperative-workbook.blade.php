@@ -24,11 +24,48 @@
                 <input id="bulk-files" type="file" multiple accept=".xlsx,.xls,.xlsm" class="sr-only">
                 <div class="flex flex-col justify-center gap-2">
                     <button id="bulk-stage-button" type="button" disabled class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d] disabled:cursor-not-allowed disabled:opacity-40">Stage selected files</button>
-                    <button id="bulk-confirm-button" type="button" disabled class="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40">Confirm and import ready files</button>
+                    <button id="bulk-confirm-button" type="button" disabled class="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40">
+                        <span id="bulk-confirm-spinner" hidden aria-hidden="true"><i class="fa-solid fa-spinner motion-safe:animate-spin"></i></span>
+                        <span id="bulk-confirm-label">Confirm and import ready files</span>
+                    </button>
                     <button id="bulk-cancel-button" type="button" hidden class="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Cancel unconfirmed batch</button>
                 </div>
             </div>
             <p id="bulk-message" role="status" class="mt-3 text-sm text-slate-600"></p>
+            <dialog id="bulk-cancel-dialog" aria-labelledby="bulk-cancel-title" aria-describedby="bulk-cancel-description" class="m-auto w-11/12 max-w-md rounded-2xl bg-white p-6 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
+                <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700" aria-hidden="true"><i class="fa-solid fa-trash"></i></span>
+                    <div>
+                        <h2 id="bulk-cancel-title" class="text-lg font-bold">Cancel unconfirmed batch?</h2>
+                        <p id="bulk-cancel-description" class="mt-1 text-sm text-slate-600">This removes all staged workbooks from this batch.</p>
+                    </div>
+                </div>
+                <p id="bulk-cancel-error" role="alert" class="mt-3 text-sm text-rose-700" hidden></p>
+                <form method="dialog" class="mt-5 flex flex-wrap justify-end gap-2">
+                    <button id="bulk-keep-batch" type="submit" autofocus class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Keep batch</button>
+                    <button id="bulk-cancel-confirm" type="button" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50">Cancel batch</button>
+                </form>
+            </dialog>
+            <a id="bulk-results-link" href="{{ route('imports.cooperative-workbook.create') }}" hidden class="mt-2 text-sm font-semibold text-blue-800 hover:underline">View import results</a>
+            <section id="bulk-progress-toast" hidden aria-labelledby="bulk-progress-title" class="fixed inset-x-4 bottom-4 z-[75] rounded-xl border border-blue-200 bg-white p-4 shadow-xl sm:bottom-6 sm:left-auto sm:right-6 sm:w-96">
+                <div class="flex items-start gap-3">
+                    <span id="bulk-progress-icon" aria-hidden="true" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                        <i class="fa-solid fa-spinner motion-safe:animate-spin"></i>
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="bulk-progress-title" class="text-sm font-semibold text-slate-800">Workbook import progress</h2>
+                        <p id="bulk-progress-status" role="status" class="mt-1 break-words text-xs text-slate-600"></p>
+                        <div class="mt-2 flex items-center gap-2">
+                            <progress id="bulk-progress-bar" aria-label="Workbooks processed" max="100" value="0" class="h-2 w-full accent-emerald-700"></progress>
+                            <span id="bulk-progress-percent" aria-hidden="true" class="min-w-10 text-right text-xs font-semibold tabular-nums">0%</span>
+                        </div>
+                        <button id="bulk-progress-results" type="button" hidden class="mt-3 text-xs font-semibold text-blue-800 hover:underline">View import results</button>
+                    </div>
+                    <button id="bulk-progress-close" type="button" hidden aria-label="Close import progress" class="h-9 w-9 shrink-0 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </section>
             <div id="bulk-preview" class="mt-4 space-y-3"></div>
             <p class="mt-4 rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Preview counts show detected rows, basic header/required-column validation, and exact duplicate rows within each sheet. Existing-record matching and cross-worksheet reconciliation are applied again during import. Only the 12 approved sheets are read; COMMENTS_JAN2026, Pedigree, Summary, and Semen are excluded.</p>
         @endif
@@ -48,7 +85,7 @@
                             <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{{ ucfirst($batch->status) }} · {{ $batch->files_completed }} completed · {{ $batch->files_failed }} failed</span>
                         </summary>
                         <div class="overflow-x-auto border-t border-slate-100 px-5 py-3">
-                            <table class="min-w-full text-left text-xs">
+                            <table data-table-pagination class="min-w-full text-left text-xs">
                                 <thead class="text-slate-500"><tr><th class="px-2 py-2">Workbook</th><th class="px-2 py-2">Cooperative</th><th class="px-2 py-2">Status</th><th class="px-2 py-2">Review</th><th class="px-2 py-2">Action</th></tr></thead>
                                 <tbody class="divide-y divide-slate-100">
                                     @foreach ($batch->files as $batchFile)
@@ -132,8 +169,8 @@
 
     <section class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div class="mb-5">
-            <h1 class="text-xl font-bold text-slate-900">Import a cooperative worksheet</h1>
-            <p class="mt-1 text-sm text-slate-600">Choose a workbook in the cooperative row and import only the matching worksheet from that cell. New records are added and matches are updated; omitted records and their history are kept.</p>
+            <h1 class="text-xl font-bold text-slate-900">Cooperative worksheet status</h1>
+            <p class="mt-1 text-sm text-slate-600">Use Bulk workbook staging above to import worksheets. This table shows the latest import result for each cooperative and worksheet.</p>
         </div>
 
         @if (! $historyTablesReady)
@@ -141,37 +178,13 @@
         @elseif ($cooperatives->isEmpty())
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Create a cooperative before importing a workbook.</div>
         @else
-            <p class="mb-3 text-xs text-slate-500">Select the cooperative’s Excel workbook in the cell for the sheet you want to import. Supported files: .xlsx, .xls, .xlsm; maximum 50 MB.</p>
             @if ($errors->any())
                 <div class="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
                     @foreach ($errors->all() as $error)<p>{{ $error }}</p>@endforeach
                 </div>
             @endif
-            <div x-data="{
-                pageSize: 10,
-                currentPage: 1,
-                total: {{ $cooperatives->count() }},
-                get pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)); },
-                get firstVisible() { return this.total === 0 ? 0 : (this.currentPage - 1) * this.pageSize + 1; },
-                get lastVisible() { return Math.min(this.currentPage * this.pageSize, this.total); },
-                setPageSize(value) { this.pageSize = Number(value); this.currentPage = 1; },
-                isRowVisible(index) { return index >= (this.currentPage - 1) * this.pageSize && index < this.currentPage * this.pageSize; }
-            }">
-            <div class="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-                <label class="flex items-center gap-2 text-slate-600">
-                    <span>View</span>
-                    <select x-model.number="pageSize" @change="currentPage = 1" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200" aria-label="Cooperatives per page">
-                        <option value="10">10</option>
-                        <option value="25">25</option>
-                        <option value="30">30</option>
-                        <option value="50">50</option>
-                    </select>
-                    <span>cooperatives per page</span>
-                </label>
-                <span class="text-slate-500" x-text="`Showing ${firstVisible}–${lastVisible} of ${total} cooperatives`"></span>
-            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
-                <table class="min-w-[2200px] w-full text-left text-xs">
+                <table data-table-pagination class="min-w-[2200px] w-full text-left text-xs">
                     <thead class="bg-slate-50 uppercase text-slate-500">
                         <tr>
                             <th class="sticky left-0 z-10 min-w-64 bg-slate-50 px-3 py-3 font-semibold">Cooperative</th>
@@ -181,8 +194,8 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        @foreach ($cooperatives as $index => $cooperative)
-                            <tr x-cloak x-show="isRowVisible({{ $index }})" class="align-top hover:bg-slate-50/70">
+                        @foreach ($cooperatives as $cooperative)
+                            <tr class="align-top hover:bg-slate-50/70">
                                 <th scope="row" class="sticky left-0 z-10 bg-white px-3 py-4 text-left font-semibold text-slate-800">{{ $cooperative->cooperative_name }}</th>
                                 @foreach ($sheets as $sheet)
                                     @php($latest = $latestByCooperative[$cooperative->id][$sheet['key']] ?? null)
@@ -194,25 +207,12 @@
                                         @else
                                             <span class="mb-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-500">Not imported</span>
                                         @endif
-                                        <form method="POST" action="{{ route('imports.cooperative-workbook.import-sheet', [$cooperative->id, $sheet['key']]) }}" enctype="multipart/form-data" class="space-y-2">
-                                            @csrf
-                                            <input type="file" name="file" accept=".xlsx,.xls,.xlsm" required aria-label="Select workbook for {{ $sheet['label'] }} and {{ $cooperative->cooperative_name }}" class="block w-full rounded border border-slate-300 bg-white p-1.5 text-[10px]">
-                                            <button type="submit" class="inline-flex items-center gap-1 rounded bg-[#0b1f3a] px-2.5 py-1.5 text-[10px] font-semibold text-white hover:bg-[#122b4d]">
-                                                <i class="fa-solid fa-file-import"></i> Import {{ $sheet['label'] }}
-                                            </button>
-                                        </form>
                                     </td>
                                 @endforeach
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
-            </div>
-            <div class="mt-3 flex items-center justify-end gap-2">
-                <button type="button" @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage <= 1" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Previous page">Previous</button>
-                <span class="px-2 text-sm tabular-nums text-slate-600" x-text="`Page ${currentPage} of ${pageCount}`"></span>
-                <button type="button" @click="currentPage = Math.min(pageCount, currentPage + 1)" :disabled="currentPage >= pageCount" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Next page">Next</button>
-            </div>
             </div>
         @endif
 
@@ -255,7 +255,7 @@
                             </span>
                         </summary>
                         <div class="overflow-x-auto border-t border-slate-100 px-5 py-4">
-                            <table class="min-w-full text-left text-sm">
+                            <table data-table-pagination class="min-w-full text-left text-sm">
                                 <thead class="text-xs uppercase text-slate-500">
                                     <tr>
                                         <th class="px-3 py-2 font-semibold">Worksheet</th>
@@ -323,11 +323,51 @@
     const message = document.getElementById('bulk-message');
     const stageButton = document.getElementById('bulk-stage-button');
     const confirmButton = document.getElementById('bulk-confirm-button');
+    const confirmLabel = document.getElementById('bulk-confirm-label');
+    const confirmSpinner = document.getElementById('bulk-confirm-spinner');
+    const progressToast = document.getElementById('bulk-progress-toast');
+    const progressIcon = document.getElementById('bulk-progress-icon');
+    const progressStatus = document.getElementById('bulk-progress-status');
+    const progressBar = document.getElementById('bulk-progress-bar');
+    const progressPercent = document.getElementById('bulk-progress-percent');
+    const progressResults = document.getElementById('bulk-progress-results');
+    const progressClose = document.getElementById('bulk-progress-close');
+    const resultsLink = document.getElementById('bulk-results-link');
     const cancelButton = document.getElementById('bulk-cancel-button');
+    const cancelDialog = document.getElementById('bulk-cancel-dialog');
+    const cancelError = document.getElementById('bulk-cancel-error');
+    const keepBatchButton = document.getElementById('bulk-keep-batch');
+    const cancelConfirm = document.getElementById('bulk-cancel-confirm');
     const dropzone = document.getElementById('bulk-dropzone');
     let batchId = null;
     let stagedFiles = [];
     let stagedUploads = [];
+    let isConfirming = false;
+    let isStaging = false;
+
+    function updateImportProgress(processed, total, status) {
+        const percent = Math.floor(processed * 100 / total);
+        progressBar.value = percent;
+        progressPercent.textContent = `${percent}%`;
+        progressStatus.textContent = status;
+    }
+
+    progressResults.addEventListener('click', () => window.location.reload());
+    progressClose.addEventListener('click', () => {
+        progressToast.hidden = true;
+        resultsLink.hidden = false;
+        resultsLink.focus();
+    });
+
+    function updateConfirmButton() {
+        const ready = stagedFiles.filter((file) => file.status === 'ready');
+        confirmButton.disabled = isConfirming || isStaging || !batchId || !ready.length || ready.some((file) => !file.cooperative_id);
+        confirmButton.setAttribute('aria-busy', String(isConfirming));
+        confirmSpinner.hidden = !isConfirming;
+        confirmLabel.textContent = isConfirming ? 'Importing workbooks…' : 'Confirm and import ready files';
+        cancelButton.disabled = isConfirming || isStaging;
+        stageButton.disabled = isConfirming || isStaging || fileInput.files.length === 0;
+    }
 
     const setMessage = (text, isError = false) => {
         message.textContent = text;
@@ -351,7 +391,8 @@
         stagedUploads.forEach((upload) => {
             const note = document.createElement('p');
             note.className = `rounded-lg p-3 text-sm ${upload.error ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-800'}`;
-            note.textContent = upload.error || `${upload.filename}: duplicate file already staged.`;
+            note.setAttribute('role', 'alert');
+            note.textContent = upload.error || `${upload.filename}: ${upload.duplicateMessage}`;
             preview.append(note);
         });
         stagedFiles.forEach((file) => {
@@ -388,8 +429,7 @@
                 });
                 select.addEventListener('change', () => {
                     file.cooperative_id = select.value ? Number(select.value) : null;
-                    confirmButton.disabled = !stagedFiles.some((item) => item.status === 'ready')
-                        || stagedFiles.some((item) => item.status === 'ready' && !item.cooperative_id);
+                    updateConfirmButton();
                 });
                 top.append(select);
             }
@@ -399,6 +439,7 @@
                 remove.className = 'rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700';
                 remove.textContent = 'Remove file';
                 remove.addEventListener('click', async () => {
+                    if (isConfirming) return;
                     try {
                         await request(url(endpoints.remove, batchId, file.id), { method: 'DELETE' });
                         stagedFiles = stagedFiles.filter((item) => item.id !== file.id);
@@ -429,6 +470,7 @@
                 const table = document.createElement('div');
                 table.className = 'mt-2 overflow-x-auto';
                 const tableElement = document.createElement('table');
+                tableElement.setAttribute('data-table-pagination', '');
                 tableElement.className = 'min-w-full text-left text-xs';
                 const headers = ['Worksheet', 'Detected rows', 'Valid', 'Invalid', 'Exact duplicates'];
                 const thead = document.createElement('thead');
@@ -459,13 +501,12 @@
             preview.append(card);
         });
         cancelButton.hidden = !batchId;
-        confirmButton.disabled = !batchId || !stagedFiles.some((file) => file.status === 'ready')
-            || stagedFiles.some((file) => file.status === 'ready' && !file.cooperative_id);
+        updateConfirmButton();
     }
 
     fileInput.addEventListener('change', () => {
-        stageButton.disabled = fileInput.files.length === 0;
-        if (fileInput.files.length) setMessage(`${fileInput.files.length} file(s) selected. They will be uploaded one at a time.`);
+        updateConfirmButton();
+        if (!isConfirming && fileInput.files.length) setMessage(`${fileInput.files.length} file(s) selected. They will be uploaded one at a time.`);
     });
     dropzone?.addEventListener('dragover', (event) => {
         event.preventDefault();
@@ -481,8 +522,9 @@
 
     stageButton?.addEventListener('click', async () => {
         const files = Array.from(fileInput.files);
-        if (!files.length) return;
-        stageButton.disabled = true;
+        if (isConfirming || isStaging || !files.length) return;
+        isStaging = true;
+        updateConfirmButton();
         try {
             if (!batchId) batchId = (await request(endpoints.create, { method: 'POST' })).batch_id;
             for (let index = 0; index < files.length; index++) {
@@ -493,7 +535,7 @@
                 try {
                     const result = await request(url(endpoints.stage, batchId), { method: 'POST', body: formData });
                     if (result.duplicate) {
-                        stagedUploads.push({ filename: file.name, duplicate: true });
+                        stagedUploads.push({ filename: file.name, duplicateMessage: result.message });
                     } else {
                         stagedFiles.push(result.file);
                     }
@@ -503,11 +545,14 @@
                 render();
             }
             fileInput.value = '';
-            setMessage(`Staging finished. Review cooperative matches and worksheet previews before confirming.`);
+            const duplicateCount = stagedUploads.filter((upload) => upload.duplicateMessage).length;
+            setMessage(duplicateCount
+                ? `Staging finished. Skipped ${duplicateCount} duplicate workbook(s). Review the alerts below.`
+                : 'Staging finished. Review cooperative matches and worksheet previews before confirming.');
         } catch (error) {
             setMessage(error.message, true);
         } finally {
-            stageButton.disabled = fileInput.files.length === 0;
+            isStaging = false;
             render();
         }
     });
@@ -517,24 +562,50 @@
     }
     async function runQueued(id, files) {
         let completed = 0;
+        let withErrors = 0;
         for (const file of files) {
-            setMessage(`Importing workbook ${++completed} of ${files.length}: ${file.filename || `#${file.id}`}`);
+            const status = `Importing workbook ${completed + 1} of ${files.length}: ${file.filename || `#${file.id}`}`;
+            setMessage(status);
+            if (isConfirming) updateImportProgress(completed, files.length, status);
             try {
-                await importOne(id, file.id);
+                const result = await importOne(id, file.id);
+                if (result.status !== 'completed') withErrors++;
             } catch (error) {
+                withErrors++;
                 setMessage(`${file.filename || `Workbook #${file.id}`} failed: ${error.message}`, true);
             }
+            completed++;
         }
-        setMessage('Batch processing finished. The import report below lists worksheet-level outcomes.');
-        window.location.reload();
+        const summary = withErrors
+            ? `Processed ${completed} workbook(s). ${withErrors} reported errors.`
+            : (completed === 1 ? 'Workbook imported successfully.' : `${completed} workbooks imported successfully.`);
+        setMessage(summary, withErrors > 0);
+        if (isConfirming) {
+            updateImportProgress(completed, files.length, summary);
+            progressResults.hidden = false;
+            progressClose.hidden = false;
+            progressToast.classList.replace('border-blue-200', withErrors ? 'border-rose-200' : 'border-emerald-200');
+            progressIcon.classList.replace('bg-blue-100', withErrors ? 'bg-rose-100' : 'bg-emerald-100');
+            progressIcon.classList.replace('text-blue-700', withErrors ? 'text-rose-700' : 'text-emerald-700');
+            progressIcon.firstElementChild.className = withErrors ? 'fa-solid fa-exclamation' : 'fa-solid fa-check';
+        } else {
+            window.location.reload();
+        }
     }
 
     confirmButton?.addEventListener('click', async () => {
+        if (confirmButton.disabled) return;
         const ready = stagedFiles.filter((file) => file.status === 'ready');
         if (!ready.length || ready.some((file) => !file.cooperative_id)) return;
         const cooperativeIds = {};
         ready.forEach((file) => cooperativeIds[file.id] = file.cooperative_id);
-        confirmButton.disabled = true;
+        isConfirming = true;
+        updateConfirmButton();
+        setMessage('Confirming the batch…');
+        progressResults.hidden = true;
+        progressClose.hidden = true;
+        updateImportProgress(0, ready.length, 'Confirming the batch…');
+        progressToast.hidden = false;
         try {
             await request(url(endpoints.confirm, batchId), {
                 method: 'POST',
@@ -543,21 +614,44 @@
             });
             await runQueued(batchId, ready.map((file) => ({ id: file.id, filename: file.filename })));
         } catch (error) {
+            progressToast.hidden = true;
             setMessage(error.message, true);
-            confirmButton.disabled = false;
+            isConfirming = false;
+            updateConfirmButton();
+            confirmButton.focus();
         }
     });
 
-    cancelButton?.addEventListener('click', async () => {
-        if (!batchId || !window.confirm('Cancel this unconfirmed batch and remove its staged workbooks?')) return;
+    cancelButton.addEventListener('click', () => {
+        if (!batchId || cancelButton.disabled) return;
+        cancelError.hidden = true;
+        cancelDialog.showModal();
+    });
+    cancelDialog.addEventListener('cancel', (event) => {
+        if (cancelConfirm.disabled) event.preventDefault();
+    });
+    cancelConfirm.addEventListener('click', async () => {
+        if (!batchId || cancelConfirm.disabled) return;
+        cancelError.hidden = true;
+        cancelConfirm.disabled = true;
+        keepBatchButton.disabled = true;
+        cancelConfirm.textContent = 'Cancelling…';
         try {
             await request(url(endpoints.cancel, batchId), { method: 'DELETE' });
             window.location.reload();
-        } catch (error) { setMessage(error.message, true); }
+        } catch (error) {
+            cancelError.textContent = error.message;
+            cancelError.hidden = false;
+            cancelConfirm.disabled = false;
+            keepBatchButton.disabled = false;
+            cancelConfirm.textContent = 'Cancel batch';
+            cancelConfirm.focus();
+        }
     });
 
     document.querySelectorAll('[data-retry-batch]').forEach((button) => {
         button.addEventListener('click', async () => {
+            if (isConfirming) return;
             const id = button.dataset.retryBatch;
             const fileId = button.dataset.retryFile;
             button.disabled = true;
@@ -569,6 +663,7 @@
     });
     document.querySelectorAll('[data-import-batch]').forEach((button) => {
         button.addEventListener('click', async () => {
+            if (isConfirming) return;
             button.disabled = true;
             try {
                 await runQueued(button.dataset.importBatch, [{ id: button.dataset.importFile }]);

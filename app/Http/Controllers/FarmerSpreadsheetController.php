@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\FarmerImportAddress;
+use App\Support\ImportAcquisition;
 use App\Support\SpreadsheetWorksheetReader;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -10,8 +12,6 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class FarmerSpreadsheetController extends Controller
 {
-    private const ADDRESS_COLUMNS = ['barangay' => 22, 'municipality' => 23, 'province' => 24, 'district' => 25, 'region' => 26];
-
     public function import(Request $request)
     {
         $validated = $request->validate([
@@ -20,7 +20,7 @@ class FarmerSpreadsheetController extends Controller
         ]);
 
         abort_unless(
-            Schema::hasColumns('farmers', ['cooperative_sequence', 'cooperative_id', ...array_keys(self::ADDRESS_COLUMNS)]),
+            Schema::hasColumns('farmers', ['cooperative_sequence', 'cooperative_id', ...array_keys(FarmerImportAddress::HEADERS), ...ImportAcquisition::FIELDS]),
             422,
             'Run the latest database migrations before importing farmers.'
         );
@@ -46,12 +46,6 @@ class FarmerSpreadsheetController extends Controller
             }
             if ($first === '' && $last === '') continue;
 
-            $address = [];
-            foreach (self::ADDRESS_COLUMNS as $field => $column) {
-                $value = $inventorySheet ? trim((string) ($values[$column] ?? '')) : $get([$field]);
-                $address[$field] = $value === '' ? null : $value;
-            }
-
             $records[] = [
                 'first_name' => $first,
                 'middle_name' => $middle ?: null,
@@ -65,7 +59,9 @@ class FarmerSpreadsheetController extends Controller
                 'spouse_name' => $get(['spouse name']) ?: null,
                 'spouse_occupation' => $get(['spouse occupation']) ?: null,
                 '_sort_name' => trim($last.' '.$first.' '.$middle),
-                ...$address,
+                ...FarmerImportAddress::fromHeaders($get),
+                'acquisition_date' => $this->date($get(ImportAcquisition::DATE_HEADERS)),
+                'acquisition_cost' => ImportAcquisition::cost($get(ImportAcquisition::COST_HEADERS)),
             ];
         }
 
@@ -82,7 +78,7 @@ class FarmerSpreadsheetController extends Controller
         DB::transaction(function () use ($records, $cooperativeId, &$created, &$skipped, &$updated, &$firstCode, &$lastCode) {
             DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first();
             $sequence = (int) DB::table('farmers')->where('cooperative_id', $cooperativeId)->max('cooperative_sequence');
-            $existingRows = DB::table('farmers')->where('cooperative_id', $cooperativeId)->get(['id', 'first_name', 'middle_name', 'last_name', 'farmer_code', 'cooperative_sequence', ...array_keys(self::ADDRESS_COLUMNS)]);
+            $existingRows = DB::table('farmers')->where('cooperative_id', $cooperativeId)->get(['id', 'first_name', 'middle_name', 'last_name', 'farmer_code', 'cooperative_sequence', ...array_keys(FarmerImportAddress::HEADERS), ...ImportAcquisition::FIELDS]);
             $existingNames = [];
             foreach ($existingRows as $farmer) {
                 $sequence = max($sequence, (int) ($farmer->cooperative_sequence ?? 0));
@@ -102,11 +98,12 @@ class FarmerSpreadsheetController extends Controller
                 if (isset($existingNames[$key])) {
                     $farmer = $existingNames[$key];
                     $changes = [];
-                    foreach (self::ADDRESS_COLUMNS as $field => $column) {
+                    foreach (array_keys(FarmerImportAddress::HEADERS) as $field) {
                         if ($record[$field] !== null && $record[$field] !== $farmer->$field) {
                             $changes[$field] = $record[$field];
                         }
                     }
+                    $changes += ImportAcquisition::updates(array_intersect_key($record, array_flip(ImportAcquisition::FIELDS)), $farmer);
                     if ($changes) {
                         DB::table('farmers')->where('id', $farmer->id)->update($changes + ['updated_at' => now()]);
                         foreach ($changes as $field => $value) $farmer->$field = $value;
@@ -137,7 +134,7 @@ class FarmerSpreadsheetController extends Controller
         $message = "Imported {$created} farmer(s) in A–Z order; {$skipped} duplicate(s) skipped.";
         if ($firstCode) $message .= " New Farmer IDs: {$firstCode}".($lastCode !== $firstCode ? " to {$lastCode}." : '.');
 
-        if ($updated) $message .= " Updated address details for {$updated} existing farmer record(s).";
+        if ($updated) $message .= " Updated address or acquisition details for {$updated} existing farmer record(s).";
 
         return response()->json(['success' => true, 'count' => $created, 'skipped' => $skipped, 'updated' => $updated, 'message' => $message]);
     }

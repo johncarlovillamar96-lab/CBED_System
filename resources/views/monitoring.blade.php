@@ -26,29 +26,95 @@
         <p class="mb-6 rounded-lg bg-amber-100 p-3 text-sm text-amber-900">Add a cooperative before creating a monitoring report.</p>
     @endif
 
-    <div id="monitoring-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-2 sm:p-3" role="dialog" aria-modal="true" aria-labelledby="monitoring-modal-title">
-        <form method="POST" action="{{ route('ui.monitoring.reports.store') }}" id="monitoring-form" class="inventory-modal-panel inventory-panel flex max-h-[96vh] w-full max-w-[99vw] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <dialog id="monitoring-modal" aria-labelledby="monitoring-modal-title" class="m-auto max-h-[94vh] w-[98vw] max-w-none overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+        <form method="POST" action="{{ route('ui.monitoring.reports.store') }}" id="monitoring-form">
             @csrf
-            <div class="inventory-modal-header flex items-start justify-between gap-4 border-b p-5"><div><h2 id="monitoring-modal-title" class="text-xl font-bold text-white">Add Monitoring Record</h2><p class="mt-1 text-sm text-blue-100">Animal identification is loaded from Carabao Inventory.</p></div><button type="button" onclick="closeMonitoringModal()" class="rounded-lg p-2 text-white hover:bg-white/10" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>
-            <div class="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2">
-                <label class="text-sm font-semibold">Monitoring Date<input type="date" name="monitoring_date" required value="{{ now()->toDateString() }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal"></label>
-                <label class="text-sm font-semibold">Cooperative<select id="monitoring-cooperative" name="cooperative_id" required class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal"><option value="">Select a cooperative</option>@foreach($cooperatives as $cooperative)<option value="{{ $cooperative->id }}">{{ $cooperative->cooperative_name }}</option>@endforeach</select></label>
-                <label class="text-sm font-semibold">Monitoring Technician<input type="text" name="monitored_by" maxlength="255" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-normal" placeholder="Technician name"></label>
+            <header class="flex items-center justify-between gap-3 border-b p-5">
+                <h2 id="monitoring-modal-title" class="text-xl font-bold text-[#12345a]">Add Monitoring Record</h2>
+                <button type="button" onclick="closeMonitoringModal()" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close monitoring entry"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            </header>
+            <div class="grid gap-4 px-5 pt-5 sm:grid-cols-3">
+                <x-monitoring-picker id="monitoring-cooperative" label="Cooperative" name="cooperative_id">
+                    <option value="">Select a cooperative</option>
+                    @foreach ($cooperatives as $cooperative)
+                        <option value="{{ $cooperative->id }}">{{ $cooperative->cooperative_name }}</option>
+                    @endforeach
+                </x-monitoring-picker>
+                <x-monitoring-picker id="monitoring-farmer-filter" label="Farmer">
+                    <option value="">Select a farmer</option>
+                </x-monitoring-picker>
+                <label class="text-sm font-semibold">Monitoring date
+                    <input type="date" name="monitoring_date" required value="{{ now()->toDateString() }}" class="mt-1 block min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
+                </label>
             </div>
-            <div id="monitoring-counters" class="grid grid-cols-3 gap-2 border-b p-4"><div class="rounded-lg bg-slate-100 p-2 text-center text-xs">Total <b id="count-total">0</b></div><div class="rounded-lg bg-emerald-50 p-2 text-center text-xs">Available <b id="count-available">0</b></div><div class="rounded-lg bg-slate-200 p-2 text-center text-xs">Unavailable <b id="count-unavailable">0</b></div></div>
-            <div class="flex flex-wrap gap-2 border-b p-4"><select id="monitoring-farmer-filter" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All farmers</option></select><input id="monitoring-search" type="search" placeholder="Search bolus, registry, tag or animal name" class="min-w-56 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"><select id="filter-availability" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All availability</option><option value="available">Available</option><option value="unavailable">Unavailable</option></select><select id="filter-specification" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option value="">All specifications</option><option value="calf_monitoring">Calf Monitoring</option><option value="breeding">Breeding</option><option value="health_nutrition">Health &amp; Nutrition</option><option value="dry_off">Dry-off Monitoring</option><option value="other_services">Other Services</option></select><select id="monitoring-page-size" class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
-            <div id="monitoring-loading" class="hidden p-8 text-center text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading cooperative animals…</div><div id="monitoring-empty" class="hidden p-8 text-center text-sm text-slate-500">Select a cooperative to load animals.</div><div id="monitoring-error" class="hidden p-4 text-sm text-rose-700"></div>
-            <div class="inventory-table-scroll min-h-0 flex-1 overflow-auto"><table class="inventory-data-table w-full min-w-[1600px] border-collapse text-xs"><thead class="sticky top-0 z-10 text-left"><tr>@foreach(['No.','Bolus ID','Registry No.','Tag No.','Animal Name / Farmer','Sex','Birthday','Breed','Body Condition Score (BCS)','Specification / Details','Availability','Remarks'] as $h)<th class="border px-2 py-2">{{ $h }}</th>@endforeach</tr></thead><tbody id="monitoring-animal-rows"></tbody></table></div>
-            <div class="flex flex-wrap items-center justify-between gap-3 border-t p-4"><div class="flex items-center gap-2"><button type="button" id="monitoring-prev" class="page-btn">Previous</button><span id="monitoring-page-label" class="text-sm text-slate-600"></span><button type="button" id="monitoring-next" class="page-btn">Next</button></div><div class="flex gap-2"><button type="button" onclick="closeMonitoringModal()" class="action-secondary rounded-lg">Cancel</button><button type="submit" id="monitoring-submit-button" class="action-primary rounded-lg"><i class="fa-solid fa-floppy-disk mr-1"></i>Save Monitoring Report</button></div></div>
-            <datalist id="breeding-technician-list">@foreach($technicianOptions ?? [] as $technician)<option value="{{ $technician }}">@endforeach</datalist><div id="breeding-monitor-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="breeding-modal-title"><div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"><header class="rounded-t-2xl bg-gradient-to-r from-[#0b1f3a] to-[#087d9b] p-5 text-white"><h2 id="breeding-modal-title" class="text-xl font-bold">What breeding method was used?</h2><p class="mt-1 text-sm text-blue-100">Choose AI or NM to show the matching breeding fields.</p></header><div class="space-y-4 p-5"><label class="block text-sm font-semibold">Breeding Method<select id="breeding-modal-method" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Select method</option><option value="AI">AI (Artificial Insemination)</option><option value="NM">NM (Natural Mating)</option></select></label><div id="breeding-modal-fields" class="grid gap-3 sm:grid-cols-2"></div></div><footer class="flex justify-end gap-2 rounded-b-2xl border-t bg-slate-50 p-4"><button type="button" onclick="cancelBreedingModal()" class="action-secondary">Cancel</button><button type="button" onclick="saveBreedingModal()" class="action-primary"><i class="fa-solid fa-check mr-1"></i>Save Breeding Details</button></footer></div></div>
-        </form>
-    </div>
+            <div class="space-y-4 p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <p id="monitoring-farmer-animals" role="status" class="text-sm text-slate-600">Select a cooperative and farmer to view live animals.</p>
+                    <button type="button" id="monitoring-add-row" disabled class="cbed-add-button action-secondary disabled:opacity-50">
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Row
+                    </button>
+                </div>
+                <p id="monitoring-loading" role="status" class="hidden rounded-lg bg-slate-50 p-3 text-sm text-slate-600"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading cooperative animals?</p>
+                <p id="monitoring-error" role="alert" class="hidden rounded-lg bg-rose-50 p-3 text-sm text-rose-800"></p>
 
-    <section class="inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div class="border-b border-slate-200 p-5 sm:p-6">
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div class="overflow-x-auto rounded-lg border border-slate-200" role="region" aria-label="Monitoring entry rows" tabindex="0">
+                    <table class="inventory-data-table w-full min-w-[90rem] table-fixed text-left text-sm">
+                        <colgroup>
+                            <col class="w-12">
+                            <col class="w-72">
+                            <col class="w-40">
+                            <col class="w-24">
+                            <col class="w-[34rem]">
+                            <col class="w-12">
+                            <col class="w-64">
+                        </colgroup>
+                        <thead class="bg-slate-100 text-xs uppercase text-slate-600">
+                            <tr>
+                                @foreach (['No.', 'Animal ID', 'Classification', 'BCS', 'Monitoring Services', 'Remove', 'Remarks'] as $heading)
+                                    <th scope="col" class="px-2 py-3">
+                                        @if ($heading === 'Remove')<span class="sr-only">{{ $heading }}</span>@else{{ $heading }}@endif
+                                    </th>
+                                @endforeach
+                            </tr>
+                        </thead>
+                        <tbody id="monitoring-animal-rows" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                    <p id="monitoring-empty" role="status" class="px-4 py-5 text-center text-sm text-slate-500">Add a row to choose a live animal.</p>
+                </div>
+            </div>
+            <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
+                <button type="button" onclick="closeMonitoringModal()" class="action-secondary">Cancel</button>
+                <button type="submit" id="monitoring-submit-button" disabled class="action-primary disabled:opacity-50"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>Save Monitoring Report</button>
+            </footer>
+            <datalist id="breeding-technician-list">@foreach($technicianOptions ?? [] as $technician)<option value="{{ $technician }}">@endforeach</datalist>
+        </form>
+        <dialog id="monitoring-service-dialog" aria-labelledby="monitoring-service-title" class="m-auto max-h-[92vh] w-11/12 max-w-4xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
+            <form id="monitoring-service-form">
+                <header class="border-b p-5"><h2 id="monitoring-service-title" class="text-xl font-bold text-[#12345a]"></h2></header>
+                <div id="monitoring-service-fields" class="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3"></div>
+                <p id="monitoring-service-error" role="alert" class="hidden px-5 pb-4 text-sm text-rose-800"></p>
+                <footer class="flex flex-wrap items-center justify-end gap-2 border-t bg-slate-50 p-4">
+                    <button id="monitoring-service-remove" type="button" class="mr-auto rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50" hidden>Remove service</button>
+                    <button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button>
+                    <button type="submit" class="action-primary">Save service details</button>
+                </footer>
+            </form>
+        </dialog>
+        <dialog id="breeding-monitor-modal" aria-labelledby="breeding-modal-title" class="m-auto max-h-[92vh] w-11/12 max-w-3xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60"><header class="rounded-t-2xl bg-gradient-to-r from-[#0b1f3a] to-[#087d9b] p-5 text-white"><h2 id="breeding-modal-title" class="text-xl font-bold">What breeding method was used?</h2><p class="mt-1 text-sm text-blue-100">Choose AI or NM to show the matching breeding fields.</p></header><div class="space-y-4 p-5"><label class="block text-sm font-semibold">Breeding Method<select id="breeding-modal-method" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Select method</option><option value="AI">AI (Artificial Insemination)</option><option value="NM">NM (Natural Mating)</option></select></label><div id="breeding-modal-fields" class="grid gap-3 sm:grid-cols-2"></div></div><footer class="flex justify-end gap-2 rounded-b-2xl border-t bg-slate-50 p-4"><button id="breeding-service-remove" type="button" class="mr-auto rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50" hidden>Remove service</button><button type="button" onclick="cancelBreedingModal()" class="action-secondary">Cancel</button><button type="button" onclick="saveBreedingModal()" class="action-primary"><i class="fa-solid fa-check mr-1"></i>Save Breeding Details</button></footer></dialog>
+    </dialog>
+
+    <details class="group inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5 [&::-webkit-details-marker]:hidden">
+            <h2 class="text-lg font-bold text-slate-900">Monitoring Calendar</h2>
+            <span class="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-700">
+                <span class="group-open:hidden">Show calendar</span>
+                <span class="hidden group-open:inline">Hide calendar</span>
+                <i class="fa-solid fa-chevron-down text-xs group-open:rotate-180" aria-hidden="true"></i>
+            </span>
+        </summary>
+        <div class="border-y border-slate-200 px-4 py-3 sm:px-5">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                    <h2 class="text-lg font-bold text-slate-900">2026 Monitoring Calendar</h2>
                     <p class="mt-1 text-sm text-slate-500">Browse actual monitoring, breeding, calf, and health service dates. {{ number_format($calendarEvents->count()) }} dated record(s) in 2026.</p>
                 </div>
                 <div class="flex items-center gap-2">
@@ -57,32 +123,32 @@
                     <a href="{{ route('ui.monitoring', ['month' => $nextMonth, 'cooperative_id' => $selectedCooperativeId ?: null, 'report_search' => $reportSearch ?: null, 'report_specification'=>$reportSpecification?:null, 'report_availability'=>$reportAvailability?:null, 'report_status'=>$reportStatus?:null]) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></a>
                 </div>
             </div>
-            <form method="GET" action="{{ route('ui.monitoring') }}" class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <label class="text-xs font-semibold text-slate-600">Calendar view<select name="view" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="day" @selected($calendarView==='day')>Day View</option><option value="month" @selected($calendarView==='month')>Month View</option><option value="year" @selected($calendarView==='year')>Year View</option></select></label>
-                <label class="text-xs font-semibold text-slate-600">Selected day<input type="date" name="date" min="2026-01-01" max="2026-12-31" value="{{ $selectedDate }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"></label>
-                <label class="text-xs font-semibold text-slate-600">Month
-                    <input type="month" name="month" value="{{ $selectedMonth }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800">
+            <form method="GET" action="{{ route('ui.monitoring') }}" class="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Calendar view<select name="view" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"><option value="day" @selected($calendarView==='day')>Day View</option><option value="month" @selected($calendarView==='month')>Month View</option><option value="year" @selected($calendarView==='year')>Year View</option></select></label>
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Selected day<input type="date" name="date" min="2026-01-01" max="2026-12-31" value="{{ $selectedDate }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"></label>
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Month
+                    <input type="month" name="month" value="{{ $selectedMonth }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal text-slate-800">
                 </label>
-                <label class="text-xs font-semibold text-slate-600">Cooperative
-                    <select name="cooperative_id" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800">
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Cooperative
+                    <select name="cooperative_id" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal text-slate-800">
                         <option value="">All cooperatives</option>
                         @foreach($cooperatives as $cooperative)
                             <option value="{{ $cooperative->id }}" @selected((string)$cooperative->id === $selectedCooperativeId)>{{ $cooperative->cooperative_name }}</option>
                         @endforeach
                     </select>
                 </label>
-                <label class="text-xs font-semibold text-slate-600">Search cooperative
-                    <input type="search" name="report_search" value="{{ $reportSearch }}" placeholder="Enter a cooperative name" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-800">
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Search cooperative
+                    <input type="search" name="report_search" value="{{ $reportSearch }}" placeholder="Enter a cooperative name" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal text-slate-800">
                 </label>
-                <label class="text-xs font-semibold text-slate-600">Monitoring specification
-                    <select name="report_specification" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">All specifications</option><option value="calf_monitoring" @selected($reportSpecification==='calf_monitoring')>Calf Monitoring</option><option value="breeding" @selected($reportSpecification==='breeding')>Breeding</option><option value="health_nutrition" @selected($reportSpecification==='health_nutrition')>Health &amp; Nutrition</option><option value="other_services" @selected($reportSpecification==='other_services')>Other Services</option></select>
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Monitoring specification
+                    <select name="report_specification" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"><option value="">All specifications</option><option value="calf_monitoring" @selected($reportSpecification==='calf_monitoring')>Calf Monitoring</option><option value="breeding" @selected($reportSpecification==='breeding')>Breeding</option><option value="health_nutrition" @selected($reportSpecification==='health_nutrition')>Health &amp; Nutrition</option><option value="other_services" @selected($reportSpecification==='other_services')>Other Services</option></select>
                 </label>
-                <label class="text-xs font-semibold text-slate-600">Availability
-                    <select name="report_availability" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal"><option value="">All availability</option><option value="available" @selected($reportAvailability==='available')>Available</option><option value="unavailable" @selected($reportAvailability==='unavailable')>Unavailable</option></select>
+                <label class="min-w-0 text-xs font-semibold text-slate-600">Availability
+                    <select name="report_availability" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"><option value="">All availability</option><option value="available" @selected($reportAvailability==='available')>Available</option><option value="unavailable" @selected($reportAvailability==='unavailable')>Unavailable</option></select>
                 </label>
-                <div class="flex items-end gap-2 xl:col-start-3 xl:row-start-1 xl:row-span-3">
-                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-filter"></i>Apply filters</button>
-                    <a href="{{ route('ui.monitoring') }}" class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</a>
+                <div class="flex items-end gap-2">
+                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b1f3a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-filter"></i>Apply filters</button>
+                    <a href="{{ route('ui.monitoring') }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</a>
                 </div>
             </form>
         </div>
@@ -121,7 +187,7 @@
             <p class="border-t border-slate-200 px-5 py-4 text-sm text-slate-500">No 2026 monitoring and service records were found.</p>
         @endif
         @endif
-    </section>
+    </details>
 
     @if($reports->isNotEmpty())
         <section class="inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -130,7 +196,7 @@
                 <p class="mt-1 text-sm text-slate-500">Open a saved report to review or print the previous visit.</p>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[650px] text-left text-sm">
+                <table data-table-pagination class="w-full min-w-[650px] text-left text-sm">
                     <thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-5 py-3">Visit date</th><th class="px-5 py-3">Cooperative/Association</th><th class="px-5 py-3">Total / Available / Unavailable</th><th class="px-5 py-3">Specifications</th><th class="px-5 py-3">Created by</th><th class="px-5 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-slate-100">
                         @foreach($reports as $report)
@@ -167,15 +233,6 @@
             <label class="text-xs font-semibold text-slate-600">Service type<select name="table_service" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All services</option>@foreach($categoryLabels as $key=>$label)<option value="{{ $key }}" @selected($tableService===$key)>{{ $label }}</option>@endforeach</select></label>
             <div class="flex items-end gap-2"><button class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Apply filters</button><a href="{{ route('ui.monitoring') }}#monitoring-record-table" class="rounded-lg border px-4 py-2.5 text-sm">Clear</a></div>
         </form>
-        <div class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
-            <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
-                <div><h3 class="font-bold text-slate-800">GIP Live Female Summary</h3><p class="text-xs text-slate-500">As of {{ \Carbon\Carbon::parse($gipReportingDate)->format('F j, Y') }} · Filtered by cooperative and location</p></div>
-                <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">Dry-off review at {{ $dryOffReviewDim }} DIM</span>
-            </div>
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-9">
-                @foreach($gipSummary as $label=>$total)<div class="rounded-lg border border-slate-100 bg-slate-50 p-3"><div class="text-[11px] font-medium text-slate-500">{{ $label }}</div><div class="mt-1 text-xl font-bold text-slate-900">{{ number_format($total) }}</div></div>@endforeach
-            </div>
-        </div>
         <div class="overflow-x-auto print:hidden"><table class="w-full min-w-[980px] border-collapse text-sm">
             <thead class="bg-slate-100 text-left text-xs uppercase text-slate-600"><tr>@foreach(['No.','Farmer','Animal ID','Classification','BCS','DIM','Pregnancy','Services','Monitoring Date','Remarks'] as $heading)<th class="border px-3 py-2">{{ $heading }}</th>@endforeach</tr></thead>
             <tbody>
@@ -210,18 +267,12 @@
             </table></div>
             <footer class="monitoring-print-signatures"><div><b>Monitored By:</b><span></span><small>Name and Signature</small><strong>AI TECHNICIAN</strong><small>Position/Designation</small></div><div><b>Attested By:</b><span></span><strong>KRISTINE JOY C. CUIZON</strong><small>Name and Signature</small><strong>DATA CUSTODIAN / MONITORING OFFICER</strong><small>Position/Designation</small></div><div><b>Noted By:</b><span></span><strong>REBECCA RUBY G. GABRIEL</strong><small>Name and Signature</small><strong>CBED COORDINATOR</strong><small>Position/Designation</small></div></footer>
         </div>
-        <div class="flex flex-col justify-between gap-3 border-t px-5 py-4 sm:flex-row sm:items-center print:hidden">
-            <p class="text-sm text-slate-500">Showing <b>{{ $consolidatedRowsPage->firstItem() ?? 0 }}</b>–<b>{{ $consolidatedRowsPage->lastItem() ?? 0 }}</b> of <b>{{ number_format($consolidatedRowsPage->total()) }}</b> (<b>{{ number_format($liveAnimalTotal) }}</b> total)</p>
-            <div class="flex flex-wrap items-center gap-2">
-                <label class="text-sm text-slate-500" for="monitoring-page-size">Rows</label>
-                <select id="monitoring-page-size" onchange="const url=new URL(window.location.href);url.searchParams.set('table_per_page',this.value);url.searchParams.set('table_page','1');url.searchParams.delete('table_export');window.location.href=url.toString()" class="rounded-lg border border-slate-300 px-2 py-2 text-sm">
-                    @foreach([10,25,50,100] as $pageSize)<option value="{{ $pageSize }}" @selected($tablePerPage===$pageSize)>{{ $pageSize }}</option>@endforeach
-                </select>
-                <a href="{{ $consolidatedRowsPage->previousPageUrl() ?? '#' }}" @class(['rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold', 'pointer-events-none cursor-not-allowed opacity-40' => !$consolidatedRowsPage->previousPageUrl()]) aria-disabled="{{ $consolidatedRowsPage->previousPageUrl() ? 'false' : 'true' }}">Previous</a>
-                <span class="px-2 text-sm text-slate-600">Page <b>{{ $consolidatedRowsPage->currentPage() }}</b> of <b>{{ $consolidatedRowsPage->lastPage() }}</b></span>
-                <a href="{{ $consolidatedRowsPage->nextPageUrl() ?? '#' }}" @class(['rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold', 'pointer-events-none cursor-not-allowed opacity-40' => !$consolidatedRowsPage->nextPageUrl()]) aria-disabled="{{ $consolidatedRowsPage->nextPageUrl() ? 'false' : 'true' }}">Next</a>
-            </div>
-        </div>
+        @include('partials.server-table-pagination', [
+            'paginator' => $consolidatedRowsPage,
+            'sizeParam' => 'table_per_page',
+            'filterParams' => request()->except(['table_page', 'table_per_page', 'table_export']),
+            'unfilteredTotal' => $liveAnimalTotal,
+        ])
     </section>
 </div>
 @endsection
@@ -234,9 +285,9 @@
 .monitoring-page .pcc-brand-mark{position:relative;flex:none;width:4.35rem;height:4.35rem;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.34);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.07));color:#ffd05b;font-size:2rem;box-shadow:0 10px 22px rgba(0,28,52,.2)}
 .monitoring-page .pcc-brand-mark span{position:absolute;right:-.45rem;bottom:-.4rem;display:grid;width:1.65rem;height:1.65rem;place-items:center;border:2px solid #075785;border-radius:999px;background:#ffd05b;color:#12345a;font-size:.75rem}
 .monitoring-page .pcc-program-tag{display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;border:1px solid rgba(255,213,91,.35);border-radius:999px;background:rgba(4,37,68,.24);padding:.35rem .7rem;color:#ffe08a;font-size:.7rem;font-weight:700;letter-spacing:.035em}
-.monitoring-page .action-primary,.monitoring-page .action-secondary,.monitoring-page .page-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.5rem;padding:.625rem 1rem;font-size:.875rem;font-weight:600}
+.monitoring-page .action-primary,.monitoring-page .action-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.5rem;padding:.625rem 1rem;font-size:.875rem;font-weight:600}
 .monitoring-page .action-primary{background:#ffd05b;color:#12345a;box-shadow:0 7px 16px rgba(4,37,68,.2)}.monitoring-page .action-primary:hover{background:#ffdc7d}
-.monitoring-page .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.monitoring-page .action-secondary:hover,.monitoring-page .page-btn:hover:not(:disabled){background:#f1f5f9}
+.monitoring-page .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.monitoring-page .action-secondary:hover{background:#f1f5f9}
 .monitoring-page .pcc-mating-hero .action-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;backdrop-filter:blur(8px)}
 .monitoring-page .pcc-mating-hero .action-secondary:hover{background:rgba(255,255,255,.2)}
 .monitoring-page .pcc-stat-card{position:relative;overflow:hidden;border:1px solid #dce6ed;border-top:4px solid #0b5e8b;border-radius:1rem;box-shadow:0 5px 18px rgba(15,45,67,.06);transition:transform .16s ease,box-shadow .16s ease}
@@ -247,11 +298,10 @@
 .monitoring-page .inventory-panel thead,.monitoring-page .inventory-panel thead th{background:#103c60;color:#fff;font-weight:700}
 .monitoring-page .inventory-panel thead th{border-bottom:3px solid #e8b22f}
 .monitoring-page .inventory-panel tbody tr{transition:background-color .14s ease}.monitoring-page .inventory-panel tbody tr:hover{background:#f0f8fb}
-.monitoring-page .inventory-table-scroll{max-height:72vh}
 .monitoring-page .inventory-data-table{border-collapse:separate;border-spacing:0}
 .monitoring-page .inventory-data-table thead th{position:sticky;top:0;z-index:20}
 .monitoring-page .inventory-data-table tbody tr:nth-child(even){background:#f8fafc}.monitoring-page .inventory-data-table tbody tr:hover{background:#f0f8fb}
-.monitoring-page .inventory-data-table tbody td{border-bottom:1px solid #e8edf3;vertical-align:middle}
+.monitoring-page .inventory-data-table tbody td{border-bottom:1px solid #e8edf3;vertical-align:top}
 .monitoring-page .pcc-records-panel{border-color:#dce6ed;box-shadow:0 7px 24px rgba(15,45,67,.06)}
 .monitoring-page .pcc-records-panel>div:first-child{border-bottom-color:#e3ebf0}
 .monitoring-page #animal-monitoring-print{display:none}
@@ -266,9 +316,6 @@
 .monitoring-page .monitoring-report-grid tbody tr:nth-child(even){background:#f8fafc}
 .monitoring-page .monitoring-report-grid tbody tr:hover{background:#f0f8fb}
 .monitoring-page .monitoring-report-grid tbody tr:last-child td{border-bottom:0}
-.monitoring-page .inventory-modal-header{position:sticky;top:0;z-index:50;background:linear-gradient(105deg,#082d50,#075785);border-color:#075785}
-.monitoring-page .inventory-modal-header button{display:grid;width:2.5rem;height:2.5rem;place-items:center;border:1px solid rgba(255,255,255,.3);border-radius:.75rem;color:#fff}
-.monitoring-page .page-btn{border:1px solid #cbd5e1;background:#fff;color:#334155}.monitoring-page .page-btn:disabled{opacity:.4;cursor:not-allowed}
 @page{size:legal landscape;margin:7mm}
 @page a4{size:A4 landscape;margin:6mm}
 @media print{
@@ -300,40 +347,360 @@
 @push('scripts')
 <script>
 const monitoringBaseUrl = @json(url('/monitoring/cooperatives'));
-let monitoringAnimals = [], monitoringPage = 1, semenBullOptions = [], bcsOptions = [];
+let monitoringAnimals = [], monitoringRoster = [], semenBullOptions = [], bcsOptions = [];
 const aiTechnicianOptions = @json($technicianOptions ?? []);
-let activeBreedingIndex = null, breedingModalOriginal = null, monitoringSubmitting = false;
+let activeBreedingIndex = null, activeService = null, monitoringSubmitting = false;
+let monitoringAnimalsRequest = null;
+const monitoringDialog = document.getElementById('monitoring-modal');
+const breedingDialog = document.getElementById('breeding-monitor-modal');
+const serviceDialog = document.getElementById('monitoring-service-dialog');
+const serviceForm = document.getElementById('monitoring-service-form');
+
+function monitoringPicker() {
+    return {
+        open: false,
+        search: '',
+        options: [],
+        selected: '',
+        observer: null,
+        init() {
+            this.$nextTick(() => {
+                const select = this.$refs.select;
+                const refresh = () => {
+                    this.options = Array.from(select.options, option => ({
+                        label: option.textContent.trim(),
+                        value: option.value,
+                    }));
+                    this.selected = select.value;
+                    if (this.options.length <= 1) this.open = false;
+                };
+                refresh();
+                this.observer = new MutationObserver(refresh);
+                this.observer.observe(select, {childList: true, subtree: true});
+            });
+        },
+        destroy() {
+            this.observer?.disconnect();
+        },
+        get selectedLabel() {
+            return this.options.find(option => option.value === this.selected)?.label ?? '';
+        },
+        get matches() {
+            const query = this.search.trim().toLowerCase();
+            return this.options.filter(option => option.label.toLowerCase().includes(query));
+        },
+        togglePicker() {
+            this.open = !this.open;
+            if (this.open) {
+                this.search = '';
+                this.$nextTick(() => this.$refs.search.focus());
+            }
+        },
+        closePicker() {
+            this.open = false;
+            this.$refs.trigger.focus();
+        },
+        choose(value) {
+            if (value !== this.selected) {
+                const select = this.$refs.select;
+                this.selected = select.value = value;
+                select.dispatchEvent(new Event('input', {bubbles: true}));
+                select.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+            this.closePicker();
+        },
+    };
+}
+
+monitoringDialog.addEventListener('cancel', (event) => {
+    if (monitoringSubmitting) event.preventDefault();
+});
+breedingDialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    cancelBreedingModal();
+});
 const escapeMonitoring = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 const monitoringSpecs = {
-  calf_monitoring: {label:'Calf Monitoring',dest:'Calf Drop', fields:[['date_of_birth','Calf Date of Birth','date'],['birth_outcome','Birth Outcome','select','Live Birth|Stillbirth|Abortion'],['sex','Calf Sex','select','Male|Female'],['breed','Calf Breed','text'],['calf_id','Calf ID','text'],['sire_id','Sire ID','text'],['calf_status','Calf Status','select','Live|Out|Dead'],['findings','Findings','text']]},
-  breeding: {label:'Breeding',dest:'Mating',fields:[['breeding_date','Breeding Date','date'],['method','Method','select','AI|NM'],['semen_bull_id','Semen Bull database ID (AI)','number'],['bull_id','Bull ID','text'],['semen_used','Semen Used','number'],['natural_mating_details','Natural Mating Details','text'],['pd_date','PD Date','date'],['pregnancy_status','Pregnancy Status','text'],['pregnancy_months','Pregnancy Months','number'],['expected_calving','Expected Calving','date'],['findings','Findings','text']]},
-  health_nutrition: {label:'Health and Nutrition',dest:'Health & Nutrition',fields:[['health_status','Health Status (optional)','select','Healthy|Under Observation|Under Treatment|Needs Follow-up'],['body_condition','Body Condition','text'],['symptoms','Symptoms','text'],['findings','Clinical Findings','text'],['treatment','Treatment','text'],['medication','Medication','text'],['recommendations','Recommendations','text'],['follow_up_date','Follow-up Date','date']]},
-  dry_off: {label:'Dry-off Monitoring',dest:'MTD',fields:[['dry_off_confirmed','Dry-off Confirmed','select','Yes|No'],['dry_off_date','Actual Dry-off Date','date'],['findings','Findings / Remarks','text']]}
+  calf_monitoring: {label:'Calf Monitoring', fields:[['date_of_birth','Calf Date of Birth','date'],['birth_outcome','Birth Outcome','select','Live Birth|Stillbirth|Abortion'],['sex','Calf Sex','select','Male|Female'],['breed','Calf Breed','text'],['calf_id','Calf ID','text'],['sire_id','Sire ID','text'],['calf_status','Calf Status','select','Live|Out|Dead'],['findings','Findings','text']]},
+  breeding: {label:'Breeding'},
+  health_nutrition: {label:'Health and Nutrition',fields:[['health_status','Health Status (optional)','select','Healthy|Under Observation|Under Treatment|Needs Follow-up'],['body_condition','Body Condition','text'],['symptoms','Symptoms','text'],['findings','Clinical Findings','text'],['treatment','Treatment','text'],['medication','Medication','text'],['recommendations','Recommendations','text'],['follow_up_date','Follow-up Date','date']]},
+  dry_off: {label:'Dry-off Monitoring',fields:[['dry_off_confirmed','Dry-off Confirmed','select','Yes|No'],['dry_off_date','Actual Dry-off Date','date'],['findings','Findings / Remarks','text']]}
 };
-async function openMonitoringModal(){const m=document.getElementById('monitoring-modal');m.classList.remove('hidden');m.classList.add('flex');document.body.classList.add('overflow-hidden');const pending=[];if(!semenBullOptions.length)pending.push(fetch('/monitoring/semen-bulls',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():[]).then(v=>semenBullOptions=v).catch(e=>console.warn('Semen bull list unavailable',e)));if(!bcsOptions.length)pending.push(fetch('/monitoring/bcs-scores',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():[]).then(v=>bcsOptions=v).catch(e=>console.warn('BCS values unavailable',e)));await Promise.all(pending);if(monitoringAnimals.length)renderMonitoringRows()}
-function closeMonitoringModal(){const m=document.getElementById('monitoring-modal');m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('overflow-hidden')}
-function control(name,label,type,options,required=false,disabled=false,value=''){let numericCounts=/\[(no_of_visits_monitored|no_of_treatments)\]$/.test(name),base=`name="${name}" aria-label="${label}" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs" ${numericCounts?'min="0" step="1"':''} ${required?'required':''} ${disabled?'disabled':''}`;if(name.endsWith('[semen_bull_id]'))return `<label class="block min-w-32">${label}<select ${base}><option value="">Select bull…</option>${semenBullOptions.map(b=>`<option value="${escapeMonitoring(b.id)}" ${String(value)===String(b.id)?'selected':''}>${escapeMonitoring(b.bull_id)} ${escapeMonitoring(b.bull_name)}</option>`).join('')}</select></label>`;if(type==='select')return `<label class="block min-w-32">${label}<select ${base}><option value="">Select…</option>${options.split('|').map(v=>`<option value="${escapeMonitoring(v)}" ${value===v?'selected':''}>${escapeMonitoring(v)}</option>`).join('')}</select></label>`;return `<label class="block min-w-32">${label}<input type="${type}" value="${escapeMonitoring(value)}" ${base}></label>`}
+async function openMonitoringModal(){if(monitoringDialog.open)return;monitoringDialog.showModal();renderMonitoringRows();const pending=[];if(!semenBullOptions.length)pending.push(fetch('/monitoring/semen-bulls',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():[]).then(v=>semenBullOptions=v).catch(e=>console.warn('Semen bull list unavailable',e)));if(!bcsOptions.length)pending.push(fetch('/monitoring/bcs-scores',{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():[]).then(v=>bcsOptions=v).catch(e=>console.warn('BCS values unavailable',e)));await Promise.all(pending);if(monitoringAnimals.length)renderMonitoringRows()}
+function closeMonitoringModal(){if(!monitoringSubmitting)monitoringDialog.close()}
+function monitoringServiceField(name,label,type,options,value=''){let numericCounts=/\[(no_of_visits_monitored|no_of_treatments)\]$/.test(name),base=`name="${name}" aria-label="${label}" class="mt-1 w-full rounded border border-slate-300 px-2 py-1 text-xs" ${numericCounts?'min="0" step="1"':''}`;if(name.endsWith('[semen_bull_id]'))return `<label class="block min-w-32">${label}<select ${base}><option value="">Select bull…</option>${semenBullOptions.map(b=>`<option value="${escapeMonitoring(b.id)}" ${String(value)===String(b.id)?'selected':''}>${escapeMonitoring(b.bull_id)} ${escapeMonitoring(b.bull_name)}</option>`).join('')}</select></label>`;if(type==='select')return `<label class="block min-w-32">${label}<select ${base}><option value="">Select…</option>${options.split('|').map(v=>`<option value="${escapeMonitoring(v)}" ${value===v?'selected':''}>${escapeMonitoring(v)}</option>`).join('')}</select></label>`;return `<label class="block min-w-32">${label}<input type="${type}" value="${escapeMonitoring(value)}" ${base}></label>`}
 const healthServiceTypes=['Deworming','Vitamins','Vaccination','Uterine Flushing','Fecalysis','Ear Tagging','Bolus Application','Recruitment','Hands-on Milking','Forage Demo','Animal Visit / Monitoring','Other Services'];
-function healthServicesFields(i,disabled){let services=monitoringAnimals[i]?._data?.services||[];return `<fieldset class="col-span-3 mt-2 rounded border border-emerald-200 bg-emerald-50 p-2"><legend class="px-1 text-[11px] font-bold text-emerald-900">Health and Nutrition Services (select any)</legend><div class="grid grid-cols-1 gap-2 lg:grid-cols-2">${healthServiceTypes.map((type,index)=>{let s=services[index]||{},checked=!!s.selected;return `<div class="rounded border border-slate-200 bg-white p-2"><input type="hidden" name="rows[${i}][monitoring_data][services][${index}][type]" value="${type}"><label class="flex items-center gap-2 text-xs font-semibold"><input type="checkbox" name="rows[${i}][monitoring_data][services][${index}][selected]" value="1" ${checked?'checked':''} ${disabled?'disabled':''}>${type}</label>${type==='Other Services'?`<label class="mt-2 block text-[10px] text-slate-600">Other service name<input name="rows[${i}][monitoring_data][services][${index}][other_service_name]" value="${escapeMonitoring(s.other_service_name||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs" placeholder="e.g. Ear Tagging" ${disabled?'disabled':''}></label>`:''}<label class="mt-2 block text-[10px] text-slate-600">Dosage (mL, optional)<input type="number" min="0" step="0.01" name="rows[${i}][monitoring_data][services][${index}][dosage_ml]" value="${escapeMonitoring(s.dosage_ml||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs" placeholder="When applicable" ${disabled?'disabled':''}></label><label class="mt-2 block text-[10px] text-slate-600">Service remarks<input name="rows[${i}][monitoring_data][services][${index}][remarks]" value="${escapeMonitoring(s.remarks||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs" ${disabled?'disabled':''}></label></div>`}).join('')}</div></fieldset>`}
-function rowFields(i,spec,disabled){let cfg=monitoringSpecs[spec];if(!cfg)return '<span class="text-slate-400">Select a specification</span>';if(spec==='breeding'){let d=monitoringAnimals[i]?._data||{},bull=semenBullOptions.find(b=>String(b.id)===String(d.semen_bull_id)),summary=d.method?`${d.method} · ${d.breeding_date||'No breeding date'} · ${bull?.bull_id||d.bull_id||'No sire selected'}`:'Method and breeding details required';return `<div class="mb-2 text-[10px] font-bold text-blue-700">Destination: ${cfg.dest}</div><div class="rounded-lg border border-amber-200 bg-amber-50 p-2"><p class="text-xs font-semibold">${escapeMonitoring(summary)}</p><button type="button" class="mt-2 rounded border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-900" onclick="openBreedingModal(${i})" ${disabled?'disabled':''}>${d.method?'Edit Breeding Details':'Choose Method and Enter Details'}</button></div>`}let fields=cfg.fields.map(f=>control(`rows[${i}][monitoring_data][${f[0]}]`,f[1],f[2],f[3],false,disabled,monitoringAnimals[i]?._data?.[f[0]]||'')).join('');return `<div class="mb-1 text-[10px] font-bold text-blue-700">Destination: ${cfg.dest}</div><div class="grid min-w-[640px] grid-cols-3 gap-1">${fields}${spec==='health_nutrition'?healthServicesFields(i,disabled):''}</div>`}
+function healthServicesFields(services){return `<fieldset class="col-span-full mt-2 rounded border border-emerald-200 bg-emerald-50 p-2"><legend class="px-1 text-[11px] font-bold text-emerald-900">Health and Nutrition Services (select any)</legend><div class="grid grid-cols-1 gap-2 lg:grid-cols-2">${healthServiceTypes.map((type,index)=>{let s=services.find(service=>service.type===type)||{},checked=!!s.selected;return `<div class="rounded border border-slate-200 bg-white p-2"><input type="hidden" name="services[${index}][type]" value="${type}"><label class="flex items-center gap-2 text-xs font-semibold"><input type="checkbox" name="services[${index}][selected]" value="1" ${checked?'checked':''}>${type}</label>${type==='Other Services'?`<label class="mt-2 block text-[10px] text-slate-600">Other service name<input name="services[${index}][other_service_name]" value="${escapeMonitoring(s.other_service_name||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs" placeholder="e.g. Ear Tagging"></label>`:''}<label class="mt-2 block text-[10px] text-slate-600">Dosage (mL, optional)<input type="number" min="0" step="0.01" name="services[${index}][dosage_ml]" value="${escapeMonitoring(s.dosage_ml||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs" placeholder="When applicable"></label><label class="mt-2 block text-[10px] text-slate-600">Service remarks<input name="services[${index}][remarks]" value="${escapeMonitoring(s.remarks||'')}" class="mt-1 w-full rounded border px-2 py-1 text-xs"></label></div>`}).join('')}</div></fieldset>`}
 function breedingInput(key,label,type,value='',options=[]){let id=`breeding-field-${key}`,inner=type==='select'?`<select id="${id}" data-breeding-field="${key}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Select…</option>${options.map(option=>`<option value="${escapeMonitoring(option.value)}" ${String(value)===String(option.value)?'selected':''}>${escapeMonitoring(option.label)}</option>`).join('')}</select>`:`<input id="${id}" data-breeding-field="${key}" type="${type}" value="${escapeMonitoring(value)}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">`;return `<label class="block text-sm font-semibold">${label}${inner}</label>`}
 function renderBreedingModalFields(method,data={}){const box=document.getElementById('breeding-modal-fields');if(!method){box.innerHTML='<p class="text-sm text-slate-500 sm:col-span-2">Select AI or NM to continue.</p>';return}const bulls=semenBullOptions.map(b=>({value:b.id,label:`${b.bull_id||'No ID'} · ${b.bull_name}${b.breed?` · ${b.breed}`:''}`}));let fields=[breedingInput('breeding_date','Breeding Date *','date',data.breeding_date||''),breedingInput('semen_bull_id','Sire ID or Name *','select',data.semen_bull_id||'',bulls)];if(method==='AI'){fields.push(breedingInput('pregnancy_status','Pregnancy Diagnosis (PD) *','select',data.pregnancy_status||'',[{value:'Pregnant',label:'Pregnant'},{value:'Not Pregnant',label:'Not Pregnant'},{value:'Inconclusive',label:'Inconclusive'}]));fields.push(breedingInput('estrus_type','Type of Estrus *','select',data.estrus_type||'',[{value:'ES',label:'ES'},{value:'NH',label:'NH'},{value:'FTAI',label:'FTAI'}]));fields.push(breedingInput('technician','AI Technician *','text',data.technician||''));const tech=document.getElementById('breeding-technician-list');tech.innerHTML=aiTechnicianOptions.map(name=>`<option value="${escapeMonitoring(name)}">`).join('')}fields.push(breedingInput('record_date','Date (if different)','date',data.record_date||''));box.innerHTML=fields.join('');if(method==='AI')document.getElementById('breeding-field-technician')?.setAttribute('list','breeding-technician-list')}
-function openBreedingModal(i,previous=null){activeBreedingIndex=i;const animal=monitoringAnimals[i];breedingModalOriginal=previous||{spec:animal._spec,data:JSON.parse(JSON.stringify(animal._data||{}))};const data=animal._data||{};const methodSelect=document.getElementById('breeding-modal-method');methodSelect.value=data.method||'';renderBreedingModalFields(methodSelect.value,data);const modal=document.getElementById('breeding-monitor-modal');modal.classList.remove('hidden');modal.classList.add('flex')}
-function closeBreedingModal(){const modal=document.getElementById('breeding-monitor-modal');modal.classList.add('hidden');modal.classList.remove('flex')}
-function cancelBreedingModal(){if(activeBreedingIndex!==null){const animal=monitoringAnimals[activeBreedingIndex];animal._spec=breedingModalOriginal?.spec||'';animal._data=breedingModalOriginal?.data||{};document.getElementById(`breeding-storage-${activeBreedingIndex}`)?.remove();if(animal._spec==='breeding')storeBreedingInputs(activeBreedingIndex,animal._data)}closeBreedingModal();renderMonitoringRows()}
-function storeBreedingInputs(i,data){document.getElementById(`breeding-storage-${i}`)?.remove();if(data?.method!=='AI'&&data?.method!=='NM')return;const storage=document.createElement('div');storage.id=`breeding-storage-${i}`;storage.hidden=true;const keys=['method','breeding_date','semen_bull_id','bull_id','record_date',...(data.method==='AI'?['pregnancy_status','estrus_type','technician']:[])];keys.forEach(key=>{const input=document.createElement('input');input.type='hidden';input.name=`rows[${i}][monitoring_data][${key}]`;input.value=data[key]??'';storage.appendChild(input)});document.getElementById('monitoring-form').appendChild(storage)}
-function saveBreedingModal(){const i=activeBreedingIndex,method=document.getElementById('breeding-modal-method').value;if(i===null||!method){alert('Choose AI or NM.');return}const read=key=>document.querySelector(`[data-breeding-field="${key}"]`)?.value?.trim()||'',breedingDate=read('breeding_date'),bullId=read('semen_bull_id'),recordDate=read('record_date');if(!breedingDate||!bullId){alert('Breeding Date and Sire ID or Name are required.');return}const bull=semenBullOptions.find(item=>String(item.id)===String(bullId));const data={method,breeding_date:breedingDate,semen_bull_id:bullId,bull_id:bull?.bull_id||'',record_date:recordDate};if(method==='AI'){data.pregnancy_status=read('pregnancy_status');data.estrus_type=read('estrus_type');data.technician=read('technician');if(!data.pregnancy_status||!data.estrus_type||!data.technician){alert('AI requires Pregnancy Diagnosis, Type of Estrus, and AI Technician.');return}}const animal=monitoringAnimals[i];animal._spec='breeding';animal._data=data;storeBreedingInputs(i,data);checkMonitoringComplete(animal);closeBreedingModal();const cell=document.getElementById(`monitoring-fields-${i}`);if(cell)cell.innerHTML=rowFields(i,'breeding',false);updateMonitoringCounts()}
-function renderMonitoringRows(){let tbody=document.getElementById('monitoring-animal-rows'), search=document.getElementById('monitoring-search').value.toLowerCase(), avf=document.getElementById('filter-availability').value,sf=document.getElementById('filter-specification').value,farmerFilter=document.getElementById('monitoring-farmer-filter').value,size=Number(document.getElementById('monitoring-page-size').value);let filtered=monitoringAnimals.map((a,i)=>({...a,_i:i})).filter(a=>(!farmerFilter||String(a.farmer_id||'')===farmerFilter)&&(`${a.bolus_id||''} ${a.registry_number||''} ${a.tag_number||''} ${a.animal_name||''}`.toLowerCase().includes(search))&&(!avf||a._availability===avf)&&(!sf||a._spec===sf));let pages=Math.max(1,Math.ceil(filtered.length/size));monitoringPage=Math.min(monitoringPage,pages);let shown=new Set(filtered.slice((monitoringPage-1)*size,monitoringPage*size).map(a=>a._i));let items=monitoringAnimals.map((a,i)=>({...a,_i:i,_show:shown.has(i)}));tbody.innerHTML=items.map(a=>{let i=a._i,un=a._availability==='unavailable';return `<tr class="${un?'bg-slate-100 text-slate-500':''} ${a._show?'':'hidden'}" data-row="${i}"><td class="border px-2 py-2">${i+1}<input type="hidden" name="rows[${i}][carabao_id]" value="${a.carabao_id}"><input type="hidden" name="rows[${i}][availability_status]" value="${un?'unavailable':'available'}"></td><td class="border px-2 py-2">${a.bolus_id||'—'}</td><td class="border px-2 py-2">${a.registry_number||'—'}</td><td class="border px-2 py-2">${a.tag_number||'—'}</td><td class="border px-2 py-2">${a.animal_name||'—'}<div class="text-slate-500">${a.farmer_name||''}</div><div class="mt-1 text-[10px] text-slate-500">${escapeMonitoring(a.classification||'Unknown / Needs Verification')} · DIM ${a.days_in_milk??'–'} · ${escapeMonitoring(a.pregnancy_status||'Unknown / Not Checked')}</div>${a.dry_off_review?'<div class="mt-1 text-[10px] font-semibold text-amber-700">For Dry-off Review</div>':''}</td><td class="border px-2 py-2">${a.sex||'—'}</td><td class="border px-2 py-2">${a.birth_date||'—'}</td><td class="border px-2 py-2">${escapeMonitoring(a.breed||'—')}</td><td class="border px-2 py-2"><select name="rows[${i}][body_condition_score]" onchange="setMonitoringBcs(${i},this.value)" class="w-28 rounded border border-slate-300 px-2 py-1" ${un?'disabled':''}><option value="">Not scored</option>${bcsOptions.map(score=>`<option value="${escapeMonitoring(score)}" ${String(a._bcs||'')===String(score)?'selected':''}>${escapeMonitoring(score)}</option>`).join('')}</select></td><td class="border p-2"><select class="mb-1 w-full rounded border px-2 py-1" name="rows[${i}][monitoring_specification]" onchange="setMonitoringSpec(${i},this.value)" ${un?'disabled':''}><option value="">Select specification</option>${Object.entries(monitoringSpecs).map(([k,v])=>`<option value="${k}" ${a._spec===k?'selected':''}>${v.label}</option>`).join('')}</select><div id="monitoring-fields-${i}">${rowFields(i,a._spec,un)}</div></td><td class="border px-2 py-2"><label class="flex items-center gap-1 font-semibold"><input type="checkbox" ${un?'checked':''} onchange="setMonitoringUnavailable(${i},this.checked)">Unavailable</label>${un?`<select name="rows[${i}][unavailability_reason]" class="mt-2 rounded border px-1 py-1"><option value="">Reason</option>${['Not Present','Transferred','Sick','Dead','Sold','Other'].map(v=>`<option value="${v}" ${a._reason===v?'selected':''}>${v}</option>`).join('')}</select>`:''}<span class="mt-1 block rounded px-1 py-0.5 ${un?'bg-slate-200':'bg-emerald-100 text-emerald-800'}">${un?'Unavailable':'Available'}</span></td><td class="border p-2"><input class="w-36 rounded border px-2 py-1" name="rows[${i}][remarks]" placeholder="Remarks" value="${a._remarks||''}"></td></tr>`}).join('');let empty=document.getElementById('monitoring-empty');empty.textContent=document.getElementById('monitoring-cooperative').value?'No animals are registered under this cooperative.':'Select a cooperative to load animals.';empty.classList.toggle('hidden',monitoringAnimals.length>0);document.getElementById('monitoring-page-label').textContent=`Page ${monitoringPage} of ${pages} · ${filtered.length} animals`;document.getElementById('monitoring-prev').disabled=monitoringPage<=1;document.getElementById('monitoring-next').disabled=monitoringPage>=pages;updateMonitoringCounts()}
-function populateMonitoringFarmers(){const select=document.getElementById('monitoring-farmer-filter'),selected=select.value;const farmers=[...new Map(monitoringAnimals.filter(a=>a.farmer_id&&a.farmer_name).map(a=>[String(a.farmer_id),a.farmer_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));select.innerHTML='<option value="">All farmers</option>'+farmers.map(([id,name])=>`<option value="${escapeMonitoring(id)}">${escapeMonitoring(name)}</option>`).join('');if(farmers.some(([id])=>id===selected))select.value=selected}function updateMonitoringCounts(){let total=monitoringAnimals.length,un=monitoringAnimals.filter(a=>a._availability==='unavailable').length;document.getElementById('count-total').textContent=total;document.getElementById('count-available').textContent=total-un;document.getElementById('count-unavailable').textContent=un}
-function setMonitoringUnavailable(i,value){monitoringAnimals[i]._availability=value?'unavailable':'available';renderMonitoringRows()}
-function setMonitoringSpec(i,value){const animal=monitoringAnimals[i],previous={spec:animal._spec,data:JSON.parse(JSON.stringify(animal._data||{}))};if(value==='breeding'){animal._spec='breeding';renderMonitoringRows();openBreedingModal(i,previous);return}document.getElementById(`breeding-storage-${i}`)?.remove();animal._spec=value;animal._data=value===previous.spec?previous.data:{};let cell=document.getElementById(`monitoring-fields-${i}`);cell.innerHTML=rowFields(i,value,false);checkMonitoringComplete(animal);updateMonitoringCounts()}
-function setMonitoringBcs(i,value){monitoringAnimals[i]._bcs=value;}
-function checkMonitoringComplete(a){let d=a._data||{},required={calf_monitoring:['date_of_birth','birth_outcome'],breeding:['breeding_date','method','semen_bull_id']}[a._spec]||[];let healthComplete=a._spec!=='health_nutrition'||!!String(d.health_status||'').trim()||(Array.isArray(d.services)&&d.services.some(s=>s&&s.selected));let aiComplete=a._spec!=='breeding'||d.method!=='AI'||!!(d.pregnancy_status&&d.estrus_type&&d.technician);a._complete=required.every(k=>String(d[k]||'').trim())&&healthComplete&&aiComplete&&(a._spec!=='calf_monitoring'||d.birth_outcome!=='Live Birth'||!!d.sex)}
-document.getElementById('monitoring-cooperative').addEventListener('change',async e=>{let id=e.target.value;monitoringAnimals=[];monitoringPage=1;renderMonitoringRows();if(!id)return;document.getElementById('monitoring-loading').classList.remove('hidden');document.getElementById('monitoring-empty').classList.add('hidden');try{let res=await fetch(`${monitoringBaseUrl}/${id}/animals`,{headers:{'Accept':'application/json'}});if(!res.ok)throw new Error('Could not load animals for this cooperative.');let data=await res.json();monitoringAnimals=data.map(a=>({...a,_availability:'available',_spec:'',_bcs:a.latest_bcs||'',_complete:false}));populateMonitoringFarmers();}catch(err){let box=document.getElementById('monitoring-error');box.textContent=err.message;box.classList.remove('hidden')}finally{document.getElementById('monitoring-loading').classList.add('hidden');renderMonitoringRows()}});
-['monitoring-search','monitoring-farmer-filter','filter-availability','filter-specification','monitoring-page-size'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{monitoringPage=1;renderMonitoringRows()}));document.getElementById('monitoring-prev').onclick=()=>{monitoringPage--;renderMonitoringRows()};document.getElementById('monitoring-next').onclick=()=>{monitoringPage++;renderMonitoringRows()};
-document.getElementById('breeding-modal-method').addEventListener('change',e=>renderBreedingModalFields(e.target.value,monitoringAnimals[activeBreedingIndex]?._data||{}));
-document.getElementById('monitoring-form').addEventListener('submit',e=>{if(monitoringSubmitting){e.preventDefault();return}if(!monitoringAnimals.length){e.preventDefault();alert('Select a cooperative that has registered animals.');return}const incomplete=monitoringAnimals.findIndex(a=>a._spec==='breeding'&&a._availability!=='unavailable'&&!a._complete);if(incomplete>=0){e.preventDefault();alert(`Complete Breeding details for animal ${monitoringAnimals[incomplete].registry_number||monitoringAnimals[incomplete].animal_id||incomplete+1}.`);return}monitoringSubmitting=true;const button=document.getElementById('monitoring-submit-button');button.disabled=true;button.innerHTML='<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving…'});
-document.getElementById('monitoring-animal-rows').addEventListener('input',e=>{let input=e.target,name=input.name||'',dataMatch=name.match(/^rows\[(\d+)\]\[monitoring_data\](.*)$/),plainMatch=name.match(/^rows\[(\d+)\]\[(remarks|unavailability_reason|body_condition_score)\]$/);if(dataMatch){let a=monitoringAnimals[Number(dataMatch[1])];a._data=a._data||{};let path=[...dataMatch[2].matchAll(/\[([^\]]+)\]/g)].map(m=>/^\d+$/.test(m[1])?Number(m[1]):m[1]),value=input.type==='checkbox'?input.checked:input.value,target=a._data;path.slice(0,-1).forEach((key,index)=>{if(target[key]===undefined)target[key]=typeof path[index+1]==='number'?[]:{};target=target[key]});if(path.length)target[path[path.length-1]]=value;checkMonitoringComplete(a);updateMonitoringCounts();let tr=input.closest('tr'),status=tr?.lastElementChild?.querySelector('span');if(status)status.textContent=a._complete?'Completed':'Pending'}else if(plainMatch){let a=monitoringAnimals[Number(plainMatch[1])];a[plainMatch[2]==='remarks'?'_remarks':plainMatch[2]==='body_condition_score'?'_bcs':'_reason']=input.value}});
-document.getElementById('monitoring-animal-rows').addEventListener('change',e=>{let input=e.target,name=input.name||'',m=name.match(/^rows\[(\d+)\]\[unavailability_reason\]$/);if(m)monitoringAnimals[Number(m[1])]._reason=input.value});
+function openBreedingModal(index) {
+    activeBreedingIndex = index;
+    const data = monitoringAnimals[index]._services?.breeding || {};
+    const method = document.getElementById('breeding-modal-method');
+    method.value = data.method || '';
+    renderBreedingModalFields(method.value, data);
+    document.getElementById('breeding-service-remove').hidden = !data.method;
+    breedingDialog.showModal();
+}
+function closeBreedingModal(){breedingDialog.close();activeBreedingIndex=null}
+function cancelBreedingModal(){closeBreedingModal()}
+function saveBreedingModal(){const i=activeBreedingIndex,method=document.getElementById('breeding-modal-method').value;if(i===null||!method){alert('Choose AI or NM.');return}const read=key=>document.querySelector(`[data-breeding-field="${key}"]`)?.value?.trim()||'',breedingDate=read('breeding_date'),bullId=read('semen_bull_id'),recordDate=read('record_date');if(!breedingDate||!bullId){alert('Breeding Date and Sire ID or Name are required.');return}const bull=semenBullOptions.find(item=>String(item.id)===String(bullId));const data={method,breeding_date:breedingDate,semen_bull_id:bullId,bull_id:bull?.bull_id||'',record_date:recordDate};if(method==='AI'){data.pregnancy_status=read('pregnancy_status');data.estrus_type=read('estrus_type');data.technician=read('technician');if(!data.pregnancy_status||!data.estrus_type||!data.technician){alert('AI requires Pregnancy Diagnosis, Type of Estrus, and AI Technician.');return}}monitoringAnimals[i]._services.breeding=data;closeBreedingModal();renderMonitoringRows();focusMonitoringService(i,'breeding')}
+function populateMonitoringFarmers() {
+    const select = document.getElementById('monitoring-farmer-filter');
+    const farmers = new Map();
+    for (const animal of monitoringRoster) {
+        if (animal.farmer_id) farmers.set(String(animal.farmer_id), animal.farmer_name || `Farmer #${animal.farmer_id}`);
+    }
+    select.replaceChildren(new Option('Select a farmer', ''),
+        ...[...farmers].sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => new Option(name, id)));
+}
+
+function farmerMonitoringAnimals(farmerId) {
+    return farmerId ? monitoringRoster.filter(animal => String(animal.farmer_id) === farmerId) : [];
+}
+
+function monitoringAnimalLabel(animal) {
+    const ids = [
+        animal.registry_number && `Registry: ${animal.registry_number}`,
+        animal.tag_number && `Tag: ${animal.tag_number}`,
+        animal.bolus_id && `Bolus: ${animal.bolus_id}`,
+    ].filter(Boolean);
+    return [animal.animal_id || animal.registry_number || `Animal #${animal.carabao_id}`, animal.animal_name, ...ids].filter(Boolean).join(' · ');
+}
+
+function monitoringRows() {
+    return monitoringAnimals.flatMap((row, index) => row ? [{row, index}] : []);
+}
+
+function renderMonitoringRows() {
+    const rows = monitoringRows();
+    const selected = new Set(rows.map(({row}) => row.carabao_id).filter(Boolean));
+    document.getElementById('monitoring-animal-rows').innerHTML = rows.map(({row, index}, position) =>
+        renderMonitoringRow(row, index, position, selected)
+    ).join('');
+
+    const farmer = document.getElementById('monitoring-farmer-filter');
+    const farmerAnimals = farmerMonitoringAnimals(farmer.value);
+    const available = farmerAnimals.some(animal => !selected.has(animal.carabao_id));
+    const pendingRow = rows.some(({row}) => row._farmerId === farmer.value && !row.carabao_id);
+    const message = document.getElementById('monitoring-farmer-animals');
+    message.textContent = farmer.value
+        ? `${farmerAnimals.length} live female animal(s) for ${farmer.selectedOptions[0].textContent}.`
+        : (monitoringRoster.some(animal => animal.farmer_id)
+            ? 'Select a farmer to view their live female animals.'
+            : (document.getElementById('monitoring-cooperative').value && !monitoringAnimalsRequest
+                ? 'No live female animals are linked to a farmer in this cooperative.'
+                : 'Select a cooperative and farmer to view live animals.'));
+    document.getElementById('monitoring-add-row').disabled = monitoringSubmitting || !available || pendingRow;
+    document.getElementById('monitoring-submit-button').disabled = monitoringSubmitting || !rows.length || rows.some(({row}) => !row.carabao_id);
+    document.getElementById('monitoring-empty').classList.toggle('hidden', rows.length > 0);
+}
+
+function renderMonitoringRow(row, index, position, selected) {
+    const options = farmerMonitoringAnimals(row._farmerId).map(animal => {
+        const isSelected = animal.carabao_id === row.carabao_id;
+        return `<option value="${animal.carabao_id}" ${isSelected ? 'selected' : (selected.has(animal.carabao_id) ? 'disabled' : '')}>${escapeMonitoring(monitoringAnimalLabel(animal))}</option>`;
+    }).join('');
+    const disabled = row.carabao_id ? '' : 'disabled';
+    const services = Object.entries(monitoringSpecs).map(([key, service]) => {
+        const data = row._services?.[key];
+        return `<button type="button" id="monitoring-service-${index}-${key}" onclick="openMonitoringService(${index}, '${key}')" ${disabled}
+            class="flex h-11 items-center justify-center rounded-lg border px-2 text-center text-xs font-semibold leading-tight disabled:opacity-50 ${data ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}">${data ? 'View ' : ''}${service.label}</button>
+            ${data ? `<input type="hidden" name="rows[${index}][monitoring_services][${key}]" value="${escapeMonitoring(JSON.stringify(data))}">` : ''}`;
+    }).join('');
+
+    return `<tr data-row="${index}" class="align-top">
+        <td class="p-2"><span class="flex h-11 items-center tabular-nums text-slate-600">${position + 1}</span><input type="hidden" name="rows[${index}][availability_status]" value="available"></td>
+        <td class="p-2">
+            <select id="monitoring-animal-${index}" name="rows[${index}][carabao_id]" required aria-label="Animal ID" onchange="selectMonitoringAnimal(${index}, this.value)" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-2">
+                <option value="">Select Animal ID</option>${options}
+            </select>
+            <p class="mt-1 text-xs text-slate-600">${escapeMonitoring(row._farmerName)}</p>
+        </td>
+        <td class="p-2"><span class="flex min-h-11 items-center break-words text-slate-700">${escapeMonitoring(row.classification || (row.carabao_id ? 'Unclassified' : '—'))}</span></td>
+        <td class="p-2"><input type="number" min="0" max="10" step="0.01" name="rows[${index}][body_condition_score]" aria-label="Body condition score" value="${escapeMonitoring(row._bcs ?? '')}" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-2 disabled:bg-slate-50" ${disabled}></td>
+        <td class="p-2"><div class="grid grid-cols-4 gap-1.5">${services}</div></td>
+        <td class="p-2"><button type="button" aria-label="Remove row ${position + 1}" onclick="removeMonitoringRow(${index})" class="flex h-11 w-full items-center justify-center rounded-lg text-rose-700 hover:bg-rose-50"><i class="fa-solid fa-trash" aria-hidden="true"></i></button></td>
+        <td class="p-2"><input name="rows[${index}][remarks]" aria-label="Remarks" maxlength="2000" value="${escapeMonitoring(row._remarks || '')}" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-2 disabled:bg-slate-50" ${disabled}></td>
+    </tr>`;
+}
+
+document.getElementById('monitoring-add-row').addEventListener('click', (event) => {
+    if (event.currentTarget.disabled) return;
+    const farmer = document.getElementById('monitoring-farmer-filter');
+    const index = monitoringAnimals.push({_farmerId: farmer.value, _farmerName: farmer.selectedOptions[0].textContent}) - 1;
+    renderMonitoringRows();
+    document.getElementById(`monitoring-animal-${index}`)?.focus();
+});
+
+function selectMonitoringAnimal(index, value) {
+    const row = monitoringAnimals[index];
+    if (!row || String(row.carabao_id || '') === value) return;
+    const animal = farmerMonitoringAnimals(row._farmerId).find(item => String(item.carabao_id) === value);
+    if (value && (!animal || monitoringAnimals.some(item => item?.carabao_id === animal.carabao_id))) return;
+    monitoringAnimals[index] = {
+        ...animal,
+        _farmerId: row._farmerId, _farmerName: row._farmerName,
+        _services: {}, _bcs: '',
+    };
+    renderMonitoringRows();
+    document.getElementById(`monitoring-animal-${index}`)?.focus();
+}
+
+function removeMonitoringRow(index) {
+    monitoringAnimals[index] = null;
+    renderMonitoringRows();
+}
+
+function focusMonitoringService(index, service) {
+    document.getElementById(`monitoring-service-${index}-${service}`)?.focus();
+}
+
+function openMonitoringService(index, service) {
+    const row = monitoringAnimals[index];
+    if (!row?.carabao_id || !monitoringSpecs[service]) return;
+    if (service === 'breeding') {
+        openBreedingModal(index);
+        return;
+    }
+
+    activeService = {index, service};
+    const data = row._services[service] || {};
+    const definition = monitoringSpecs[service];
+    document.getElementById('monitoring-service-title').textContent = definition.label;
+    document.getElementById('monitoring-service-error').classList.add('hidden');
+    document.getElementById('monitoring-service-remove').hidden = !row._services[service];
+    document.getElementById('monitoring-service-fields').innerHTML = definition.fields.map(([key, label, type, options]) =>
+        monitoringServiceField(`fields[${key}]`, label, type, options, data[key] ?? '')
+    ).join('') + (service === 'health_nutrition' ? healthServicesFields(data.services || []) : '');
+    serviceDialog.showModal();
+}
+
+function finishMonitoringService(dialog, index, service) {
+    dialog.close();
+    renderMonitoringRows();
+    focusMonitoringService(index, service);
+}
+
+serviceForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!activeService) return;
+    const {index, service} = activeService;
+    const data = {};
+    const healthServices = new Map();
+    for (const [name, value] of new FormData(serviceForm)) {
+        const field = name.match(/^fields\[([^\]]+)\]$/);
+        if (field && value.trim()) data[field[1]] = value.trim();
+        const health = name.match(/^services\[(\d+)\]\[([^\]]+)\]$/);
+        if (health) {
+            if (!healthServices.has(health[1])) healthServices.set(health[1], {});
+            healthServices.get(health[1])[health[2]] = value;
+        }
+    }
+    const selectedHealthServices = [...healthServices.values()].filter(details => details.selected);
+    if (selectedHealthServices.length) data.services = selectedHealthServices;
+
+    let message = '';
+    if (service === 'calf_monitoring' && (!data.date_of_birth || !data.birth_outcome || (data.birth_outcome === 'Live Birth' && !data.sex))) {
+        message = 'Enter the birth date and outcome. Select the calf sex for a live birth.';
+    } else if (service === 'dry_off' && (!data.dry_off_confirmed || (data.dry_off_confirmed === 'Yes' && !data.dry_off_date))) {
+        message = 'Select whether dry-off was confirmed and enter the actual date if confirmed.';
+    } else if (service === 'health_nutrition' && !data.health_status && !selectedHealthServices.length) {
+        message = 'Select a health status or at least one health service.';
+    } else if (selectedHealthServices.some(details => details.type === 'Other Services' && !details.other_service_name?.trim())) {
+        message = 'Enter the name of the other health service.';
+    }
+    if (message) {
+        const error = document.getElementById('monitoring-service-error');
+        error.textContent = message;
+        error.classList.remove('hidden');
+        return;
+    }
+
+    monitoringAnimals[index]._services[service] = data;
+    finishMonitoringService(serviceDialog, index, service);
+});
+
+document.getElementById('monitoring-service-remove').addEventListener('click', () => {
+    const {index, service} = activeService;
+    delete monitoringAnimals[index]._services[service];
+    finishMonitoringService(serviceDialog, index, service);
+});
+document.getElementById('breeding-service-remove').addEventListener('click', () => {
+    const index = activeBreedingIndex;
+    delete monitoringAnimals[index]._services.breeding;
+    closeBreedingModal();
+    renderMonitoringRows();
+    focusMonitoringService(index, 'breeding');
+});
+
+
+document.getElementById('monitoring-cooperative').addEventListener('change', async (event) => {
+    monitoringAnimalsRequest?.abort();
+    const id = event.target.value;
+    const request = id ? new AbortController() : null;
+    monitoringAnimalsRequest = request;
+
+    const loading = document.getElementById('monitoring-loading');
+    const error = document.getElementById('monitoring-error');
+    const farmer = document.getElementById('monitoring-farmer-filter');
+    loading.classList.toggle('hidden', !request);
+    error.classList.add('hidden');
+    monitoringAnimals = [];
+    monitoringRoster = [];
+    farmer.value = '';
+    populateMonitoringFarmers();
+    renderMonitoringRows();
+    if (!request) return;
+
+    try {
+        const response = await fetch(monitoringBaseUrl + '/' + encodeURIComponent(id) + '/animals', {
+            headers: {Accept: 'application/json'},
+            signal: request.signal,
+        });
+        if (!response.ok) throw new Error('Could not load animals for this cooperative.');
+        const data = await response.json();
+        if (monitoringAnimalsRequest !== request) return;
+        monitoringRoster = data;
+        populateMonitoringFarmers();
+    } catch (exception) {
+        if (monitoringAnimalsRequest !== request) return;
+        error.textContent = exception.message;
+        error.classList.remove('hidden');
+    } finally {
+        if (monitoringAnimalsRequest === request) {
+            monitoringAnimalsRequest = null;
+            loading.classList.add('hidden');
+            renderMonitoringRows();
+        }
+    }
+});
+document.getElementById('monitoring-farmer-filter').addEventListener('input', renderMonitoringRows);
+document.getElementById('breeding-modal-method').addEventListener('change',e=>renderBreedingModalFields(e.target.value,monitoringAnimals[activeBreedingIndex]?._services?.breeding||{}));
+document.getElementById('monitoring-form').addEventListener('submit', (event) => {
+    if (monitoringSubmitting) {
+        event.preventDefault();
+        return;
+    }
+
+    const error = document.getElementById('monitoring-error');
+    if (!monitoringAnimals.some(row => row?.carabao_id) || monitoringAnimals.some(row => row && !row.carabao_id)) {
+        event.preventDefault();
+        error.textContent = 'Select a live animal for each report row.';
+        error.classList.remove('hidden');
+        error.scrollIntoView({block: 'nearest'});
+        return;
+    }
+
+    error.classList.add('hidden');
+    monitoringSubmitting = true;
+    const button = document.getElementById('monitoring-submit-button');
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Saving…';
+});
+document.getElementById('monitoring-animal-rows').addEventListener('input', (event) => {
+    const field = event.target.name.match(/^rows\[(\d+)\]\[(remarks|body_condition_score)\]$/);
+    if (field) monitoringAnimals[Number(field[1])][field[2] === 'remarks' ? '_remarks' : '_bcs'] = event.target.value;
+});
 </script>
 @endpush
