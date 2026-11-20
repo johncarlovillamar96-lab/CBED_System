@@ -9,11 +9,15 @@
                         <input readonly :value="r.farmer || farmers.find(f=>String(f.id)===String(r.farmer_id))?.name || ''" class="form-input mt-1 bg-slate-50">
                     </label>
                     <label class="text-sm font-medium text-slate-700">Animal ID *
+                        @if($monitoringMating ?? false)
+                        <input readonly :value="r.animal_id" class="form-input mt-1 bg-slate-50">
+                        @else
                         <select x-show="animalsForFarmer(r).length" x-model="r.carabao_id" @change="animalChanged(r)" class="form-input mt-1">
                             <option value="">Select female animal</option>
                             <template x-for="a in animalsForFarmer(r)" :key="a.id"><option :value="a.id" x-text="a.label"></option></template>
                         </select>
                         <input x-show="!animalsForFarmer(r).length" x-model.trim="r.animal_id" class="form-input mt-1" placeholder="Animal ID">
+                        @endif
                     </label>
                     <label class="text-sm font-medium text-slate-700">Mating Date *<input type="date" x-model="r.breeding_date" @change="dateChanged(r)" class="form-input mt-1"></label>
                     <label class="text-sm font-medium text-slate-700">Mating Type *
@@ -36,7 +40,7 @@
                 <legend class="px-2 text-sm font-bold text-slate-800">Pregnancy Diagnosis</legend>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label class="text-sm font-medium text-slate-700">PD Date<input type="date" x-model="r.pd_date" @change="pdDateChanged(r)" class="form-input mt-1"></label>
-                    <label class="text-sm font-medium text-slate-700">PD Result<select x-model="r.pd_result" @change="pdChanged(r)" class="form-input mt-1"><option>Pending</option><option>Negative</option><option>Positive</option></select></label>
+                    <label class="text-sm font-medium text-slate-700">PD Result<select x-model="r.pd_result" @change="pdChanged(r)" class="form-input mt-1"><option>Pending</option><option>Negative</option><option>Positive</option>@if($monitoringMating ?? false)<option>Inconclusive</option>@endif</select></label>
                     <label x-show="r.pd_result==='Positive'" class="text-sm font-medium text-slate-700">Months of Pregnancy *<input type="number" min="1" max="11" step="1" x-model="r.pregnancy_months" class="form-input mt-1"></label>
                     <label x-show="r.pd_result!=='Pending'" class="text-sm font-medium text-slate-700">PD Technician *<input x-model.trim="r.pd_technician" class="form-input mt-1" placeholder="Confirming technician"></label>
                 </div>
@@ -47,6 +51,9 @@
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label x-show="r.pd_result==='Positive'" class="text-sm font-medium text-slate-700">Expected Calving<input type="date" x-model="r.expected_calving" class="form-input mt-1"></label>
                     <label class="text-sm font-medium text-slate-700">Actual Calving<input type="date" x-model="r.actual_calving" class="form-input mt-1"></label>
+                    @if($monitoringMating ?? false)
+                    <label class="text-sm font-medium text-slate-700">Record Date<input type="date" x-model="r.record_date" class="form-input mt-1"></label>
+                    @endif
                     <label class="text-sm font-medium text-slate-700 sm:col-span-2">Remarks<textarea x-model="r.remarks" rows="2" class="form-input mt-1" placeholder="Optional notes"></textarea></label>
                 </div>
             </fieldset>

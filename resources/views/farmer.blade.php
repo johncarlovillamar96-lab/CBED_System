@@ -26,18 +26,21 @@
         </button>
 
         <button type="button"
-            @click="openImportModal()"
-            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-            <i class="fa-solid fa-file-import"></i>
-            Import Excel
-        </button>
-
-        <button type="button"
             @click="exportCSV()"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
             <i class="fa-solid fa-file-export"></i>
-            Export CSV
+            Export
         </button>
+
+        <button type="button"
+            @click="openImportModal()"
+            class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+            <i class="fa-solid fa-file-import"></i>
+            Import
+        </button>
+        <a href="{{ route('admin.farmers.template') }}" class="action-secondary">
+            <i class="fa-solid fa-download" aria-hidden="true"></i> Downloadable Template
+        </a>
 
         <button type="button"
             @click="openBulkModal()"

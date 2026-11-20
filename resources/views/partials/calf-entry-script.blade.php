@@ -1,0 +1,872 @@
+@push('scripts')
+<script>
+function calfDropPage(monitoringMode = false) {
+    return {
+        storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoading: false, search: '', filterProvince: '', filterBreed: '', filterSex: '',
+        currentYear: String(new Date().getFullYear()),
+        showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 15,
+        monitoringCalf: null,
+        showMatingPicker: false, dueMatings: [], matingDamKeys: new Set(), loadingDueMatings: false, dueMatingsError: '',
+        calfCooperatives: [], calfFarmers: [], calfInventory: [],
+        checkingSeries: false, verifiedSeries: null,
+        sirePickerOpen: false, sireQuery: '', sireTyped: false,
+        cooperativePickerOpen: false, cooperativeQuery: '',
+        farmerPickerOpen: false, farmerQuery: '',
+        motherPickerOpen: false, motherQuery: '', motherInput: '',
+        deleteTarget: null, deleteCalfError: '', finalDeleteConfirmation: false,
+        provinceOptions: ['Aurora','Bataan','Bulacan','Nueva Ecija','Pampanga','Tarlac','Zambales'],
+        breedSeriesByCode: @js(\App\Support\CalfBreedSeries::BY_BREED),
+        cb50DamCodes: @js(\App\Support\CalfBreedSeries::CB50_DAM_CODES),
+        seriesTwoDamCodes: @js(\App\Support\CalfBreedSeries::SERIES_TWO_DAM_CODES),
+        calfBreedBySireSeriesForSeriesTwoDam: @js(\App\Support\CalfBreedSeries::CALF_BREED_BY_SIRE_SERIES_FOR_SERIES_TWO_DAM),
+        semenBulls: @js(\App\Support\CalfBreedSeries::semenBulls()),
+        get unknownSire() { return String(this.addForm.sire_id ?? '').trim().toUpperCase() === 'UNKNOWN'; },
+        updateManualSire(input) {
+            this.addForm.sire_id = this.uppercaseSireInput(input);
+            this.sireTyped = true;
+        },
+        uppercaseSireInput(input) {
+            const uppercase = input.value.toUpperCase();
+            if (input.value !== uppercase) {
+                const {selectionStart, selectionEnd} = input;
+                input.value = uppercase;
+                input.setSelectionRange(selectionStart, selectionEnd);
+            }
+            return uppercase.trim();
+        },
+        get invalidNumericSirePrefix() {
+            return /^[01349]/.test(String(this.addForm.sire_id ?? '').trim());
+        },
+        get canResolveCalfFromSire() {
+            return String(this.addForm.sire_id ?? '').trim() !== '' && !this.invalidNumericSirePrefix;
+        },
+        get invalidSirePrefix() {
+            const enteredId = String(this.addForm.sire_id ?? '').trim();
+            return this.invalidNumericSirePrefix
+                || (this.sireTyped && !this.unknownSire && enteredId !== '' && !/^[25678]/.test(enteredId));
+        },
+        get enteredSireBreed() {
+            const digit = String(this.addForm.sire_id ?? '').trim().charAt(0);
+            return Object.keys(this.breedSeriesByCode)
+                .find(breed => breed.startsWith('CB') && this.breedSeriesByCode[breed] === digit) ?? '';
+        },
+        get matchingSemenBulls() {
+            const query = this.sireQuery.trim().toUpperCase();
+            return this.semenBulls.filter(bull => String(bull.id).toUpperCase().includes(query));
+        },
+        toggleSirePicker() {
+            this.sirePickerOpen = !this.sirePickerOpen;
+            if (!this.sirePickerOpen) return;
+            this.sireQuery = '';
+            this.$nextTick(() => this.$refs.sireSearch.focus());
+        },
+        selectSemenBull(bull) {
+            this.addForm.sire_id = String(bull.id);
+            this.sireTyped = false;
+            this.sirePickerOpen = false;
+            this.$refs.sireTrigger.focus();
+        },
+        breedSeries(breed) {
+            const code = String(breed ?? '').trim().toUpperCase();
+            if (this.seriesTwoDamCodes.includes(code)) return '2';
+            if (this.cb50DamCodes.includes(code)) return '5';
+            return this.breedSeriesByCode[code] ?? '';
+        },
+        damFor(row) {
+            if (this.monitoringCalf) return this.monitoringCalf.dam;
+            if (!row.mother_id) return null;
+            return this.calfInventory.find(animal => String(animal.animal_id) === String(row.mother_id) || String(animal.id) === String(row.mother_id));
+        },
+        damBreed(row) { return String(this.damFor(row)?.breed ?? '').trim(); },
+        matingDamKeysFor(id, ...animalIds) {
+            const keys = id ? [`id:${id}`] : [];
+            for (const animalId of animalIds) {
+                const value = String(animalId ?? '').trim().toUpperCase();
+                if (value) keys.push(`animal:${value}`);
+            }
+            return keys;
+        },
+        get manualDamHasMating() {
+            if (this.showMatingPicker || !this.addForm.mother_id) return false;
+            const dam = this.damFor(this.addForm);
+            return this.matingDamKeysFor(dam?.id, this.addForm.mother_id, dam?.registry_number)
+                .some(key => this.matingDamKeys.has(key));
+        },
+        cb50Parentage(row) {
+            const damBreed = this.damBreed(row).toUpperCase();
+            const cb50Dam = this.cb50DamCodes.includes(damBreed);
+            const seriesTwoDam = this.breedSeries(damBreed) === '2';
+            const sireCode = String(row.sire_id ?? '').trim().toUpperCase();
+            const sireSeries = /^[25678]/.test(sireCode) ? sireCode[0] : null;
+            if (sireCode === 'UNKNOWN') {
+                const breed = seriesTwoDam ? 'CB75' : (cb50Dam ? 'CB50' : this.damBreed(row));
+                return {breed, sireId: 'UNKNOWN'};
+            }
+            if (!cb50Dam && !seriesTwoDam) return null;
+
+            const cb50SireCode = this.cb50DamCodes.includes(sireCode);
+            const bull = cb50SireCode || ['', 'UNKNOWN'].includes(sireCode)
+                ? null
+                : this.semenBulls.find(item => String(item.id).trim().toUpperCase() === sireCode);
+            if (seriesTwoDam) {
+                const resolvedSireSeries = sireSeries ?? (cb50SireCode ? '5' : bull?.breed_series);
+                const breed = this.calfBreedBySireSeriesForSeriesTwoDam[resolvedSireSeries];
+                return breed ? {breed, sireId: bull?.id ?? (cb50SireCode ? 'CB50' : row.sire_id.trim())} : null;
+            }
+            const seriesTwo = sireSeries ? sireSeries === '2' : sireCode === 'RV' || bull?.series_two;
+            const sireId = bull?.id ?? (seriesTwo || (sireSeries && !cb50SireCode) ? row.sire_id.trim() : 'CB50');
+            return {breed: seriesTwo ? 'CB75' : 'CB50', sireId};
+        },
+        inferredCalfBreed(row) { return this.cb50Parentage(row)?.breed ?? this.damBreed(row); },
+        get seriesQuery() {
+            const row = this.addForm;
+            const dam = this.damFor(row);
+            const breed = this.inferredCalfBreed(row);
+            if (row.birth_outcome !== 'Live Birth' || !this.canResolveCalfFromSire || !dam?.id || !this.breedSeries(breed) || !row.date_of_birth) return '';
+
+            const params = new URLSearchParams({dam_id: dam.id, breed, date_of_birth: row.date_of_birth});
+            if (row.cooperative_id) params.set('cooperative_id', row.cooperative_id);
+            return params.toString();
+        },
+        get currentSeries() {
+            return this.verifiedSeries?.query === this.seriesQuery ? this.verifiedSeries : null;
+        },
+        async verifyCalfSeries() {
+            const query = this.seriesQuery;
+            if (!query || this.checkingSeries) return;
+            this.checkingSeries = true;
+            this.verifiedSeries = null;
+            try {
+                const response = await fetch(`/admin/calf-drop-api/series?${query}`, {headers: {Accept: 'application/json'}, cache: 'no-store'});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Unable to verify the calf series.');
+                this.verifiedSeries = {...data, query};
+            } catch (error) {
+                this.verifiedSeries = {query, message: error.message};
+            } finally {
+                this.checkingSeries = false;
+            }
+        },
+        calfSeries(row) { return this.breedSeries(String(row.breed ?? '').trim() || this.inferredCalfBreed(row)); },
+        fields: ['calf_id','mother_id','farmer','province','municipality','barangay','cooperative','date_of_birth','sex','breed','sire_id','monitored_date','reported_year','birth_outcome','animal_status','breed_series','remarks'],
+        init() {
+            if (monitoringMode) return;
+            try {
+                const saved=localStorage.getItem(this.storageKey);
+                const parsed=saved===null?[]:JSON.parse(saved);
+                if(!Array.isArray(parsed))throw new Error('Saved calf records are not a list.');
+                this.records=parsed.filter(record=>!this.isSampleRecord(record));
+                const removed=parsed.length-this.records.length;
+                if(removed>0&&this.persist())this.msg(`Removed ${removed} saved sample calf record(s).`);
+            } catch(e) {
+                this.records=[];
+                console.error('Could not load or clean saved calf records:',e);
+                this.msg('Unable to read saved calf records. Check browser storage.');
+            }
+            this.loadInventoryCalves(true);
+        },
+        isSampleRecord(record) {
+            const calfId=String(record?.calf_id??'').trim();
+            const motherId=String(record?.mother_id??'').trim();
+            const cooperative=String(record?.cooperative??'').trim();
+            const remarks=String(record?.remarks??'').trim();
+            return /^CALF-2026-00[1-5]$/i.test(calfId)
+                || /^CALF-2025-005$/i.test(calfId)
+                || /^6-(?:SB|AB)-26-CB-2024-00[34]$/i.test(calfId)
+                || /^CB-2024-00[1-5]$/i.test(motherId)
+                || /^Sample Cooperative(?:\s|$)/i.test(cooperative)
+                || /Sample record/i.test(remarks);
+        },
+        reportedYearFromCalfId(calfId, fallback='') { const id=this.calfIdSeries(calfId); return id ? String(id.year) : String(fallback ?? ''); },
+        calfIdSeries(calfId) { const match=String(calfId??'').trim().match(/^\d[A-Za-z0-9]+(\d{2})(\d{3})$/); return match?{year:2000+Number(match[1]),series:Number(match[2])}:null; },
+        get allRecords() { const manual = new Set(this.records.map(r => String(r.calf_id || '').trim().toLowerCase()).filter(Boolean)); return [...this.records, ...this.inventoryCalves.filter(c => !manual.has(String(c.calf_id || '').trim().toLowerCase()))].map(record=>({...record,reported_year:this.reportedYearFromCalfId(record.calf_id,record.reported_year)})); },
+        // An inventory animal is a calf when it has a Dam ID (mother). Placeholder values do not count.
+        hasDam(a) { const v = String(a?.dam_id ?? '').trim().toLowerCase(); return v !== '' && !['-','--','n/a','na','none','unknown','0'].includes(v); },
+        normalizeProvince(value) { const text = String(value ?? '').replace(/\s+/g,' ').trim(); if (!text) return ''; const aliases = {nuevaecija:'Nueva Ecija', nuevaecjia:'Nueva Ecija', nuevaecijaprovince:'Nueva Ecija'}; return aliases[text.toLowerCase().replace(/[^a-z]/g,'')] || text; },
+        formatBirthDate(value) {
+            if(!value)return '—';
+            const date=String(value).slice(0,10);
+            const parsed=new Date(date+'T00:00:00Z');
+            if(Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0,10)!==date)return value;
+            const month=parsed.toLocaleDateString('en-US',{month:'short',timeZone:'UTC'});
+            return [date.slice(8,10),month,date.slice(2,4)].join('-');
+        },
+        farmerLabel(f) { if (typeof f === 'string') return f.trim(); const direct = String(f?.full_name ?? f?.farmer_name ?? f?.name ?? f?.recipient_name ?? '').trim(); if (direct) return direct; return [f?.last_name ?? f?.lastname, f?.first_name ?? f?.firstname, f?.middle_name ?? f?.middlename].map(v => String(v ?? '').trim()).filter(Boolean).join(', '); },
+        inventoryToCalf(a, coops, farmers) {
+            const norm = v => String(v ?? '').trim().toLowerCase().replace(/\s+/g,' ');
+            const fid = String(a.farmer_id ?? '').trim();
+            let farmer = '';
+            const f = fid ? farmers.find(x => String(x?.id ?? x?.farmer_id ?? '').trim() === fid) : null;
+            if (f) farmer = this.farmerLabel(f);
+            else { const raw = String(a.farmer_recipient ?? '').trim(); if (raw) { const m = farmers.find(x => [x?.id, x?.farmer_id, x?.farmer_code, x?.code].filter(v => v !== null && v !== undefined && String(v).trim() !== '').map(v => String(v).trim()).includes(raw) || norm(this.farmerLabel(x)) === norm(raw)); farmer = m ? this.farmerLabel(m) : raw; } }
+            const cid = String(a.cooperative_id ?? '').trim();
+            const c = cid ? coops.find(x => String(x?.id ?? x?.db_id ?? x?.cooperative_id ?? '').trim() === cid) : null;
+            const cooperative = c ? String(c?.cooperative_name ?? c?.name ?? c?.coop_name ?? c?.association_name ?? '').trim() : String(a.cooperative_name ?? a.association_coop_institution ?? '').trim();
+            const sexRaw = String(a.sex ?? '').trim().toLowerCase();
+            const sex = ['f','female'].includes(sexRaw) ? 'Female' : (['m','male'].includes(sexRaw) ? 'Male' : '');
+            const dob = String(a.birth_date || a.birthday || '').slice(0,10);
+            const exit = String(a.nature_of_exit ?? '').trim();
+            const st = String(a.status ?? '').trim().toLowerCase();
+            const animal_status = exit ? (/dead|death|died/i.test(exit) ? 'Dead' : 'Out') : (st && st !== 'live' ? (/dead/.test(st) ? 'Dead' : 'Out') : 'Live');
+            return {
+                id: 'inv-' + a.id, inventory_id: a.id, source: 'Inventory',
+                calf_id: String(a.registry_number || a.bolus_id || a.tag_no || a.animal_id || a.id).trim(),
+                mother_id: String(a.dam_id).trim(), farmer, province: this.normalizeProvince(a.province),
+                municipality: a.municipality || '', barangay: a.barangay || '', cooperative,
+                date_of_birth: dob, sex, breed: String(a.breed ?? '').trim(), sire_id: String(a.sire_id ?? '').trim(),
+                monitored_date: '', reported_year: /^\d{4}$/.test(dob.slice(0,4)) ? dob.slice(0,4) : '',
+                birth_outcome: 'Live Birth', animal_status, breed_series: '',
+                remarks: [a.dam_name ? 'Dam: ' + a.dam_name : '', a.sire_name ? 'Sire: ' + a.sire_name : '', a.remarks || ''].filter(Boolean).join(' · ')
+            };
+        },
+        async loadInventoryCalves(announce = false) {
+            this.inventoryLoading = true;
+            const readList = async url => {
+                const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+                const payload = await response.json();
+                const list = Array.isArray(payload) ? payload : (payload?.data ?? payload?.records ?? payload?.farmers ?? payload?.cooperatives);
+                if (!Array.isArray(list)) throw new Error(`${url} did not return a list.`);
+                return list;
+            };
+            try {
+                const animals = await readList('/admin/carabao-inventory-api');
+                const databaseCalves = await readList('/admin/calf-drop-api').catch(error => {
+                    console.warn('Calf Drop database history unavailable:', error);
+                    return null;
+                });
+                let coops = [], farmers = [];
+                try { [coops, farmers] = await Promise.all([readList('/admin/cooperatives/data'), readList('/admin/farmers/data')]); } catch (e) { console.warn('Farmer/cooperative names unavailable:', e); }
+                this.calfCooperatives=coops;
+                this.calfFarmers=farmers;
+                this.calfInventory=animals;
+                const seenCalfIds=new Set();
+                const calfRows=(databaseCalves ?? []).map(c=>({...c,id:'db-calf-'+c.id,database_id:c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
+                this.inventoryCalves=calfRows
+                    .filter(calf=>{
+                        const id=String(calf.calf_id||'').trim().toLowerCase();
+                        if(!id||seenCalfIds.has(id))return false;
+                        seenCalfIds.add(id);
+                        return true;
+                    })
+                    .sort((a,b)=>String(b.date_of_birth||'').localeCompare(String(a.date_of_birth||'')));
+                if (this.showAdd && !this.showMatingPicker && this.motherInput && !this.addForm.mother_id) {
+                    this.updateManualMother(this.motherInput);
+                }
+                this.page = 1;
+                if (databaseCalves === null) {
+                    this.$dispatch('cbed-data-status', {
+                        title: 'Calf drop history unavailable',
+                        description: 'Inventory calves are shown. Use Refresh to retry the calf drop history.',
+                        type: 'error'
+                    });
+                } else if (announce) {
+                    this.$dispatch('cbed-data-status', {
+                        description: 'Calf records are retrieved from Calf Drop and Carabao Inventory. Older entries may also be saved in this browser.'
+                    });
+                }
+            } catch (e) {
+                this.inventoryCalves = [];
+                console.error('Calf Drop inventory load failed:', e);
+                this.$dispatch('cbed-data-status', {
+                    title: 'Calf records unavailable',
+                    description: 'Use Refresh to retry loading the records from the database.',
+                    type: 'error'
+                });
+            } finally { this.inventoryLoading = false; }
+        },
+        get matchingCalfRecords() {
+            const normalize=value=>String(value ?? '').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+            const terms=normalize(this.search).trim().split(/\s+/).filter(Boolean);
+            return this.allRecords.filter(record=>{
+                if((this.filterProvince && record.province!==this.filterProvince)
+                    || (this.filterBreed && record.breed!==this.filterBreed)
+                    || (this.filterSex && record.sex!==this.filterSex))return false;
+                if(!terms.length)return true;
+                const values=this.fields.map(field=>normalize(record[field]));
+                return terms.every(term=>values.some(value=>value.includes(term)));
+            });
+        },
+        isCurrentReportedYear(record) {
+            const year = String(record.reported_year ?? '').trim() || String(record.date_of_birth ?? '').slice(0, 4);
+            return year === this.currentYear;
+        },
+        get filteredRecords() { return this.matchingCalfRecords.filter(record => this.isCurrentReportedYear(record)).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
+        get summaryCards() {
+            const records=this.filteredRecords;
+            const status=record=>String(record.animal_status ?? '').trim().toLowerCase();
+            return [
+                {title:'Total Calves',value:records.filter(r=>status(r)==='live').length,description:'Live calves matching filters',icon:'fa-solid fa-list-check'},
+                {title:'Dead / Out',value:records.filter(r=>['dead','out'].includes(status(r))).length,description:'Calves recorded as Dead or Out',icon:'fa-solid fa-circle-minus'},
+                {title:'Female Calves',value:records.filter(r=>r.sex==='Female').length,description:'Female calves across all statuses',icon:'fa-solid fa-venus'},
+                {title:'Male Calves',value:records.filter(r=>r.sex==='Male').length,description:'Male calves across all statuses',icon:'fa-solid fa-mars'}
+            ];
+        },
+        get birthYearSummary() {
+            const counts=new Map();
+            this.matchingCalfRecords.forEach(record=>{
+                const date=String(record.date_of_birth??'').slice(0,10);
+                if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+                const parsed=new Date(`${date}T00:00:00`);
+                if(Number.isNaN(parsed.getTime())||parsed.getFullYear()!==Number(date.slice(0,4))
+                    ||parsed.getMonth()+1!==Number(date.slice(5,7))||parsed.getDate()!==Number(date.slice(8,10)))return;
+                const year=date.slice(0,4);
+                if(!counts.has(year))counts.set(year,new Set());
+                counts.get(year).add(String(record.calf_id||record.id));
+            });
+            const years=[...counts.entries()].map(([year,ids])=>({year,count:ids.size}));
+            const max=Math.max(1,...years.map(item=>item.count));
+            return years.map(item=>({...item,percent:item.count/max*100})).sort((a,b)=>Number(b.year)-Number(a.year));
+        },
+        totalPages() { return Math.max(1, Math.ceil(this.filteredRecords.length / this.perPage)); },
+        paginatedRecords() { const list=this.filteredRecords; if(this.page>this.totalPages()) this.page=this.totalPages(); return list.slice((this.page-1)*this.perPage,this.page*this.perPage); },
+        options(field) { return [...new Set(this.allRecords.map(r=>String(r[field] ?? '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})); },
+        distribution(field) { const counts={}; this.filteredRecords.forEach(r=>{const name=String(r[field]||'Not specified');counts[name]=(counts[name]||0)+1;}); const max=Math.max(1,...Object.values(counts)); return Object.entries(counts).map(([name,count])=>({name,count,percent:count/max*100})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name)); },
+        label(field) { const labels={calf_id:'Calf ID',mother_id:'Mother ID',farmer:'Farmer Name',province:'Province',cooperative:'Cooperative',date_of_birth:'Date of Birth / Event Date',sex:'Sex',breed:'Breed',sire_id:'Sire / Bull ID',monitored_date:'Monitored Date',reported_year:'Reported Year',birth_outcome:'Birth Outcome',animal_status:'Animal Status',breed_series:'Breed Series',remarks:'Remarks'}; return labels[field]||field; },
+        generatedId(r) { const mother=String(r.mother_id||'').trim().replace(/\s+/g,'-'); const year=String(r.reported_year|| (r.date_of_birth ? r.date_of_birth.slice(0,4) : new Date().getFullYear())).slice(-2); const series=this.calfSeries(r) || String(r.breed_series||'6').trim() || '6'; if (!mother || r.birth_outcome === 'Live Birth') return ''; const code=r.birth_outcome==='Stillbirth'?'SB':'AB'; return `${series}-${code}-${year}-${mother}`; },
+        emptyRow() { return {_key:++this.rowKey,calf_id:'',mother_id:'',farmer:'',province:'',municipality:'',barangay:'',cooperative:'',date_of_birth:'',sex:'',breed:'',sire_id:'',monitored_date:new Date().toISOString().slice(0,10),reported_year:String(new Date().getFullYear()),birth_outcome:'Live Birth',animal_status:'Live',breed_series:'6',remarks:''}; },
+        openAdd() {
+            this.verifiedSeries = null;
+            this.sirePickerOpen = false;
+            this.sireTyped = false;
+            this.addForm={...this.emptyRow(),cooperative_id:'',farmer_id:''};
+            this.showMatingPicker=true;
+            this.cooperativePickerOpen=false;
+            this.farmerPickerOpen=false;
+            this.motherPickerOpen=false;
+            this.motherInput='';
+            this.showAdd=true;
+            this.loadDueMatings();
+        },
+        openMonitoringCalf(context) {
+            this.monitoringCalf = context;
+            this.verifiedSeries = null;
+            this.notice = '';
+            this.sirePickerOpen = false;
+            this.sireTyped = false;
+            this.showMatingPicker = true;
+            const data = context.data;
+            this.addForm = {
+                ...this.emptyRow(),
+                mother_id: String(context.dam.animal_id || context.dam.registry_number || context.dam.id),
+                cooperative_id: context.cooperativeId,
+                cooperative: context.cooperative,
+                farmer: context.farmer,
+                province: data.province ?? context.dam.province ?? '',
+                municipality: data.municipality ?? context.dam.municipality ?? '',
+                barangay: data.barangay ?? context.dam.barangay ?? '',
+                date_of_birth: data.date_of_birth ?? '',
+                birth_outcome: data.birth_outcome ?? 'Live Birth',
+                sex: data.sex ?? '',
+                sire_id: data.sire_id ?? '',
+                animal_status: data.calf_status ?? 'Live',
+                monitored_date: data.monitored_date ?? context.reportDate,
+                reported_year: data.reported_year ?? (String(context.reportDate).slice(0, 4) || this.currentYear),
+                remarks: data.remarks ?? data.findings ?? '',
+            };
+            this.showAdd = true;
+            this.$root.showModal();
+        },
+        closeCalfForm() {
+            this.showAdd = false;
+            if (monitoringMode) this.$root.close();
+        },
+        finishMonitoringCalf(data) {
+            this.$dispatch('monitoring-calf-draft', {index: this.monitoringCalf.index, data});
+            this.closeCalfForm();
+        },
+        get manualFarmers() {
+            if(!this.addForm.cooperative_id)return [];
+            return this.calfFarmers.filter(farmer=>String(farmer.cooperative_id)===this.addForm.cooperative_id);
+        },
+        get matchingCooperatives() {
+            const query=this.cooperativeQuery.trim().toLowerCase();
+            return this.calfCooperatives.filter(cooperative=>String(cooperative.cooperative_name || '').toLowerCase().includes(query));
+        },
+        get matchingManualFarmers() {
+            const terms=this.farmerQuery.toLowerCase().trim().split(/\s+/).filter(Boolean);
+            return this.manualFarmers.filter(farmer=>{
+                const name=this.farmerLabel(farmer).toLowerCase();
+                return terms.every(term=>name.includes(term));
+            });
+        },
+        toggleFarmerPicker() {
+            this.farmerPickerOpen=!this.farmerPickerOpen;
+            if(this.farmerPickerOpen){
+                this.farmerQuery='';
+                this.$nextTick(()=>this.$refs.farmerSearch.focus());
+            }
+        },
+        selectManualFarmer(farmer) {
+            const id=String(farmer.id);
+            if(id!==this.addForm.farmer_id)this.changeManualFarmer(id);
+            this.farmerPickerOpen=false;
+            this.$refs.farmerTrigger.focus();
+        },
+        toggleCooperativePicker() {
+            this.cooperativePickerOpen=!this.cooperativePickerOpen;
+            if(this.cooperativePickerOpen){
+                this.cooperativeQuery='';
+                this.$nextTick(()=>this.$refs.cooperativeSearch.focus());
+            }
+        },
+        selectManualCooperative(cooperative) {
+            const id=String(cooperative.id);
+            if(id!==this.addForm.cooperative_id)this.changeManualCooperative(id);
+            this.cooperativePickerOpen=false;
+            this.$refs.cooperativeTrigger.focus();
+        },
+        get manualMothers() {
+            const normalize = value => String(value ?? '').trim().toUpperCase();
+            const now = new Date();
+            const today = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+            const date = this.addForm.date_of_birth || today;
+            const cooperativeFilter = this.addForm.cooperative_id;
+            const farmerFilter = this.addForm.farmer_id;
+            const cooperativeIds = new Set(this.calfCooperatives.map(cooperative => String(cooperative.id)));
+            const farmerIds = new Set(this.calfFarmers.filter(farmer => {
+                const cooperativeId = String(farmer.cooperative_id);
+                return cooperativeIds.has(cooperativeId)
+                    && (!cooperativeFilter || cooperativeId === cooperativeFilter)
+                    && (!farmerFilter || String(farmer.id) === farmerFilter);
+            }).map(farmer => String(farmer.id)));
+            const recordedDams = new Set(this.allRecords
+                .filter(record => this.isWithinCalfEventInterval(record, date))
+                .map(record => normalize(record.mother_id)).filter(Boolean));
+            return this.calfInventory.filter(animal=>farmerIds.has(String(animal.farmer_id))
+                && animal.animal_id && animal.live_breedable_female === true
+                && ![animal.id, animal.animal_id, animal.registry_number, animal.bolus_id, animal.tag_number]
+                    .some(id => recordedDams.has(normalize(id))));
+        },
+        get manualMotherIsEligible() {
+            return this.manualMothers.some(mother => mother.animal_id === this.addForm.mother_id);
+        },
+        get manualMotherIneligibility() {
+            if (this.showMatingPicker || !this.addForm.mother_id || this.manualMotherIsEligible) return '';
+            const dam = this.damFor(this.addForm);
+            if (!dam) return 'Enter a Mother ID that exists in Carabao Inventory.';
+
+            const status = String(dam.status ?? '').trim();
+            const exitStatus = String(dam.nature_of_exit ?? '').trim();
+            const currentStatus = status.toLowerCase() === 'dead' ? status : (exitStatus || status);
+            if (currentStatus && currentStatus.toLowerCase() !== 'live') {
+                return `Manual Entry requires a live dam. Inventory shows this animal as ${currentStatus}.`;
+            }
+            if (!['f', 'female'].includes(String(dam.sex ?? '').trim().toLowerCase())) {
+                return 'Manual Entry requires a female animal. Check the sex in Carabao Inventory.';
+            }
+            if (!dam.live_breedable_female) {
+                const classification = String(dam.classification ?? '').trim();
+                const code = classification.toLowerCase().replace(/[\s_-]+/g, '');
+                if (['heiferpregnant', 'pregnantheifer'].includes(code)) {
+                    return 'Manual Entry is unavailable because inventory lists this dam as a pregnant heifer.';
+                }
+                if (code === 'cowlactating') {
+                    return 'This dam is recorded as lactating. Manual Entry requires 25 to 45 recorded days in milk for a lactating cow.';
+                }
+                return classification
+                    ? `Manual Entry unavailable for “${classification}”.`
+                    : 'Manual Entry requires a breedable classification in Carabao Inventory.';
+            }
+            return 'A calf drop is already recorded for this dam within the previous 12 months. Select a Birth or event date at least 12 months after that record.';
+        },
+        get matchingManualMothers() {
+            if (!this.motherPickerOpen) return [];
+            const query = this.motherQuery.trim().toUpperCase();
+            return this.manualMothers.filter(mother => [mother.animal_id, mother.registry_number, mother.animal_name]
+                .some(value => String(value ?? '').toUpperCase().includes(query)));
+        },
+        toggleMotherPicker() {
+            this.motherPickerOpen = !this.motherPickerOpen;
+            if (!this.motherPickerOpen) return;
+            this.motherQuery = this.addForm.mother_id ? '' : this.motherInput;
+            this.$nextTick(() => this.$refs.motherSearch.focus());
+        },
+        chooseMotherFromSearch() {
+            const matches = this.matchingManualMothers;
+            const query = this.motherQuery.trim().toUpperCase();
+            const exact = matches.find(mother => String(mother.animal_id).toUpperCase() === query);
+            if (exact || matches.length === 1) this.selectManualMother(exact || matches[0]);
+        },
+        updateManualMother(value) {
+            if (this.addForm.mother_id && value !== this.addForm.mother_id) {
+                this.changeManualCooperative('');
+            }
+            this.motherInput = value;
+            const id = value.trim().toUpperCase();
+            if (!id) return;
+
+            const mother = this.calfInventory.find(animal => [animal.animal_id, animal.registry_number]
+                .some(candidate => String(candidate ?? '').trim().toUpperCase() === id));
+            if (mother) this.selectManualMother(mother, false);
+        },
+        selectManualMother(mother, focusPicker = true) {
+            const farmer = this.calfFarmers.find(candidate => String(candidate.id) === String(mother.farmer_id));
+            if (!farmer) return;
+            this.changeManualCooperative(String(farmer.cooperative_id));
+            this.changeManualFarmer(String(farmer.id));
+            this.addForm.mother_id = mother.animal_id;
+            this.motherInput = String(mother.animal_id);
+            if (focusPicker) this.$refs.motherTrigger.focus();
+        },
+        isWithinCalfEventInterval(record, selectedDate) {
+            const eventDate = String(record.date_of_birth || record.monitored_date || '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || eventDate > selectedDate) return false;
+
+            const anniversary = new Date(eventDate + 'T00:00:00Z');
+            if (Number.isNaN(anniversary.getTime()) || anniversary.toISOString().slice(0, 10) !== eventDate) return false;
+            const month = anniversary.getUTCMonth();
+            anniversary.setUTCFullYear(anniversary.getUTCFullYear() + 1);
+            if (anniversary.getUTCMonth() !== month) anniversary.setUTCDate(0);
+
+            return selectedDate < anniversary.toISOString().slice(0, 10);
+        },
+        checkManualDamDate() {
+            if (this.showMatingPicker || !this.addForm.mother_id) return;
+            if (!this.damFor(this.addForm)?.live_breedable_female || this.manualMotherIsEligible) return;
+
+            const message = this.manualMotherIneligibility;
+            this.addForm.mother_id = '';
+            this.motherInput = '';
+            this.msg(message);
+        },
+        setEntryMode(useMating) {
+            if(this.showMatingPicker!==useMating){
+                this.showMatingPicker=useMating;
+                this.cooperativePickerOpen=false;
+                this.changeManualCooperative('');
+                this.addForm.sire_id='';
+            }
+            if(useMating)this.loadDueMatings();
+        },
+        changeManualCooperative(id) {
+            const cooperative=this.calfCooperatives.find(item=>String(item.id)===id);
+            this.addForm.cooperative_id=id;
+            this.addForm.cooperative=cooperative?.cooperative_name || '';
+            this.farmerPickerOpen=false;
+            this.changeManualFarmer('');
+        },
+        changeManualFarmer(id) {
+            const farmer=this.manualFarmers.find(item=>String(item.id)===id);
+            this.addForm.farmer_id=farmer ? id : '';
+            this.addForm.farmer=farmer ? this.farmerLabel(farmer) : '';
+            this.addForm.mother_id='';
+            this.motherInput='';
+            this.motherPickerOpen=false;
+            this.addForm.province=this.normalizeProvince(farmer?.province || farmer?.cooperative_record?.province);
+            this.addForm.municipality=farmer?.municipality || farmer?.cooperative_record?.municipality || '';
+            this.addForm.barangay=farmer?.barangay || farmer?.cooperative_record?.barangay || '';
+        },
+        async loadDueMatings() {
+            if(this.loadingDueMatings)return;
+            this.loadingDueMatings=true;
+            this.dueMatingsError='';
+            this.dueMatings=[];
+            try {
+                const response=await fetch('/admin/breeding-api/records',{headers:{Accept:'application/json'}});
+                if(!response.ok)throw new Error();
+                const records=await response.json();
+                this.matingDamKeys = new Set(records.flatMap(record =>
+                    this.matingDamKeysFor(record.carabao_id, record.animal_id, record.registry_number)));
+                this.dueMatings=records.filter(record=>record.calf_drop_due)
+                    .sort((a,b)=>b.pregnancy_days-a.pregnancy_days);
+            } catch {
+                this.dueMatingsError='Could not load mating records.';
+            } finally {
+                this.loadingDueMatings=false;
+            }
+        },
+        addFromMating(mating) {
+            this.sireTyped = false;
+            Object.assign(this.addForm,{
+                mother_id:String(mating.animal_id || mating.carabao_id),
+                farmer:[mating.farmer_first_name,mating.farmer_middle_name,mating.farmer_last_name].filter(Boolean).join(' '),
+                cooperative:mating.cooperative_name || '',
+                province:this.normalizeProvince(mating.farmer_province),
+                municipality:mating.farmer_municipality || '',
+                barangay:mating.farmer_barangay || '',
+                sire_id:mating.bull_id || ''
+            });
+        },
+        persist() { try { localStorage.setItem(this.storageKey,JSON.stringify(this.records)); return true; } catch(e) { this.msg('Unable to save browser data. Check browser storage settings.'); return false; } },
+        async saveCalf() {
+            if(this.savingCalf || !this.addForm.date_of_birth)return;
+            if (this.invalidNumericSirePrefix) return;
+            if (!this.addForm.sire_id?.trim()) {
+                this.msg('Enter a Sire / Bull ID or UNKNOWN.');
+                return;
+            }
+            if (this.monitoringCalf) {
+                const row = this.addForm;
+                this.finishMonitoringCalf({
+                    ...this.monitoringCalf.data,
+                    automatic_calf: true,
+                    date_of_birth: row.date_of_birth,
+                    birth_outcome: row.birth_outcome,
+                    sex: row.sex || null,
+                    sire_id: row.sire_id,
+                    calf_status: row.birth_outcome === 'Live Birth' ? row.animal_status : null,
+                    monitored_date: row.monitored_date || null,
+                    reported_year: row.reported_year || null,
+                    province: row.province || null,
+                    municipality: row.municipality || null,
+                    barangay: row.barangay || null,
+                    remarks: row.remarks || null,
+                });
+                return;
+            }
+            if(!this.showMatingPicker && !this.manualMotherIsEligible){
+                this.msg(this.manualMotherIneligibility || 'Enter or select an eligible Mother ID from inventory.');
+                return;
+            }
+            if(!this.showMatingPicker && !this.manualFarmers.some(farmer=>String(farmer.id)===this.addForm.farmer_id)){
+                this.msg('Select a farmer from the cooperative.');
+                return;
+            }
+            this.savingCalf=true;
+            try {
+                const automatic = { ...this.addForm, calf_id: '', breed: '' };
+                if (automatic.birth_outcome !== 'Live Birth') automatic.breed = this.inferredCalfBreed(automatic);
+                if(await this.saveRecords([automatic]))this.showAdd=false;
+            } finally {
+                this.savingCalf=false;
+            }
+        },
+        async saveRecords(rows) {
+            const valid=rows.filter(r=>
+                String(r.mother_id||'').trim()
+                &&String(r.date_of_birth||r.monitored_date||'').trim()
+                &&(r.birth_outcome!=='Live Birth'||String(r.sex||'').trim())
+            );
+            valid.forEach(r=>{
+                r.breed_series=this.calfSeries(r) || r.breed_series;
+                const generated=this.generatedId(r);
+                if(generated && !String(r.calf_id ?? '').trim())r.calf_id=generated;
+                r.reported_year=this.reportedYearFromCalfId(r.calf_id,r.reported_year);
+                if(r.birth_outcome==='Stillbirth')r.animal_status='Dead';
+                else if(r.birth_outcome==='Abortion')r.animal_status='Not Applicable';
+                else if(!r.animal_status)r.animal_status='Live';
+            });
+            if(!valid.length){
+                this.msg('Mother ID and event date are required. Live births also require Sex.');
+                return;
+            }
+
+            const existingIds=new Set(this.allRecords.map(r=>String(r.calf_id||'').trim().toLowerCase()).filter(Boolean));
+            const batchIds=new Set();
+            const duplicates=valid.filter(r=>{
+                const id=String(r.calf_id||'').trim().toLowerCase();
+                if(!id)return false;
+                if(existingIds.has(id)||batchIds.has(id))return true;
+                batchIds.add(id);
+                return false;
+            });
+            if(duplicates.length&&!confirm(`${duplicates.length} duplicate Calf ID(s) found. Save these records anyway?`))return;
+
+            const localRecords=[];
+            const savedRows=new Set();
+            const savedLiveRows=new Set();
+            const failures=[];
+            for(const row of valid){
+                if(row.birth_outcome!=='Live Birth'){
+                    const record={...row};
+                    const parentage=this.cb50Parentage(row);
+                    if(parentage){
+                        record.breed=String(row.breed ?? '').trim() || parentage.breed;
+                        record.sire_id=parentage.sireId;
+                    }
+                    delete record._key;
+                    record.calf_id=String(record.calf_id||'').trim();
+                    record.mother_id=String(record.mother_id).trim();
+                    record.id='calf-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
+                    localRecords.push(record);
+                    savedRows.add(row._key);
+                    continue;
+                }
+
+                try{
+                    const csrf=document.querySelector('meta[name="csrf-token"]')?.content;
+                    const response=await fetch('/admin/calf-drop-api',{
+                        method:'POST',
+                        headers:{Accept:'application/json','Content-Type':'application/json',...(csrf?{'X-CSRF-TOKEN':csrf}:{})},
+                        body:JSON.stringify({
+                            calf_id:row.calf_id||null,
+                            mother_id:row.mother_id,
+                            cooperative_id:row.cooperative_id||null,
+                            farmer_id:row.farmer_id||null,
+                            date_of_birth:row.date_of_birth||row.monitored_date,
+                            sex:row.sex,
+                            animal_status:row.animal_status||'Live',
+                            breed:row.breed||null,
+                            sire_id:row.sire_id||null,
+                            province:row.province||null,
+                            municipality:row.municipality||null,
+                            barangay:row.barangay||null,
+                            remarks:row.remarks||null
+                        })
+                    });
+                    if(!response.ok){
+                        const payload=await response.json().catch(()=>({}));
+                        throw new Error(payload.message||`Request failed (${response.status}).`);
+                    }
+                    savedRows.add(row._key);
+                    savedLiveRows.add(row._key);
+                }catch(error){
+                    failures.push(`${row.calf_id||row.mother_id}: ${error.message}`);
+                    console.error('Could not add live calf to inventory:',error);
+                }
+            }
+
+            if(localRecords.length){
+                const previous=this.records;
+                this.records=[...localRecords,...this.records];
+                if(!this.persist()){
+                    this.records=previous;
+                    if(savedLiveRows.size)await this.loadInventoryCalves();
+                    this.msg(savedLiveRows.size ? 'Live births were saved to inventory. Other outcomes could not be saved in this browser.' : 'Could not save the calf record in this browser.');
+                    return;
+                }
+            }
+            if(savedRows.size){
+                await this.loadInventoryCalves();
+                this.page=1;
+            }
+            if(failures.length){
+                this.msg(savedRows.size ? `Saved ${savedRows.size} record(s). ${failures.join(' ')}` : failures.join(' '));
+                return;
+            }
+            this.msg(savedRows.size === 1 ? 'Calf record saved.' : `${savedRows.size} calf records saved.`);
+            return true;
+        },
+        view(record) { this.selected={...record}; this.showView=true; },
+        startEdit(record) { const sex=String(record.sex??'').trim().toLowerCase(); this.editForm={...record,date_of_birth:String(record.date_of_birth??'').slice(0,10),monitored_date:String(record.monitored_date??'').slice(0,10),sex:['f','female'].includes(sex)?'Female':(['m','male'].includes(sex)?'Male':''),animal_status:['Live','Out','Dead','Not Applicable'].includes(record.animal_status)?record.animal_status:'Live',birth_outcome:['Live Birth','Stillbirth','Abortion'].includes(record.birth_outcome)?record.birth_outcome:'Live Birth'};this.showEdit=true; },
+        closeEdit() { if(this.savingEdit)return;this.showEdit=false;this.editForm={}; },
+        async saveEdit() {
+            if(!this.editForm?.id||this.savingEdit)return;
+            this.savingEdit=true;
+            const form={...this.editForm},payload={date_of_birth:form.date_of_birth,sex:form.sex,breed:form.breed||null,sire_id:form.sire_id||null,animal_status:form.animal_status||'Live',monitored_date:form.monitored_date||null,birth_outcome:form.birth_outcome||'Live Birth',remarks:form.remarks||null};
+            try {
+                if(form.source==='Inventory'||form.inventory_id){
+                    const response=await fetch(`/admin/calf-drop-api/inventory/${form.inventory_id}`,{method:'PATCH',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''},body:JSON.stringify(payload)});
+                    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Save failed (${response.status}).`)}
+                    await this.loadInventoryCalves();
+                }else if(form.source==='Calf Drop'||form.database_id){
+                    const response=await fetch(`/admin/calf-drop-api/${form.database_id}`,{method:'PUT',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''},body:JSON.stringify(payload)});
+                    if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Save failed (${response.status}).`)}
+                    await this.loadInventoryCalves();
+                }else{
+                    const previous=this.records;
+                    this.records=this.records.map(record=>record.id===form.id?{...record,...payload,calf_id:record.calf_id}:record);
+                    if(!this.persist()){this.records=previous;throw new Error('Unable to save this record in browser storage.')}
+                }
+                this.showEdit=false;this.editForm={};this.msg('Calf record updated. Calf ID was preserved.');
+            }catch(error){this.msg(error.message||'Could not update calf record.');}
+            finally{this.savingEdit=false;}
+        },
+        remove(record) {
+            if(this.deletingCalf)return;
+            this.deleteTarget=record;
+            this.deleteCalfError='';
+            this.finalDeleteConfirmation=false;
+            this.$refs.deleteCalfDialog.showModal();
+        },
+
+        reviewCalfDelete() {
+            this.finalDeleteConfirmation=true;
+            this.$nextTick(()=>this.$refs.cancelCalfDelete.focus());
+        },
+
+        async confirmCalfDelete() {
+            if(this.deletingCalf || !this.deleteTarget || !this.finalDeleteConfirmation)return;
+            const record=this.deleteTarget;
+            this.deletingCalf=true;
+            this.deleteCalfError='';
+            try {
+                const id=record.inventory_id || record.database_id;
+                if(id){
+                    const path=record.inventory_id ? 'inventory/' : '';
+                    const response=await fetch(`/admin/calf-drop-api/${path}${id}`,{
+                        method:'DELETE',
+                        headers:{Accept:'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''}
+                    });
+                    if(!response.ok){
+                        const payload=await response.json().catch(()=>({}));
+                        throw new Error(payload.message||`Delete failed (${response.status}).`);
+                    }
+                    this.inventoryCalves=this.inventoryCalves.filter(row=>row.id!==record.id);
+                }else{
+                    const previous=this.records;
+                    this.records=this.records.filter(row=>row.id!==record.id);
+                    if(!this.persist()){
+                        this.records=previous;
+                        throw new Error('Unable to delete the record from browser storage.');
+                    }
+                }
+                this.page=Math.min(this.page,this.totalPages());
+                this.$refs.deleteCalfDialog.close();
+                this.deleteTarget=null;
+                this.msg('Calf record deleted.');
+            }catch(error){
+                this.deleteCalfError=error.message;
+            }finally{
+                this.deletingCalf=false;
+            }
+        },
+        resetFilters() { this.search='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.page=1; },
+        msg(message) { this.notice=message;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice='';},3500); },
+        exportCSV() { const escapeCSV=value=> '"'+String(value??'').replace(/"/g,'""')+'"';const lines=[this.fields.map(escapeCSV).join(','),...this.filteredRecords.map(r=>this.fields.map(f=>escapeCSV(r[f])).join(','))];const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='calfdrop_records.csv';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); },
+        importCSV(event) {
+            const file=event.target.files&&event.target.files[0];
+            if(!file)return;
+            const reader=new FileReader();
+            reader.onload=async()=>{
+                try{
+                    const lines=String(reader.result||'').replace(/^\uFEFF/,'').split(/\r?\n/).filter(line=>line.trim());
+                    if(lines.length<2){this.msg('CSV has no data rows.');return;}
+                    const parseLine=line=>{
+                        const values=[];let value='',quoted=false;
+                        for(let i=0;i<line.length;i++){
+                            const ch=line[i];
+                            if(ch==='"'&&quoted&&line[i+1]==='"'){value+='"';i++;}
+                            else if(ch==='"')quoted=!quoted;
+                            else if(ch===','&&!quoted){values.push(value);value='';}
+                            else value+=ch;
+                        }
+                        values.push(value);
+                        return values;
+                    };
+                    const normalizeHeader=header=>{
+                        const key=header.trim().toLowerCase().replace(/[\s/-]+/g,'_');
+                        const aliases={calf:'calf_id',calfid:'calf_id',mother:'mother_id',motherid:'mother_id',farmer_name:'farmer',birth_date:'date_of_birth',sex_of_calf:'sex',bull_id:'sire_id',sire_bull_id:'sire_id',year:'reported_year',outcome:'birth_outcome',status:'animal_status',series:'breed_series',event_date:'date_of_birth'};
+                        return aliases[key]||key;
+                    };
+                    const headers=parseLine(lines.shift()).map(normalizeHeader);
+                    const imported=[];
+                    lines.forEach(line=>{
+                        const values=parseLine(line);
+                        const row=this.emptyRow();
+                        headers.forEach((header,index)=>{if(this.fields.includes(header))row[header]=values[index]??'';});
+                        const generated=this.generatedId(row);
+                        if(generated && !String(row.calf_id ?? '').trim())row.calf_id=generated;
+                        if(String(row.mother_id||'').trim()&&String(row.date_of_birth||row.monitored_date||'').trim()&&(row.birth_outcome!=='Live Birth'||String(row.sex||'').trim())){
+                            if(row.birth_outcome==='Stillbirth')row.animal_status='Dead';
+                            else if(row.birth_outcome==='Abortion')row.animal_status='Not Applicable';
+                            imported.push(row);
+                        }
+                    });
+                    if(!imported.length){this.msg('No valid rows found. Check Calf ID, Mother ID, and Sex columns.');return;}
+                    await this.saveRecords(imported);
+                }catch(e){
+                    console.error('Could not import calf records:',e);
+                    this.msg('Could not read the CSV. Check its headers and format.');
+                }finally{
+                    event.target.value='';
+                }
+            };
+            reader.onerror=()=>{this.msg('Could not read this CSV file.');event.target.value='';};
+            reader.readAsText(file);
+        }
+    };
+}
+</script>
+@endpush

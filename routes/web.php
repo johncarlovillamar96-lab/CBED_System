@@ -52,6 +52,7 @@ Route::post('/imports/cooperative-workbook/{cooperativeId}/{sheetKey}', [Coopera
 Route::delete('/imports/cooperative-workbook/history', [CooperativeWorkbookImportController::class, 'clearHistory'])
     ->name('imports.cooperative-workbook.clear-history');
 Route::get('/admin/cooperatives/export', [CooperativeSpreadsheetController::class, 'export'])->name('admin.cooperatives.export');
+Route::get('/admin/cooperatives/template', [CooperativeSpreadsheetController::class, 'template'])->name('admin.cooperatives.template');
 Route::post('/admin/cooperatives/import', [CooperativeSpreadsheetController::class, 'import'])->name('admin.cooperatives.import');
 
 // Original CBED_NEW Blade screens
@@ -80,6 +81,7 @@ Route::put('/mtd/{record}', [MtdController::class, 'update'])->whereNumber('reco
 Route::delete('/mtd/{record}', [MtdController::class, 'destroy'])->whereNumber('record')->name('mtd.delete');
 Route::get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
 Route::get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
+Route::get('/activity-logs', [MonitoringReportController::class, 'activityLogs'])->name('ui.activity-logs');
 Route::get('/monitoring/cooperatives/{cooperative}/animals', [MonitoringReportController::class, 'animals'])->whereNumber('cooperative')->name('ui.monitoring.animals');
 Route::get('/monitoring/bcs-scores', [MonitoringReportController::class, 'bcsScores'])->name('ui.monitoring.bcs-scores');
 Route::get('/monitoring/semen-bulls', fn () => DB::table('semen_bulls')->whereRaw('LOWER(status) = ?', ['active'])->orderBy('bull_name')->get(['id','bull_id','bull_name','breed','status']))->name('ui.monitoring.semen-bulls');
@@ -112,13 +114,14 @@ Route::get('/admin/carabao-inventory-api', fn () => DB::table('carabaos')
 Route::get('/admin/calf-drop-api', function () {
     return DB::table('calves as calf')
         ->join('carabaos as dam', 'dam.id', '=', 'calf.dam_id')
+        ->leftJoin('carabaos as child', 'child.animal_id', '=', 'calf.calf_animal_id')
         ->leftJoin('farmers as farmer', 'farmer.id', '=', 'dam.farmer_id')
         ->leftJoin('cooperatives as cooperative', 'cooperative.id', '=', DB::raw('COALESCE(dam.cooperative_id, farmer.cooperative_id)'))
         ->orderByDesc('calf.birth_date')->orderByDesc('calf.id')
         ->get([
             'calf.id', 'calf.calf_animal_id', 'calf.sire_id', 'calf.birth_date', 'calf.sex', 'calf.birth_weight',
             'calf.monitoring_date', 'calf.birth_outcome', 'calf.animal_status', 'calf.calf_findings', 'calf.remarks',
-            'dam.animal_id as dam_animal_id', 'dam.animal_name as dam_name', 'dam.breed as dam_breed',
+            'dam.animal_id as dam_animal_id', 'dam.animal_name as dam_name', 'dam.breed as dam_breed', 'child.breed as calf_breed',
             'cooperative.cooperative_name', 'cooperative.province', 'cooperative.municipality', 'cooperative.barangay',
             'farmer.first_name', 'farmer.middle_name', 'farmer.last_name',
         ])
@@ -127,7 +130,7 @@ Route::get('/admin/calf-drop-api', function () {
             'farmer' => trim(implode(' ', array_filter([$row->first_name, $row->middle_name, $row->last_name]))),
             'province' => $row->province, 'cooperative' => $row->cooperative_name, 'date_of_birth' => $row->birth_date,
             'municipality' => $row->municipality, 'barangay' => $row->barangay,
-            'sex' => $row->sex, 'breed' => $row->dam_breed, 'sire_id' => $row->sire_id,
+            'sex' => $row->sex, 'breed' => $row->calf_breed ?? $row->dam_breed, 'sire_id' => $row->sire_id,
             'monitored_date' => $row->monitoring_date, 'reported_year' => $row->birth_date ? substr($row->birth_date, 0, 4) : '',
             'birth_outcome' => $row->birth_outcome, 'animal_status' => $row->animal_status,
             'birth_weight' => $row->birth_weight,
@@ -204,6 +207,24 @@ Route::delete('/admin/calf-drop-api/inventory/{id}', function (int $id) {
 
     return response()->noContent();
 })->whereNumber('id')->name('admin.calf-drop.inventory.delete');
+Route::get('/admin/calf-drop-api/series', function (Request $request) {
+    $data = $request->validate([
+        'dam_id' => ['required', 'integer', 'exists:carabaos,id'],
+        'cooperative_id' => ['nullable', 'integer', 'exists:cooperatives,id'],
+        'breed' => ['required', 'string', 'max:255'],
+        'date_of_birth' => ['required', 'date'],
+    ]);
+    $dam = DB::table('carabaos as animal')
+        ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
+        ->where('animal.id', $data['dam_id'])
+        ->first(['animal.cooperative_id', 'farmer.cooperative_id as farmer_cooperative_id']);
+    abort_unless($dam, 404);
+    $cooperativeId = $data['cooperative_id'] ?? $dam->cooperative_id ?? $dam->farmer_cooperative_id;
+    $herdCode = DB::table('cooperatives')->where('id', $cooperativeId)->value('cooperative_code');
+
+    return response()->json(\App\Support\CalfRegistryId::sequence($data['breed'], $herdCode, $data['date_of_birth']));
+})->name('admin.calf-drop.series');
+
 Route::post('/admin/calf-drop-api', function (Request $request) {
     $data = $request->validate([
         'calf_id' => ['nullable', 'string', 'max:255'],
@@ -258,35 +279,52 @@ Route::post('/admin/calf-drop-api', function (Request $request) {
     }
 
     $animalId = trim((string) ($data['calf_id'] ?? ''));
-    if ($animalId === '') {
-        $animalId = 'CALF-' . date('Y', strtotime($data['date_of_birth'])) . '-' . (string) \Illuminate\Support\Str::uuid();
-    }
-    abort_if(DB::table('carabaos')->where('animal_id', $animalId)->exists(), 422, 'Calf ID already exists in Carabao Inventory.');
+    [$breed, $sireId] = \App\Support\CalfBreedSeries::resolveParentage($mother->breed, $data['sire_id'] ?? null, $data['breed'] ?? null);
+    $cooperativeId ??= $mother->cooperative_id ?? DB::table('farmers')->where('id', $mother->farmer_id)->value('cooperative_id');
+    $id = DB::transaction(function () use ($animalId, $breed, $cooperativeId, $data, $farmerId, $mother, $sireId) {
+        $cooperative = $cooperativeId === null
+            ? null
+            : DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first(['cooperative_code']);
 
-    $id = DB::table('carabaos')->insertGetId([
-        'animal_id' => $animalId,
-        'farmer_id' => $mother->farmer_id,
-        'cooperative_id' => $cooperativeId ?? $mother->cooperative_id,
-        'animal_name' => null,
-        'sex' => $data['sex'],
-        'breed' => $data['breed'] ?? $mother->breed,
-        'classification' => $data['sex'] === 'Male' ? 'Male Calf' : 'Female Calf',
-        'birth_date' => $data['date_of_birth'],
-        'status' => $data['animal_status'] ?? 'Live',
-        'sire_id' => $data['sire_id'] ?? null,
-        'dam_id' => $mother->animal_id,
-        'dam_name' => $mother->animal_name,
-        'birth_place' => $data['birth_place'] ?? null,
-        'breeder' => $data['breeder'] ?? null,
-        'association_coop_institution' => $data['association_coop_institution'] ?? null,
-        'barangay' => $data['barangay'] ?? $mother->barangay,
-        'municipality' => $data['municipality'] ?? $mother->municipality,
-        'province' => $data['province'] ?? $mother->province,
-        'district' => $data['district'] ?? $mother->district,
-        'region' => $data['region'] ?? $mother->region,
-        'created_at' => now(),
-        'updated_at' => now(),
-    ]);
+        if ($farmerId !== null) {
+            $damIds = array_filter([$mother->id, $mother->animal_id, $mother->registry_number, $mother->bolus_id, $mother->tag_number]);
+            $birthDate = date('Y-m-d', strtotime($data['date_of_birth']));
+            abort_if(DB::table('calves')->where('dam_id', $mother->id)->where('birth_date', $birthDate)->exists()
+                || DB::table('carabaos')->whereIn('dam_id', $damIds)->where('birth_date', $birthDate)->exists(), 422, 'This dam already has a calf drop recorded for that date.');
+        }
+
+        if ($animalId === '') {
+            $animalId = \App\Support\CalfRegistryId::next($breed, $cooperative?->cooperative_code, $data['date_of_birth']);
+        }
+
+        abort_if(DB::table('carabaos')->where('animal_id', $animalId)->orWhere('registry_number', $animalId)->exists()
+            || DB::table('calves')->where('calf_animal_id', $animalId)->exists(), 422, 'Calf ID already exists.');
+
+        return DB::table('carabaos')->insertGetId([
+            'animal_id' => $animalId,
+            'farmer_id' => $mother->farmer_id,
+            'cooperative_id' => $cooperativeId,
+            'animal_name' => null,
+            'sex' => $data['sex'],
+            'breed' => $breed,
+            'classification' => $data['sex'] === 'Male' ? 'Male Calf' : 'Female Calf',
+            'birth_date' => $data['date_of_birth'],
+            'status' => $data['animal_status'] ?? 'Live',
+            'sire_id' => $sireId,
+            'dam_id' => $mother->animal_id,
+            'dam_name' => $mother->animal_name,
+            'birth_place' => $data['birth_place'] ?? null,
+            'breeder' => $data['breeder'] ?? null,
+            'association_coop_institution' => $data['association_coop_institution'] ?? null,
+            'barangay' => $data['barangay'] ?? $mother->barangay,
+            'municipality' => $data['municipality'] ?? $mother->municipality,
+            'province' => $data['province'] ?? $mother->province,
+            'district' => $data['district'] ?? $mother->district,
+            'region' => $data['region'] ?? $mother->region,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }, 3);
 
     return response()->json([
         'message' => 'Calf added to Carabao Inventory.',
@@ -417,6 +455,7 @@ Route::get('/admin/farmers/data', fn () => DB::table('farmers')->orderBy('last_n
 Route::post('/admin/farmers', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.store');
 Route::post('/admin/farmers/bulk', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.bulk');
 Route::post('/admin/farmers/import', [FarmerSpreadsheetController::class, 'import'])->name('admin.farmers.import');
+Route::get('/admin/farmers/template', [FarmerSpreadsheetController::class, 'template'])->name('admin.farmers.template');
 Route::get('/admin/breeding-api/records', fn () => DB::table('mating_records as mr')
     ->leftJoin('carabaos as a', 'a.id', '=', 'mr.carabao_id')
     ->leftJoin('farmers as f', 'f.id', '=', 'a.farmer_id')

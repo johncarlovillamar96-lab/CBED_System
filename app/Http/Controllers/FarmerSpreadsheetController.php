@@ -9,9 +9,32 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class FarmerSpreadsheetController extends Controller
 {
+    public function template()
+    {
+        $book = new Spreadsheet();
+        $sheet = $book->getActiveSheet();
+        $sheet->setTitle('Farmers');
+        $sheet->fromArray([
+            'First Name', 'Middle Name', 'Last Name', 'Birthday', 'Sex', 'Cell Number',
+            'Civil Status', 'Occupation', 'Position', 'Spouse Name', 'Spouse Occupation',
+            ...array_map('ucfirst', array_keys(FarmerImportAddress::HEADERS)),
+            'Acquisition Date', 'Acquisition Cost',
+        ]);
+        $sheet->getStyle('A1:R1')->getFont()->setBold(true);
+
+        return response()->streamDownload(function () use ($book) {
+            (new Xlsx($book))->save('php://output');
+            $book->disconnectWorksheets();
+        }, 'farmers-template.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
     public function import(Request $request)
     {
         $validated = $request->validate([

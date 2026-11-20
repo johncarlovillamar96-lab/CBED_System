@@ -4,6 +4,15 @@ namespace App\Support;
 
 class HealthWorksheetMapping
 {
+    public const ADDITIONAL_SERVICES = [
+        'fecalysis' => 'Fecalysis',
+        'recruitment' => 'Recruitment',
+        'hands_on_milking' => 'Hands-on Milking',
+        'forage_demo' => 'Forage Demo',
+    ];
+
+    private const FECALYSIS_HEADERS = ['Fecalysis', 'Fecalysis (FS)', 'No. of Fecalysis', 'FS'];
+
     private const COLUMNS = [
         'dosage' => [10, ['Dosage (ml)', 'Dosage']],
         'deworming' => [11, ['No. of Deworm', 'Deworming']],
@@ -27,9 +36,7 @@ class HealthWorksheetMapping
         'uterine_flushing' => 'Uterine Flushing',
         'artificial_insemination' => 'Artificial Insemination',
         'ear_tagging' => 'Ear Tagging',
-        'recruitment' => 'Recruitment',
-        'hands_on_milking' => 'Hands-on Milking',
-        'forage_demo' => 'Forage Demo',
+        ...self::ADDITIONAL_SERVICES,
     ];
 
     public static function selectedServices(array $values): array
@@ -49,6 +56,14 @@ class HealthWorksheetMapping
             }
         }
 
+        $fecalysisHeaders = array_map(self::normalize(...), self::FECALYSIS_HEADERS);
+        foreach ($headers as $column => $header) {
+            if (in_array(self::normalize((string) $header), $fecalysisHeaders, true)) {
+                $values['fecalysis'] = $row[$column] ?? null;
+                break;
+            }
+        }
+
         return $values;
     }
 
@@ -60,7 +75,7 @@ class HealthWorksheetMapping
             if (is_scalar($value)) $headers[self::normalize((string) $header)] = $value;
         }
 
-        foreach (self::COLUMNS as $field => [$column, $labels]) {
+        foreach (['fecalysis' => [null, self::FECALYSIS_HEADERS], ...self::COLUMNS] as $field => [$column, $labels]) {
             if (array_key_exists($field, $values)) continue;
             foreach ($labels as $label) {
                 $key = self::normalize($label);
@@ -72,6 +87,56 @@ class HealthWorksheetMapping
         }
 
         return $values;
+    }
+
+    public static function additionalServiceValues(array $source, array $worksheet, array $services): array
+    {
+        $keys = array_flip(array_map(self::normalize(...), self::ADDITIONAL_SERVICES));
+        $keys['fs'] = $keys['fecalysisfs'] = 'fecalysis';
+        $keys['handonmilking'] = 'hands_on_milking';
+        $counts = [];
+        foreach ($services as $service) {
+            $name = $service['type'] === 'Other Services' ? $service['other_service_name'] : $service['type'];
+            $field = $keys[self::normalize($name)] ?? null;
+            if ($field !== null) {
+                $counts[$field] = ($counts[$field] ?? 0) + 1;
+            }
+        }
+
+        $values = [];
+        foreach (self::ADDITIONAL_SERVICES as $field => $label) {
+            $value = $worksheet[$field] ?? $source['monitoring_fields'][$field] ?? $source[$field] ?? null;
+            $values[$field] = $counts[$field] ?? ($value === '' ? null : $value);
+        }
+
+        return $values;
+    }
+
+    public static function serviceIndicators(array $source, array $worksheet, array $services): array
+    {
+        $values = self::additionalServiceValues($source, $worksheet, $services);
+        $aliases = [
+            'deworming' => ['deworm', 'deworming', 'dewormingservices'],
+            'vitamins_minerals' => ['vitamins', 'vitaminsmineralsupplements', 'vitaminsmineralssupplementation', 'vitaminsupplementation'],
+            'vaccination' => ['vaccination', 'vaccinations', 'vaccine'],
+            'uterine_flushing' => ['uterineflushing', 'uterinflushing', 'flushing'],
+            'ear_tagging' => ['eartagging', 'eartagged'],
+        ];
+        $names = array_map(fn ($service) => self::normalize(
+            $service['type'] === 'Other Services' ? $service['other_service_name'] : $service['type']
+        ), $services);
+
+        foreach ($aliases as $field => $serviceNames) {
+            $values[$field] = array_intersect($names, $serviceNames) ? 1 : ($worksheet[$field] ?? null);
+        }
+
+        return array_map(static function ($value) {
+            if (is_numeric($value)) {
+                return (float) $value > 0 ? 1 : null;
+            }
+
+            return in_array(strtolower(trim((string) $value)), ['', '-', '—', 'no', 'false', 'none', 'n/a', 'na'], true) ? null : 1;
+        }, $values);
     }
 
     private static function normalize(string $value): string

@@ -23,13 +23,16 @@
 
         <a href="{{ route('admin.cooperatives.export') }}"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-            <i class="fa-solid fa-file-excel text-emerald-700"></i> Export XLSX
+            <i class="fa-solid fa-file-export"></i> Export
         </a>
 
         <button type="button" @click="showImportModal = true; importFileName = ''"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
-            <i class="fa-solid fa-file-import text-blue-700"></i> Import File
+            <i class="fa-solid fa-file-import"></i> Import
         </button>
+        <a href="{{ route('admin.cooperatives.template') }}" class="action-secondary">
+            <i class="fa-solid fa-download" aria-hidden="true"></i> Downloadable Template
+        </a>
 
         <button type="button" @click="openAddModal()"
             class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">

@@ -10,10 +10,14 @@
     {{-- PAGE HEADER --}}
     <x-admin-page-header title="CBED Carabao Inventory" description="Encode animal records, review ownership, and track births and breeding status." section="Animal Management" breadcrumb="Inventory">
         <button type="button" @click="exportXLSX()" class="action-secondary">
-            <i class="fa-solid fa-file-export"></i> Export Excel
+            <i class="fa-solid fa-file-export"></i> Export
         </button>
+        <label class="action-secondary cursor-pointer">
+            <i class="fa-solid fa-file-import" aria-hidden="true"></i> Import
+            <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importExcel($event)">
+        </label>
         <button type="button" @click="downloadTemplate()" class="action-secondary">
-            <i class="fa-solid fa-download"></i> Download Template
+            <i class="fa-solid fa-download"></i> Downloadable template
         </button>
         <button type="button" @click="openBulk()" class="cbed-add-button action-secondary">
             <i class="fa-solid fa-layer-group"></i> Bulk Add

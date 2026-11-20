@@ -303,6 +303,10 @@
                 <i class="fa-solid fa-notes-medical"></i>
                 <span>Monitoring</span>
             </a>
+            <a href="{{ route('ui.activity-logs') }}" class="cbed-nav-link {{ request()->routeIs('ui.activity-logs') ? 'active' : '' }}">
+                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                <span>Activity Logs</span>
+            </a>
 
             <a href="{{ route('imports.cooperative-workbook.create') }}"
                class="cbed-nav-link {{ request()->is('imports/cooperative-workbook*') ? 'active' : '' }}">
@@ -336,7 +340,7 @@
         {{-- PAGE CONTENT --}}
         <main class="min-w-0 flex-1 px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 {{ request()->routeIs('ui.mating', 'ui.calves') ? 'pt-3' : 'pt-4 sm:pt-6 lg:pt-8' }}">
 
-            @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives', 'ui.monitoring', 'ui.monitoring.*', 'imports.*') || View::hasSection('inlineCalfDropNotifications'))
+            @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'admin.semen-bulls', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives', 'ui.monitoring', 'ui.monitoring.*', 'ui.activity-logs', 'imports.*') || View::hasSection('inlineCalfDropNotifications'))
                 @include('partials.calf-drop-notifications')
             @endunless
 

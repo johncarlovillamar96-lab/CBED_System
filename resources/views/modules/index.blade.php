@@ -79,12 +79,12 @@
     {{-- PAGE HEADER --}}
     <x-admin-page-header :title="$pageTitle" :description="$pageDescription" :section="in_array($module, ['farmers', 'cooperatives'], true) ? 'Workspace' : 'Animal Management'">
         <a href="{{ route('modules.export', $module) }}" class="action-secondary">
-            <i class="fa-solid fa-file-export"></i> {{ in_array($module, ['milk', 'bcs', 'meat', 'manure', 'mtd', 'exits'], true) ? 'Export' : 'Export CSV' }}
+            <i class="fa-solid fa-file-export"></i> {{ in_array($module, ['health', 'fhpr', 'milk', 'bcs', 'meat', 'manure', 'mtd', 'exits'], true) ? 'Export' : 'Export CSV' }}
         </a>
+        <button type="button" onclick="document.getElementById('{{ $module }}-csv-import').showModal()" aria-haspopup="dialog" class="action-secondary">
+            <i class="fa-solid fa-file-import" aria-hidden="true"></i> Import
+        </button>
         @unless($module === 'fhpr')
-            <button type="button" onclick="document.getElementById('{{ $module }}-csv-import').showModal()" aria-haspopup="dialog" class="action-secondary">
-                <i class="fa-solid fa-file-import" aria-hidden="true"></i> {{ $module === 'health' ? 'Import CSV' : 'Import' }}
-            </button>
             <a href="{{ route('modules.template', $module) }}" class="{{ in_array($module, ['health', 'milk', 'meat', 'manure', 'mtd', 'exits'], true) ? 'action-secondary' : 'action-primary' }}">
                 <i class="fa-solid fa-download" aria-hidden="true"></i> Download Template
             </a>
@@ -221,6 +221,7 @@
             <h2 id="health-service-summary" class="mb-4 font-semibold text-slate-900">Service Counts</h2>
             <dl class="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
                 @foreach($healthSummary['services'] as $service => $count)
+                    @continue($service === 'Artificial Insemination' && $count === 0)
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <dt class="text-sm text-slate-600">{{ $service === 'Vitamins Services' ? 'Vitamins / Mineral Supplements' : $service }}</dt>
                         <dd class="mt-1 text-xl font-bold tabular-nums text-slate-900">{{ number_format($count) }}</dd>
@@ -490,6 +491,7 @@
                                     'vaccination' => 'Vaccination',
                                     'uterine_flushing' => 'Uterine Flushing',
                                     'ear_tagging' => 'Ear Tagging',
+                                    'fecalysis', 'recruitment', 'hands_on_milking', 'forage_demo' => \App\Support\HealthWorksheetMapping::ADDITIONAL_SERVICES[$columnLabel],
                                     'no_of_visits_monitored' => 'No. of Visits / Monitored',
                                     'no_of_treatments' => 'No. of Treatments',
                                     'actions' => 'Actions',
@@ -553,11 +555,15 @@
                                         @else
                                             @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['type'] === 'Other Services' ? ($service['other_service_name'] ?: 'Other Services') : $service['type'] }}</div>@empty<span class="text-slate-400">—</span>@endforelse
                                         @endif
+                                    @elseif($module === 'health' && array_key_exists($columnKey, $row->service_indicators))
+                                        {{ $row->service_indicators[$columnKey] }}
                                     @elseif($module === 'health' && $columnKey === 'dosage_ml')
                                         @if($row->worksheet_dosage !== null && $row->worksheet_dosage !== '')
-                                            <div class="whitespace-pre-wrap">{{ $row->worksheet_dosage }}</div>
+                                            <div class="whitespace-pre-wrap">{{ $row->worksheet_dosage }}{{ is_numeric($row->worksheet_dosage) ? ' mL' : '' }}</div>
                                         @else
-                                            @forelse($row->services as $service)<div class="mb-1 last:mb-0">{{ $service['dosage_display'] ?: '—' }}</div>@empty<span class="text-slate-400">—</span>@endforelse
+                                            @foreach($row->services as $service)
+                                                <div class="mb-1 min-h-[1lh] last:mb-0">{{ $service['dosage_display'] !== null ? $service['dosage_display'].' mL' : '' }}</div>
+                                            @endforeach
                                         @endif
                                     @elseif($module === 'health' && $columnKey === 'actions')
                                         <div class="flex items-center gap-1">
@@ -643,12 +649,15 @@
         @endif
     </section>
 
-    @unless($module === 'fhpr')
         <dialog id="{{ $module }}-csv-import" aria-labelledby="{{ $module }}-import-title" class="m-auto w-11/12 max-w-lg rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
             <form method="post" action="{{ route('modules.import', $module) }}" enctype="multipart/form-data">
                 @csrf
                 <div class="space-y-4 p-5">
-                    <h2 id="{{ $module }}-import-title" class="text-xl font-bold text-[#12345a]">{{ match($module) { 'health' => 'Import Health CSV', 'milk' => 'Import Milk CSV', 'meat', 'manure' => 'Import '.$productLabel.' CSV', 'mtd' => 'Import MTD CSV', 'exits' => 'Import Exit Records CSV', 'bcs' => 'Import BCS CSV', default => 'Import CSV' } }}</h2>
+                    <h2 id="{{ $module }}-import-title" class="text-xl font-bold text-[#12345a]">{{ match($module) { 'health' => 'Import Health CSV', 'fhpr' => 'Import Breeding Summary CSV', 'milk' => 'Import Milk CSV', 'meat', 'manure' => 'Import '.$productLabel.' CSV', 'mtd' => 'Import MTD CSV', 'exits' => 'Import Exit Records CSV', 'bcs' => 'Import BCS CSV', default => 'Import CSV' } }}</h2>
+                    @if($module === 'fhpr')
+                        <p class="text-sm text-slate-600">Each Animal ID must match a classified female in inventory. Add the cooperative name or code if the ID is shared.</p>
+                        <a href="{{ route('modules.template', 'fhpr') }}" class="inline-block text-sm font-semibold text-blue-800 underline">Download CSV template</a>
+                    @endif
                     <label class="block text-sm font-semibold">CSV file<input type="file" name="file" accept=".csv,.txt" required class="mt-1 block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-2"></label>
                 </div>
                 <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
@@ -657,7 +666,6 @@
                 </footer>
             </form>
         </dialog>
-    @endunless
     @if($module === 'milk')
         <dialog id="milk-production-form" aria-labelledby="milk-production-title" class="m-auto max-h-[92vh] w-11/12 max-w-4xl overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60"
             x-data="milkProductionEntry(@js($milkCooperatives), @js($milkFarmers), @js($milkAnimals), @js((string) old('cooperative_id', '')), @js((string) old('farmer_id', '')), @js((string) old('carabao_id', '')), @js(old('number_of_cows', '')))"
@@ -735,24 +743,7 @@
             </form>
         </dialog>
     @elseif($module === 'health')
-        <div id="health-editor" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="health-editor-title">
-            <div class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-                <div class="sticky top-0 flex items-center justify-between border-b bg-white px-6 py-4"><div><h2 id="health-editor-title" class="text-xl font-bold text-[#12345a]">Add Health and Nutrition Activity</h2><p class="text-sm text-slate-500">One activity can include multiple services.</p></div><button type="button" onclick="closeHealthEditor()" class="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">✕</button></div>
-                <form id="health-editor-form" class="space-y-5 p-6" onsubmit="saveHealthActivity(event)">
-                    <input type="hidden" id="health-record-id">
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <label class="block text-sm font-semibold">Animal Registry ID<select id="health-carabao-id" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"><option value="">Select animal</option>@foreach($healthAnimals as $animal)<option value="{{ $animal['id'] }}">{{ $animal['registry_id'] ?: 'N/A' }} · Tag {{ $animal['tag_number'] ?: '—' }} · {{ $animal['cooperative_name'] ?: 'No cooperative' }}</option>@endforeach</select></label>
-                        <label class="block text-sm font-semibold">Monitoring Date<input id="health-monitoring-date" type="date" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
-                        <label class="block text-sm font-semibold">No. of Visits / Monitored<input id="health-visits" type="number" min="0" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
-                        <label class="block text-sm font-semibold">No. of Treatments<input id="health-treatments" type="number" min="0" step="1" required class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></label>
-                    </div>
-                    <datalist id="health-service-options"><option value="Deworming"><option value="Vitamins"><option value="Vaccination"><option value="Uterine Flushing"><option value="Fecalysis"><option value="Ear Tagging"><option value="Recruitment"><option value="Hands-on Milking"><option value="Forage Demo"></datalist>
-                    <div class="rounded-xl border border-slate-200 p-4"><div class="mb-3 flex items-center justify-between gap-2"><div><h3 class="font-bold text-slate-800">Type of Service</h3><p class="text-xs text-slate-500">Each service has its own optional dosage and remarks. Add custom service types as needed.</p></div><button id="health-add-service-button" type="button" onclick="addHealthServiceRow()" class="cbed-add-button rounded-lg px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i>Add Service</button></div><div id="health-service-rows" class="space-y-3"></div></div>
-                    <label class="block text-sm font-semibold">Activity Remarks<textarea id="health-activity-remarks" rows="2" maxlength="2000" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"></textarea></label>
-                    <div class="flex justify-end gap-2"><button type="button" onclick="closeHealthEditor()" class="rounded-lg border px-4 py-2">Close</button><button id="health-save-button" type="submit" class="action-primary bg-blue-700 text-white">Save Activity</button></div>
-                </form>
-            </div>
-        </div>
+        @include('partials.health-activity-modal')
     @endif
 
     <footer class="py-5 text-center text-xs text-slate-400">CBED Data System · {{ $pageTitle }}</footer>
@@ -894,75 +885,16 @@ function mtdRecordActions(baseUrl, results) {
         }
     };
 }
-function animalExitDialog(cooperatives, farmers, animals, labels, natureOptions, baseUrl, today) {
-    const directory=milkProductionEntry(cooperatives,farmers,animals,'','','',0);
-    const fields=Object.keys(labels);
-    return {...directory, labels, fields, mode:'add', record:{}, draft:{}, natureOptions, error:'', saving:false,
-        titles:{add:'Add Exit',view:'Exit Record Details',edit:'Edit Exit Record',delete:'Delete exit record?'},
-        options(picker){
-            const choices=directory.options.call(this,picker);
-            if(picker!=='animal')return choices;
-            const allowed=new Set(animals.filter(item=>String(item.cooperative_id)===this.cooperative).map(item=>item.id));
-            return choices.filter(item=>allowed.has(item.id));
-        },
-        choose(picker,item,wrapper){
-            const changed=this[picker]!==String(item.id);
-            directory.choose.call(this,picker,item,wrapper);
-            if(changed && picker!=='animal')this.selectAnimal('');
-        },
-        selectAnimal(id){
-            const selected=animals.find(item=>String(item.id)===id);
-            this.animal=id;
-            this.draft.entrustment=selected?.entrustment || '';
-            this.draft.ownership_status=selected?.ownership_status || '';
-        },
-        showExit({mode,record={}}){
-            if(this.saving)return;
-            this.mode=mode;
-            this.record=record;
-            this.error='';
-            this.cooperative=this.farmer=this.animal=this.openPicker='';
-            this.draft=Object.fromEntries(fields.map(field=>[field,record[field] ?? (mode==='add' && field==='exit_date' ? today : '')]));
-            this.natureOptions=[...new Set([...natureOptions,...(record.nature_of_exit ? [record.nature_of_exit] : [])])];
-            this.$root.showModal();
-            this.$nextTick(()=>this.$refs.cancel.focus());
-        },
-        async save(){
-            if(this.saving || this.mode==='view' || (this.mode==='add' ? !this.animal : !this.record.record_id))return;
-            const adding=this.mode==='add';
-            const deleting=this.mode==='delete';
-            const payload=adding ? {...this.draft,cooperative_id:this.cooperative,farmer_id:this.farmer,carabao_id:this.animal} : this.draft;
-            this.saving=true;
-            this.error='';
-            try{
-                const response=await fetch(adding ? baseUrl : baseUrl+'/'+this.record.record_id,{
-                    method:adding ? 'POST' : (deleting ? 'DELETE' : 'PUT'),
-                    headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content || ''},
-                    body:deleting ? undefined : JSON.stringify(payload)
-                });
-                if(!response.ok){
-                    const result=await response.json().catch(()=>({}));
-                    throw Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not save the exit record.');
-                }
-                this.$root.close();
-                if(adding)window.location.assign(baseUrl);
-                else window.location.reload();
-            }catch(error){
-                this.error=error.message;
-            }finally{
-                this.saving=false;
-            }
-        }
-    };
-}
 </script>
 @endpush
+@if($module === 'exits')
+    @include('partials.animal-exit-script')
+@endif
 @endif
 
 @if($module === 'health')
 @push('scripts')
 <script>
-const healthRecordsUrl=@json(url('/admin/health-records'));
 const healthPanel=document.getElementById('health-records-panel');
 if(healthPanel){
     const address=new URL(window.location.href);
@@ -1017,14 +949,9 @@ if(healthPanel){
         loadHealthPage(url,'[data-health-page-size] select');
     });
 }
-let healthServiceRowKey=0;
-function closeHealthEditor(){document.getElementById('health-editor').classList.add('hidden');document.getElementById('health-editor').classList.remove('flex');}
-function addHealthServiceRow(service={}){const index=healthServiceRowKey++,row=document.createElement('div');row.className='health-service-row grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1.4fr_.7fr_1.4fr_auto]';row.innerHTML=`<label class="text-xs font-semibold">Service Type<input list="health-service-options" data-service="type" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Choose or enter a type" required></label><label class="text-xs font-semibold">Dosage (mL)<input data-service="dosage_ml" type="number" min="0" step="0.01" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Not applicable"></label><label class="text-xs font-semibold">Service Remarks<input data-service="remarks" maxlength="2000" class="mt-1 w-full rounded border px-2 py-2 text-sm"></label><button type="button" class="self-end rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" aria-label="Remove service" onclick="this.closest('.health-service-row').remove()">Remove</button>`;row.querySelector('[data-service="type"]').value=service.type==='Other Services'?(service.other_service_name||'Other Services'):(service.type||'');row.querySelector('[data-service="dosage_ml"]').value=service.dosage_ml??'';row.querySelector('[data-service="remarks"]').value=service.remarks??'';document.getElementById('health-service-rows').appendChild(row);}
-function openHealthEditor(id=null,readOnly=false){const form=document.getElementById('health-editor-form');form.reset();form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=false);document.getElementById('health-record-id').value='';document.getElementById('health-service-rows').replaceChildren();document.getElementById('health-monitoring-date').value=new Date().toISOString().slice(0,10);document.getElementById('health-editor-title').textContent=!id?'Add Health and Nutrition Activity':readOnly?'View Health and Nutrition Activity':'Edit Health and Nutrition Activity';document.getElementById('health-save-button').hidden=readOnly;document.getElementById('health-add-service-button').hidden=readOnly;if(!id)addHealthServiceRow();const modal=document.getElementById('health-editor');modal.classList.remove('hidden');modal.classList.add('flex');if(id){fetch(`${healthRecordsUrl}/${id}`,{headers:{Accept:'application/json'}}).then(async response=>{const record=await response.json();if(!response.ok)throw new Error(record.message||'Could not load this activity.');document.getElementById('health-record-id').value=record.id;document.getElementById('health-carabao-id').value=record.carabao_id;document.getElementById('health-monitoring-date').value=String(record.monitoring_date||'').slice(0,10);document.getElementById('health-visits').value=record.no_of_visits_monitored??'';document.getElementById('health-treatments').value=record.no_of_treatments??'';document.getElementById('health-activity-remarks').value=record.remarks||'';document.getElementById('health-service-rows').replaceChildren();(record.services||[]).forEach(service=>addHealthServiceRow(service));if(!(record.services||[]).length)addHealthServiceRow();if(readOnly)form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=true);}).catch(error=>{alert(error.message);closeHealthEditor();});}else if(readOnly){form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control=>control.disabled=true);}}
-async function saveHealthActivity(event){event.preventDefault();const services=[...document.querySelectorAll('#health-service-rows .health-service-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-service]')].map(input=>[input.dataset.service,input.value.trim()]))).filter(service=>service.type);if(!services.length){alert('Add at least one service.');return;}const payload={carabao_id:Number(document.getElementById('health-carabao-id').value),monitoring_date:document.getElementById('health-monitoring-date').value,no_of_visits_monitored:Number(document.getElementById('health-visits').value),no_of_treatments:Number(document.getElementById('health-treatments').value),remarks:document.getElementById('health-activity-remarks').value,services};const id=document.getElementById('health-record-id').value,token=document.querySelector('meta[name="csrf-token"]')?.content;const response=await fetch(id?`${healthRecordsUrl}/${id}`:healthRecordsUrl,{method:id?'PUT':'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':token},body:JSON.stringify(payload)});const result=await response.json().catch(()=>({}));if(!response.ok){alert(result.message||'Could not save the activity.');return;}location.reload();}
-async function deleteHealthActivity(id){if(!confirm('Delete this Health and Nutrition activity and its service entries?'))return;const token=document.querySelector('meta[name="csrf-token"]')?.content;const response=await fetch(`${healthRecordsUrl}/${id}`,{method:'DELETE',headers:{Accept:'application/json','X-CSRF-TOKEN':token}});const result=await response.json().catch(()=>({}));if(!response.ok){alert(result.message||'Could not delete the activity.');return;}location.reload();}
 </script>
 @endpush
+@include('partials.health-activity-script')
 @endif
 
 @if($module === 'fhpr')

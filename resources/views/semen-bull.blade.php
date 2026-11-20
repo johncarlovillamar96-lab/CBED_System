@@ -7,8 +7,8 @@
 <div x-data="semenBullPage()" x-cloak class="semen-bull-page min-w-0 bg-slate-50 text-slate-800">
     {{-- PAGE HEADER: matching Breeding / Carabao Management UI --}}
     <x-admin-page-header title="Semen Bull Management" description="Manage semen bull profiles, registration details, and recorded semen usage." section="Animal Management" breadcrumb="Semen Bulls">
-        <button type="button" @click="exportXLSX()" class="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-export"></i> Export XLSX</button>
-        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-import"></i> Import XLSX<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importXLSX($event)"></label>
+        <button type="button" @click="exportXLSX()" class="inline-flex items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-export"></i> Export</button>
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/25 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-white/20"><i class="fa-solid fa-file-import"></i> Import<input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importXLSX($event)"></label>
         <button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold shadow-sm"><i class="fa-solid fa-plus"></i> Add Semen Bull</button>
     </x-admin-page-header>
 
@@ -23,7 +23,7 @@
     <section class="cbed-card dashboard-panel overflow-hidden">
         <div class="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 class="text-lg font-bold text-[#0b1f3a]">Semen Bull Records</h2><p class="mt-1 text-sm text-slate-500">Search, filter, view, import, export, or add semen bull profiles using Excel workbooks.</p></div>
-            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button><button type="button" @click="fetchBulls(true)" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
+            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button><button type="button" @click="fetchBulls()" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
         </div>
 
         {{-- FILTERS --}}
@@ -142,7 +142,7 @@ function semenBullPage(){
         fields:['id','name','breed','registration','dob','source','sire','dam','semenUsed','status','remarks'],
         form:{id:'',name:'',breed:'',registration:'',dob:'',source:'',sire:'',dam:'',status:'Active',semenUsed:0,remarks:''},
 
-        async init(){ await this.fetchBulls(true); },
+        async init(){ await this.fetchBulls(); },
         async request(url, options={}){
             const headers={'Accept':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':this.csrfToken,...(options.headers||{})};
             const response=await fetch(url,{...options,headers});
@@ -157,7 +157,7 @@ function semenBullPage(){
             }
             return result;
         },
-        async fetchBulls(announce = false){
+        async fetchBulls(){
             this.loading=true; this.errorMessage='';
             try{
                 let page=1,lastPage=1; const rows=[];
@@ -173,7 +173,6 @@ function semenBullPage(){
                     page++;
                 }while(page<=lastPage);
                 this.bulls=rows; this.page=Math.min(this.page,this.totalPages());
-                if (announce) this.$dispatch('cbed-data-status');
             }catch(error){this.errorMessage=error.message||'Unable to load database records.';this.msg(this.errorMessage,'error');}
             finally{this.loading=false;}
         },

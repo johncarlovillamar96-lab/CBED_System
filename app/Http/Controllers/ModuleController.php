@@ -8,6 +8,8 @@ use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Carbon\Carbon;
 use App\Support\AnimalClassification;
+use App\Support\HealthWorksheetMapping;
+use App\Support\FhprCsv;
 class ModuleController extends Controller {
  private array $map=['farmers'=>'farmers','cooperatives'=>'cooperatives','carabaos'=>'carabaos','mating'=>'mating_records','fhpr'=>'fhpr_records','calves'=>'calves','milk'=>'milk_records','mtd'=>'mtd_records','health'=>'health_records','bcs'=>'bcs_records','nature-of-exit'=>'nature_of_exits','exits'=>'nature_of_exits','semen-bulls'=>'semen_bulls','semen-usage'=>'semen_usage','meat'=>'cooperative_product_records','manure'=>'cooperative_product_records'];
  private function table($m){abort_unless(isset($this->map[$m]),404);return $this->map[$m];}
@@ -23,56 +25,6 @@ class ModuleController extends Controller {
      $reportStatus=(string)$request->query('report_status','');
      $hasReportsTable=Schema::hasTable('monitoring_reports');
      $hasDetails=Schema::hasTable('monitoring_report_details');
-     $decorate=function($report)use($hasDetails){
-         $details=$hasDetails?DB::table('monitoring_report_details')->where('monitoring_report_id',$report->id)->orderBy('id')->get():collect();
-         $legacy=json_decode((string)($report->report_data??''),true)?:[];
-         $rows=$details->isNotEmpty()?$details->map(fn($d)=>[
-             'detail_id'=>$d->id,'carabao_id'=>$d->carabao_id,'farmer_name'=>$d->farmer_name??'',
-             'bolus_id'=>$d->bolus_id,'registry_id'=>$d->registry_number,'tag_number'=>$d->tag_number,
-             'animal_name'=>$d->animal_name,'sex'=>$d->sex,'birth_date'=>$d->birth_date,'breed'=>$d->breed,
-             'availability_status'=>$d->availability_status,'unavailability_reason'=>$d->unavailability_reason,
-             'monitoring_specification'=>$d->monitoring_specification,'destination_module'=>$d->destination_module,
-             'monitoring_status'=>$d->monitoring_status,'monitoring_data'=>json_decode((string)$d->monitoring_data,true)?:[],
-             'remarks'=>$d->remarks,
-         ])->all():($legacy['rows']??[]);
-         $available=count(array_filter($rows,fn($r)=>($r['availability_status']??'available')==='available'));
-         $unavailable=count($rows)-$available;
-         $completed=count(array_filter($rows,fn($r)=>($r['monitoring_status']??'')==='completed'));
-         $specs=array_values(array_unique(array_filter(array_column($rows,'monitoring_specification'))));
-         $serviceCount=function($key)use($rows){return count(array_filter($rows,function($row)use($key){$v=$row['monitoring_data'][$key]??null;return $v!==null&&$v!==''&&!in_array(mb_strtolower((string)$v),['no','n/a','na','none','-','0'],true);}));};
-         $report->report_data=['rows'=>$rows];
-         $serviceNames=collect($rows)->flatMap(function($row){
-             $data=$row['monitoring_data']??[];
-             $services=collect($data['services']??[])->filter(fn($service)=>is_array($service)&&filter_var($service['selected']??false,FILTER_VALIDATE_BOOLEAN))
-                 ->map(fn($service)=>(($service['type']??'')==='Other Services'?'Other Services: '.($service['other_service_name']??''):(($service['type']??''))))
-                 ->filter()->values();
-             if(!empty($data['service_type']))$services->push($data['service_type']);
-             return $services;
-         });
-         $serviceSummary=$serviceNames->countBy()->map(fn($n,$name)=>$name.' ('.$n.')')->values()->all();
-         $report->summary=['animals'=>count($rows),'available'=>$available,'unavailable'=>$unavailable,'completed'=>$completed,'pending'=>max(0,$available-$completed),'specifications'=>$specs,'service_summary'=>$serviceSummary,
-             'blood_collection'=>$serviceCount('blood_collection'),'fecalysis'=>$serviceCount('fecalysis'),'vaccine'=>$serviceCount('vaccine'),'deworming'=>$serviceCount('deworming'),'vi_supp'=>$serviceCount('vi_supp'),'ear_tagged'=>$serviceCount('ear_tagged'),'bolus'=>$serviceCount('bolus'),'flashing'=>$serviceCount('flashing')];
-         return $report;
-     };
-     $historyQuery=$hasReportsTable?DB::table('monitoring_reports')->leftJoin('users','users.id','=','monitoring_reports.created_by')->select('monitoring_reports.*')->selectRaw("TRIM(CONCAT(COALESCE(users.name,''))) as created_by_name"):null;
-     if($historyQuery&&$selectedCooperativeId!==''&&ctype_digit($selectedCooperativeId))$historyQuery->where('cooperative_id',(int)$selectedCooperativeId);
-     if($historyQuery&&$reportSearch!=='')$historyQuery->where('cooperative_name','like','%'.$reportSearch.'%');
-     if($historyQuery&&$hasDetails&&$reportSpecification!=='')$historyQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('monitoring_specification',$reportSpecification));
-     if($historyQuery&&$hasDetails&&$reportAvailability!=='')$historyQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('availability_status',$reportAvailability));
-     if($historyQuery&&$hasDetails&&$reportStatus!=='')$historyQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('monitoring_status',$reportStatus));
-     $reports=$historyQuery?$historyQuery->orderByDesc('monitoring_reports.report_date')->orderByDesc('monitoring_reports.id')->limit(100)->get()->map($decorate):collect();
-     $calendarQuery=$hasReportsTable?DB::table('monitoring_reports')->whereBetween('report_date',[$monthStart->toDateString(),$monthStart->copy()->endOfMonth()->toDateString()]):null;
-     if($calendarQuery&&$selectedCooperativeId!==''&&ctype_digit($selectedCooperativeId))$calendarQuery->where('cooperative_id',(int)$selectedCooperativeId);
-     if($calendarQuery&&$reportSearch!=='')$calendarQuery->where('cooperative_name','like','%'.$reportSearch.'%');
-     if($calendarQuery&&$hasDetails&&$reportSpecification!=='')$calendarQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('monitoring_specification',$reportSpecification));
-     if($calendarQuery&&$hasDetails&&$reportAvailability!=='')$calendarQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('availability_status',$reportAvailability));
-     if($calendarQuery&&$hasDetails&&$reportStatus!=='')$calendarQuery->whereExists(fn($q)=>$q->selectRaw('1')->from('monitoring_report_details')->whereColumn('monitoring_report_details.monitoring_report_id','monitoring_reports.id')->where('monitoring_status',$reportStatus));
-     $calendarReports=$calendarQuery?$calendarQuery->orderBy('report_date')->orderBy('cooperative_name')->orderBy('id')->get()->map($decorate):collect();
-     $calendarReportsByDay=$calendarReports->groupBy(fn($r)=>(int)Carbon::parse($r->report_date)->day);
-     $selectedReport=$hasReportsTable&&$request->filled('report_id')?DB::table('monitoring_reports')->where('id',(int)$request->query('report_id'))->first():null;
-     $activeReport=$selectedReport?$decorate($selectedReport):$reports->first();
-     $activeSummary=$activeReport->summary??['animals'=>0,'available'=>0,'unavailable'=>0,'completed'=>0,'pending'=>0];
-     $counts=['total_animals'=>$activeSummary['animals'],'available'=>$activeSummary['available'],'unavailable'=>$activeSummary['unavailable'],'monitored'=>$activeSummary['completed'],'pending'=>$activeSummary['pending']];
      $calendarDaysInMonth=(int)$monthStart->daysInMonth;$calendarStartOffset=$monthStart->dayOfWeekIso-1;
      $previousMonth=$monthStart->copy()->subMonth()->format('Y-m');$nextMonth=$monthStart->copy()->addMonth()->format('Y-m');
      // Read-only 2026 integration across the existing monitoring destination tables.
@@ -81,8 +33,8 @@ class ModuleController extends Controller {
          $yearReports=DB::table('monitoring_reports')->whereBetween('report_date',[$fetchStart,$fetchEnd])->orderBy('report_date')->get();$yearDetails=$hasDetails&&$yearReports->isNotEmpty()?DB::table('monitoring_report_details')->whereIn('monitoring_report_id',$yearReports->pluck('id'))->orderBy('id')->get()->groupBy('monitoring_report_id'):collect();
          foreach($yearReports as $report){
              $details=$yearDetails->get($report->id,collect());
-             foreach($details as $detail){$data=json_decode((string)$detail->monitoring_data,true)?:[];$spec=$detail->monitoring_specification?:'other_services';$category=in_array($spec,['calf_monitoring','breeding','health_nutrition'],true)?$spec:'other_services';if(!empty($detail->destination_record_id)&&in_array($category,['calf_monitoring','breeding','health_nutrition'],true))continue;$eventDate=$data['date_of_birth']??$data['dry_off_date']??$data['breeding_date']??$data['service_date']??$data['monitoring_date']??$report->report_date;
-                 $item=(object)['date'=>$eventDate,'monitoring_date'=>$report->report_date,'service'=>$spec==='calf_monitoring'?'Calf Drop':($spec==='breeding'?'Mating / Breeding':($spec==='health_nutrition'?'Health and Nutrition':($data['service_type']??'Other Services'))),'animal_id'=>$detail->registry_number?:$detail->animal_database_id??$detail->bolus_id,'bolus_id'=>$detail->bolus_id,'animal_name'=>$detail->animal_name,'farmer_name'=>$detail->farmer_name,'cooperative_name'=>$report->cooperative_name,'details'=>$data,'remarks'=>$detail->remarks,'source_id'=>$detail->id];$monitoringModules[$category]->push($item);$calendarEvents->push($item);
+             foreach($details as $detail){$data=json_decode((string)$detail->monitoring_data,true)?:[];$spec=$detail->monitoring_specification?:'other_services';$category=in_array($spec,['calf_monitoring','breeding','health_nutrition'],true)?$spec:'other_services';if(!empty($detail->destination_record_id)&&in_array($category,['calf_monitoring','breeding','health_nutrition'],true))continue;$eventDate=$data['date_of_birth']??$data['dry_off_date']??$data['exit_date']??$data['breeding_date']??$data['service_date']??$data['monitoring_date']??$report->report_date;
+                 $item=(object)['date'=>$eventDate,'monitoring_date'=>$report->report_date,'service'=>$spec==='calf_monitoring'?'Calf Drop':($spec==='breeding'?'Mating / Breeding':($spec==='health_nutrition'?'Health and Nutrition':($spec==='nature_of_exit'?'Nature of Exit':($data['service_type']??'Other Services')))),'animal_id'=>$detail->registry_number?:$detail->animal_database_id??$detail->bolus_id,'bolus_id'=>$detail->bolus_id,'animal_name'=>$detail->animal_name,'farmer_name'=>$detail->farmer_name,'cooperative_name'=>$report->cooperative_name,'details'=>$data,'remarks'=>$detail->remarks,'source_id'=>$detail->id];$monitoringModules[$category]->push($item);$calendarEvents->push($item);
              }
          }
      }
@@ -173,7 +125,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
       if($request->query('table_export')==='xlsx'){$exportRows=$consolidatedRows->values();$spreadsheet=new \PhpOffice\PhpSpreadsheet\Spreadsheet();$sheet=$spreadsheet->getActiveSheet();$sheet->setTitle('Animal Monitoring');$sheet->fromArray(['No.','Name of Farmer'],null,'A1');$sheet->setCellValue('C1','Animal Information');$sheet->mergeCells('C1:F1');$sheet->setCellValue('G1','Calf Monitoring');$sheet->mergeCells('G1:K1');$sheet->setCellValue('L1','Breeding');$sheet->mergeCells('L1:Q1');$sheet->setCellValue('R1','Health and Nutrition');$sheet->mergeCells('R1:X1');$sheet->setCellValue('Y1','Other Services');$sheet->mergeCells('Y1:AB1');$sheet->fromArray(['Latest Monitoring Date','Remarks'],null,'AC1');$sheet->mergeCells('A1:A2');$sheet->mergeCells('B1:B2');$sheet->mergeCells('AC1:AC2');$sheet->mergeCells('AD1:AD2');$headers=['Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Breeding Method','Sire ID','Monitoring Date','PD','Type of Estrus','Breeding Method','Sire ID','Breeding Date','Monitoring Date','BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Monitoring Date','Ear Tagging','Bolus','Other Service','Monitoring Date'];$sheet->fromArray($headers,null,'C2');$date=fn($value)=>$value?Carbon::parse($value)->format('F j, Y'):'–';foreach($exportRows as $index=>$row){$health=$row['health'];$other=$row['other'];$otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ');$values=[$index+1,$row['farmer'],$row['animal_id'],$date($row['birth_date']),$row['dam_breed']?:'–',$row['bcs']??'–',$date($row['calf']['date']??null),$row['calf']['sex']??'–',$row['calf']['method']??'–',$row['calf']['sire_id']??'–',$date($row['calf']['monitoring_date']??null),$row['breeding']['pd']??'–',$row['breeding']['estrus']??'–',$row['breeding']['method']??'–',$row['breeding']['sire_id']??'–',$date($row['breeding']['date']??null),$date($row['breeding']['monitoring_date']??null),$health['bcs']['value']??($row['bcs']??'–'),$health['fecalysis']['value']??'–',$health['vaccine']['value']??'–',$health['deworming']['value']??'–',$health['vi_supp']['value']??'–',$health['flushing']['value']??'–',$date($row['health_monitoring_date']),$other['ear_tagging']['value']??($row['tag_number']?:'–'),$other['bolus']['value']??($row['bolus_id']?:'–'),$otherList?:'–',$date($row['other_monitoring_date']),$date($row['monitoring_date']),$row['remarks']?:'–'];$sheet->fromArray($values,null,'A'.(3+$index));}$lastRow=max(3,2+$exportRows->count());$sheet->getStyle('A1:AD'.$lastRow)->getBorders()->getAllBorders()->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);$sheet->getStyle('A1:AD2')->getFont()->setBold(true);$sheet->getStyle('A1:AD2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);$sheet->getStyle('A1:AD2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);$sheet->getStyle('A1:AD'.$lastRow)->getAlignment()->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)->setWrapText(true);foreach(range('A','Z') as $column)$sheet->getColumnDimension($column)->setWidth(in_array($column,['A'],true)?6:14);foreach(['AA','AB','AC','AD'] as $column)$sheet->getColumnDimension($column)->setWidth(16);$sheet->freezePane('C3');$sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE)->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_LEGAL)->setFitToWidth(1)->setFitToHeight(0);$sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1,2);return response()->streamDownload(function()use($spreadsheet){(new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');},'animal-monitoring-'.$reportYear.'.xlsx',['Content-Type'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);}
       if($request->query('table_export')==='csv'){$exportRows=$consolidatedRows->values();return response()->streamDownload(function()use($exportRows){$file=fopen('php://output','w');fwrite($file,"\xEF\xBB\xBF");fputcsv($file,['No.','Name of Farmer','Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Calf Breeding Method','Calf Sire ID','Calf Monitoring Date','PD','Type of Estrus','Breeding Method','Breeding Sire ID','Breeding Date','Breeding Monitoring Date','Health BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Health Monitoring Date','Ear Tagging','Bolus','Other Service','Other Monitoring Date','Latest Monitoring Date','Remarks']);$date=fn($value)=>$value?Carbon::parse($value)->format('F j, Y'):'–';foreach($exportRows as $index=>$row){$health=$row['health'];$other=$row['other'];$otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ');fputcsv($file,[$index+1,$row['farmer'],$row['animal_id'],$date($row['birth_date']),$row['dam_breed']?:'–',$row['bcs']??'–',$date($row['calf']['date']??null),$row['calf']['sex']??'–',$row['calf']['method']??'–',$row['calf']['sire_id']??'–',$date($row['calf']['monitoring_date']??null),$row['breeding']['pd']??'–',$row['breeding']['estrus']??'–',$row['breeding']['method']??'–',$row['breeding']['sire_id']??'–',$date($row['breeding']['date']??null),$date($row['breeding']['monitoring_date']??null),$health['bcs']['value']??($row['bcs']??'–'),$health['fecalysis']['value']??'–',$health['vaccine']['value']??'–',$health['deworming']['value']??'–',$health['vi_supp']['value']??'–',$health['flushing']['value']??'–',$date($row['health_monitoring_date']),$other['ear_tagging']['value']??($row['tag_number']?:'–'),$other['bolus']['value']??($row['bolus_id']?:'–'),$otherList?:'–',$date($row['other_monitoring_date']),$date($row['monitoring_date']),$row['remarks']?:'–']);}fclose($file);},'animal-monitoring-'.$reportYear.'.csv',['Content-Type'=>'text/csv; charset=UTF-8']);}
       $farmerOptions=$animalDirectory->map(fn($animal)=>trim(implode(' ',array_filter([$animal->first_name??null,$animal->middle_name??null,$animal->last_name??null]))))->filter()->unique()->sort()->values();$tableTotal=$consolidatedRows->count();$tablePerPage=TablePagination::size($request, 'table_per_page');$tablePage=max(1,(int)$request->query('table_page',1));$tablePage=min($tablePage,max(1,(int)ceil($tableTotal/$tablePerPage)));$consolidatedRowsPage=new LengthAwarePaginator($consolidatedRows->forPage($tablePage,$tablePerPage)->values(),$tableTotal,$tablePerPage,$tablePage,['path'=>$request->url(),'query'=>$request->query(),'pageName'=>'table_page']);$liveAnimalTotal=$animalDirectory->count();$technicianOptions=DB::table('mating_records')->whereNotNull('technician')->where('technician','<>','')->distinct()->orderBy('technician')->pluck('technician');
-      return view('monitoring',compact('counts','cooperatives','reports','activeReport','calendarReports','calendarReportsByDay','selectedMonth','selectedCooperativeId','reportSearch','reportSpecification','reportAvailability','reportStatus','calendarDaysInMonth','calendarStartOffset','previousMonth','nextMonth','technicianOptions','calendarEvents','calendarEventsByDate','calendarView','selectedDate','monitoringModules','animalAvailability','consolidatedRows','consolidatedRowsPage','tableSearch','tableCooperative','tableFarmer','tableAnimal','tableProvince','tableMunicipality','tableBarangay','tableDateStart','tableDateEnd','tableService','categoryLabels','reportYear','farmerOptions','tablePerPage','liveAnimalTotal','gipReportingDate'));
+      return view('monitoring',compact('cooperatives','selectedMonth','selectedCooperativeId','reportSearch','reportSpecification','reportAvailability','reportStatus','calendarDaysInMonth','calendarStartOffset','previousMonth','nextMonth','technicianOptions','calendarEvents','calendarEventsByDate','calendarView','selectedDate','monitoringModules','animalAvailability','consolidatedRows','consolidatedRowsPage','tableSearch','tableCooperative','tableFarmer','tableAnimal','tableProvince','tableMunicipality','tableBarangay','tableDateStart','tableDateEnd','tableService','categoryLabels','reportYear','farmerOptions','tablePerPage','liveAnimalTotal','gipReportingDate'));
  }
  private function milkRecordsQuery(){
      return \App\Support\MilkProductionRecords::query()
@@ -205,7 +157,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      if ($module === 'mtd') return app(MtdController::class)->index($request);
      $table=$this->table($module);$allColumns=Schema::getColumnListing($table);$columns=$module==='bcs'?['cooperative_name','farmer_name','record_date','body_condition_score']:collect($allColumns)->reject(fn($column)=>in_array($column,['id','created_at','updated_at']))->values()->all();$search=trim((string)$request->query('search',$request->query('q','')));
      if($module==='health'){
-         $columns=['cooperative_name','farmer_name','registry_id','tag_number','breed','monitoring_date','services','dosage_ml','deworming','vitamins_minerals','vaccination','uterine_flushing','ear_tagging','no_of_visits_monitored','no_of_treatments','remarks','actions'];
+         $columns=['cooperative_name','farmer_name','registry_id','tag_number','breed','monitoring_date','services','dosage_ml','deworming','vitamins_minerals','vaccination','uterine_flushing','ear_tagging',...array_keys(HealthWorksheetMapping::ADDITIONAL_SERVICES),'no_of_visits_monitored','no_of_treatments','remarks','actions'];
          $farmerName = "CONCAT_WS(' ', NULLIF(TRIM(animal_farmer.first_name), ''), NULLIF(TRIM(animal_farmer.middle_name), ''), NULLIF(TRIM(animal_farmer.last_name), ''))";
          $registryId = "COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(health_records.registry_number, ''), NULLIF(inventory_animal.animal_id, ''))";
          $query=DB::table('health_records')
@@ -249,11 +201,9 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
              $row->worksheet_services = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
              $row->worksheet_dosage = $worksheet['dosage'] ?? null;
-             foreach (['deworming', 'vitamins_minerals', 'vaccination', 'uterine_flushing', 'ear_tagging'] as $field) {
-                 $row->$field = $worksheet[$field] ?? null;
-             }
              $row->remarks = $row->remarks ?? ($worksheet['remarks'] ?? null);
              $row->services = $this->healthServicesArray($source);
+             $row->service_indicators = HealthWorksheetMapping::serviceIndicators($source, $worksheet, $row->services);
              $row->no_of_visits_monitored = $this->healthActivityCount($source, 'no_of_visits_monitored');
              $row->no_of_treatments = $this->healthActivityCount($source, 'no_of_treatments');
              $row->monitoring_date = $row->monitoring_date ? Carbon::parse($row->monitoring_date)->format('F j, Y') : '-';
@@ -492,18 +442,17 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          ->filter(fn($service)=>$service['type']!=='')->values()->all();
  }
 
- private function healthActivityCount(array $source,string $key): ?int
+ private function healthActivityCount(array $source, string $key): int
  {
-     $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
-     if (is_numeric($worksheet[$key] ?? null)) return max(0, (int) $worksheet[$key]);
-     $selected = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
-     if ($key === 'no_of_treatments' && $selected !== []) return count($selected);
-     $services=$this->healthServicesArray($source);
-     if($key==='no_of_visits_monitored')return 1;
-     if($key==='no_of_treatments'&&$services!==[])return count($services);
-     $fields=$source['health_activity']??$source['monitoring_fields']??$source;
-     if(!array_key_exists($key,$fields)||$fields[$key]===null||$fields[$key]==='')return null;
-     return max(0,(int)$fields[$key]);
+     if ($key === 'no_of_visits_monitored') {
+         return 1;
+     }
+
+     if (is_array($source['services'] ?? $source['monitoring_fields']['services'] ?? null)) {
+         return count($this->healthServicesArray($source));
+     }
+
+     return count(HealthWorksheetMapping::selectedServices(HealthWorksheetMapping::fromSource($source)));
  }
 
  private function healthServiceSummaryLabel(string $name): ?string
@@ -579,9 +528,11 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
 
  private function validateHealthRecord(\Illuminate\Http\Request $request): array
  {
-     $data=$request->validate(['carabao_id'=>['required','integer','exists:carabaos,id'],'monitoring_date'=>['required','date'],'no_of_visits_monitored'=>['required','integer','min:0','max:100000'],'no_of_treatments'=>['required','integer','min:0','max:100000'],'remarks'=>['nullable','string','max:2000'],'services'=>['required','array','min:1','max:100'],'services.*.type'=>['required','string','max:100'],'services.*.dosage_ml'=>['nullable','numeric','min:0','max:100000'],'services.*.remarks'=>['nullable','string','max:2000']]);
+     $data=$request->validate(['carabao_id'=>['required','integer','exists:carabaos,id'],'monitoring_date'=>['required','date'],'remarks'=>['nullable','string','max:2000'],'services'=>['required','array','min:1','max:100'],'services.*.type'=>['required','string','max:100'],'services.*.dosage_ml'=>['nullable','numeric','min:0','max:100000'],'services.*.remarks'=>['nullable','string','max:2000']]);
      $data['services']=collect($data['services'])->map(fn($service)=>['type'=>trim($service['type']),'dosage_ml'=>($service['dosage_ml']??'')!==''? (string)$service['dosage_ml']:null,'remarks'=>trim((string)($service['remarks']??''))])->filter(fn($service)=>$service['type']!=='')->values()->all();
      if(!$data['services'])abort(422,'Add at least one service row or cancel the activity.');
+     $data['no_of_visits_monitored'] = 1;
+     $data['no_of_treatments'] = count($data['services']);
      return $data;
  }
 
@@ -784,7 +735,15 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  private const PRODUCT_CSV_COLUMNS = ['cooperative_id', 'actual_date', 'reported_date', 'volume_kg', 'other_source_volume_kg', 'price_per_kg', 'value_php'];
 
  public function template($module){if(in_array($module,['exits','nature-of-exit'],true))return app(AnimalExitController::class)->download(true);
-     if($module==='mtd')return app(MtdController::class)->download(true);abort_if($module==='fhpr',404);if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=in_array($module,['meat','manure'],true)?self::PRODUCT_CSV_COLUMNS:collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
+     if($module==='mtd')return app(MtdController::class)->download(true);
+     if ($module === 'fhpr') {
+         return response()->streamDownload(function () {
+             $stream = fopen('php://output', 'w');
+             fputcsv($stream, FhprCsv::headers(), ',', '"', '');
+             fclose($stream);
+         }, 'fhpr_template.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+     }
+     if($module==='milk'){$cols=['Cooperative Code','Cooperative Name','Farmer Name','Actual Date of Collection','AM','Total','No. of cows','Price per kg (Raw Milk)','Milk Traded'];return response()->streamDownload(function()use($cols){if(ob_get_level()>0)ob_clean();$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},'milk_template.csv');}$cols=in_array($module,['meat','manure'],true)?self::PRODUCT_CSV_COLUMNS:collect(Schema::getColumnListing($this->table($module)))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();return response()->streamDownload(function()use($cols){$f=fopen('php://output','w');fputcsv($f,$cols);fclose($f);},$module.'_template.csv');}
  public function export($module){
      if (in_array($module, ['exits', 'nature-of-exit'], true)) return app(AnimalExitController::class)->download(false);
      if ($module === 'mtd') return app(MtdController::class)->download(false);
@@ -805,7 +764,8 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              $serviceFields = ['deworming', 'vitamins_minerals', 'vaccination', 'uterine_flushing', 'ear_tagging'];
              fputcsv($file, ['Monitoring Date', 'Animal Registry ID', 'Tag Number', 'Cooperative Name', 'Breed',
                  'Type of Service', 'Dosage (mL)', 'No. of Visits / Monitored', 'No. of Treatments', 'Service Remarks', 'Activity Remarks',
-                 'Deworming', 'Vitamins / Mineral Supplements', 'Vaccination', 'Uterine Flushing', 'Ear Tagging']);
+                 'Deworming', 'Vitamins / Mineral Supplements', 'Vaccination', 'Uterine Flushing', 'Ear Tagging',
+                 ...array_values(HealthWorksheetMapping::ADDITIONAL_SERVICES)]);
              DB::table('health_records as record')
                  ->leftJoin('carabaos as animal', 'animal.id', '=', 'record.carabao_id')
                  ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
@@ -817,6 +777,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                          $worksheet = \App\Support\HealthWorksheetMapping::fromSource($source);
                          $importedServices = \App\Support\HealthWorksheetMapping::selectedServices($worksheet);
                          $services = $this->healthServicesArray($source);
+                         $additionalValues = HealthWorksheetMapping::additionalServiceValues($source, $worksheet, $services);
                          if ($importedServices || ! $services) {
                              $services = [['type' => implode('; ', $importedServices), 'dosage_ml' => $worksheet['dosage'] ?? null, 'remarks' => '']];
                          } elseif (isset($worksheet['dosage']) && $worksheet['dosage'] !== '') {
@@ -832,6 +793,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                                  $index === 0 ? $this->healthActivityCount($source, 'no_of_treatments') : '',
                                  $service['remarks'], $row->remarks ?? ($worksheet['remarks'] ?? null),
                                  ...array_map(fn ($field) => $index === 0 ? ($worksheet[$field] ?? null) : null, $serviceFields),
+                                 ...array_map(fn ($value) => $index === 0 ? $value : null, array_values($additionalValues)),
                              ]);
                          }
                      }
@@ -1092,5 +1054,11 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  }
 
  public function import(Request $r,$module){if(in_array($module,['exits','nature-of-exit'],true))return app(AnimalExitController::class)->import($r);
-     if($module==='mtd')return app(MtdController::class)->import($r);abort_if($module==='fhpr',404);if($module==='milk')return $this->importMilkCsv($r);if(in_array($module,['meat','manure'],true))return $this->importProductCsv($r,$module);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
+     if($module==='mtd')return app(MtdController::class)->import($r);
+     if ($module === 'fhpr') {
+         $r->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:10240']]);
+         $count = FhprCsv::import($r->file('file'));
+         return back()->with('success', "Imported $count FHPR row(s).");
+     }
+     if($module==='milk')return $this->importMilkCsv($r);if(in_array($module,['meat','manure'],true))return $this->importProductCsv($r,$module);$t=$this->table($module);$r->validate(['file'=>'required|file|mimes:csv,txt|max:10240']);$f=fopen($r->file('file')->getRealPath(),'r');$heads=fgetcsv($f);abort_if(!$heads,422,'CSV header is missing.');$allowed=collect(Schema::getColumnListing($t))->reject(fn($c)=>in_array($c,['id','created_at','updated_at']))->all();$heads=array_map(fn($h)=>Str::snake(trim($h)),$heads);$n=0;DB::transaction(function()use($f,$heads,$allowed,$t,&$n){while(($row=fgetcsv($f))!==false){if(count($row)!==count($heads))continue;$d=array_intersect_key(array_combine($heads,$row),array_flip($allowed));if(!$d)continue;$d=array_filter($d,fn($v)=>$v!==null&&trim((string)$v)!=='');$d['updated_at']=now();DB::table($t)->insert($d+['created_at'=>now()]);$n++;}});fclose($f);return back()->with('success',"Imported {$n} row(s).");}
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Database\Query\Builder;
 use App\Support\TablePagination;
+use App\Support\AnimalExitRecord;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -11,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 
 class AnimalExitController extends Controller
 {
-    private const DETAILS = ['reason_of_exit', 'entrustment', 'ownership_status', 'disposed_to', 'disposal_province', 'disposal_municipality', 'disposal_barangay'];
+    private const DETAILS = AnimalExitRecord::DETAILS;
 
     private const CSV_COLUMNS = ['carabao_id', 'exit_date', 'nature_of_exit', ...self::DETAILS, 'remarks'];
 
@@ -99,10 +100,7 @@ class AnimalExitController extends Controller
 
     private function rules(): array
     {
-        return [
-            'exit_date' => ['required', 'date_format:Y-m-d'], 'nature_of_exit' => ['required', 'string', 'max:255'],
-            'remarks' => ['nullable', 'string', 'max:2000'],
-        ] + array_fill_keys(self::DETAILS, ['nullable', 'string', 'max:255']);
+        return AnimalExitRecord::rules();
     }
 
     public function store(Request $request)
@@ -127,34 +125,20 @@ class AnimalExitController extends Controller
             || (int) $animal->cooperative_id !== (int) $data['cooperative_id'] || (int) $animal->farmer_cooperative_id !== (int) $data['cooperative_id']))) {
             throw ValidationException::withMessages(['carabao_id' => 'Select an animal belonging to the selected cooperative and farmer.']);
         }
-        unset($data['farmer_id'], $data['cooperative_id']);
-        $identity = array_intersect_key($data, array_flip(['carabao_id', 'exit_date', 'nature_of_exit']));
-
-        return DB::transaction(function () use ($animal, $data, $identity) {
-            DB::table('carabaos')->where('id', $animal->id)->lockForUpdate()->first();
-            if (DB::table('nature_of_exits')->where($identity)->exists()) return false;
-            DB::table('nature_of_exits')->insert($data + [
-                'cooperative_id' => $animal->cooperative_id, 'farmer_name' => $animal->farmer_name ?: null,
-                'registry_number' => $animal->registry_number ?: $animal->animal_id, 'details_entered' => true,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
-            return true;
-        });
+        return AnimalExitRecord::save($animal->id, $data, [
+            'cooperative_id' => $animal->cooperative_id, 'farmer_name' => $animal->farmer_name ?: null,
+            'registry_number' => $animal->registry_number ?: $animal->animal_id,
+        ]) !== null;
     }
 
     public function update(Request $request, int $record)
     {
         $data = $request->validate($this->rules());
-        DB::transaction(function () use ($record, $data) {
-            $row = DB::table('nature_of_exits')->where('id', $record)->first();
-            abort_unless($row, 404, 'Exit record was not found.');
-            DB::table('carabaos')->where('id', $row->carabao_id)->lockForUpdate()->first();
-            if (DB::table('nature_of_exits')->where('carabao_id', $row->carabao_id)->where('id', '!=', $record)
-                ->where('exit_date', $data['exit_date'])->where('nature_of_exit', $data['nature_of_exit'])->exists()) {
-                throw ValidationException::withMessages(['exit_date' => 'An exit of this type is already recorded for this animal on that date.']);
-            }
-            DB::table('nature_of_exits')->where('id', $record)->update($data + ['details_entered' => true, 'updated_at' => now()]);
-        });
+        $row = DB::table('nature_of_exits')->where('id', $record)->first(['carabao_id']);
+        abort_unless($row, 404, 'Exit record was not found.');
+        if (AnimalExitRecord::save($row->carabao_id, $data, [], $record) === null) {
+            throw ValidationException::withMessages(['exit_date' => 'An exit of this type is already recorded for this animal on that date.']);
+        }
         session()->flash('success', 'Exit record updated.');
         return response()->noContent();
     }

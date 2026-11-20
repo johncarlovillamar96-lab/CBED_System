@@ -12,7 +12,12 @@ class CooperativeSpreadsheetController extends Controller
 {
     private const HEADERS = ['No.', 'Cooperative Name', 'Coop Type', 'Province', 'Municipality', 'Barangay'];
 
-    public function export()
+    public function template()
+    {
+        return $this->export(true);
+    }
+
+    public function export(bool $template = false)
     {
         $sheet = new Spreadsheet();
         $page = $sheet->getActiveSheet();
@@ -21,7 +26,7 @@ class CooperativeSpreadsheetController extends Controller
         $page->getStyle('A1:F1')->getFont()->setBold(true);
 
         $row = 2;
-        DB::table('cooperatives')->orderBy('id')->get()->each(function ($coop) use ($page, &$row) {
+        if (! $template) DB::table('cooperatives')->orderBy('id')->get()->each(function ($coop) use ($page, &$row) {
             $page->fromArray([
                 $coop->cooperative_code,
                 $coop->cooperative_name,
@@ -39,7 +44,7 @@ class CooperativeSpreadsheetController extends Controller
         return response()->streamDownload(function () use ($sheet) {
             (new Xlsx($sheet))->save('php://output');
             $sheet->disconnectWorksheets();
-        }, 'cooperatives.xlsx', [
+        }, $template ? 'cooperatives-template.xlsx' : 'cooperatives.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
