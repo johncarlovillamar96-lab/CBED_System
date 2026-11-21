@@ -17,7 +17,7 @@
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
-            @if(!$cooperatives->isEmpty())<button type="button" onclick="openMonitoringModal()" class="action-primary"><i class="fa-solid fa-plus"></i>Add Monitoring Record</button>@endif
+            @if(!$cooperatives->isEmpty())<button type="button" onclick="openMonitoringModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus"></i>Add Monitoring Record</button>@endif
             <a href="{{ route('ui.activity-logs') }}" class="action-secondary"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity Logs</a>
         </div>
     </div>
@@ -31,7 +31,7 @@
             @csrf
             <header class="flex items-center justify-between gap-3 border-b p-5">
                 <h2 id="monitoring-modal-title" class="text-xl font-bold text-[#12345a]">Add Monitoring Record</h2>
-                <button type="button" onclick="closeMonitoringModal()" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close monitoring entry"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                <button type="button" onclick="closeMonitoringModal()" class="cbed-close-button" aria-label="Close monitoring entry"><span aria-hidden="true">&times;</span></button>
             </header>
             <div class="grid gap-4 px-5 pt-5 sm:grid-cols-3">
                 <x-monitoring-picker id="monitoring-cooperative" label="Cooperative" name="cooperative_id">
@@ -50,7 +50,7 @@
             <div class="space-y-4 p-5">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <p id="monitoring-farmer-animals" role="status" class="text-sm text-slate-600">Select a cooperative and farmer to view live animals.</p>
-                    <button type="button" id="monitoring-add-row" disabled class="cbed-add-button action-secondary disabled:opacity-50">
+                    <button type="button" id="monitoring-add-row" disabled class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50">
                         <i class="fa-solid fa-plus" aria-hidden="true"></i> Add Row
                     </button>
                 </div>
@@ -84,7 +84,7 @@
             </div>
             <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
                 <button type="button" onclick="closeMonitoringModal()" class="action-secondary">Cancel</button>
-                <button type="submit" id="monitoring-submit-button" disabled class="action-primary disabled:opacity-50"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>Save Monitoring Report</button>
+                <button type="submit" id="monitoring-submit-button" disabled class="cbed-save-button">Save Report</button>
             </footer>
 
         </form>
@@ -97,7 +97,12 @@
     </dialog>
     <dialog id="monitoring-breeding-dialog" x-data="breedingPage(true)" @open-monitoring-breeding.window="openMonitoringMating($event.detail)" @close="monitoringMatingContext = null" aria-labelledby="monitoring-breeding-title" class="shared-mating-modal m-auto max-h-[94vh] w-11/12 max-w-4xl overflow-y-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
         <form @submit.prevent="saveMonitoringMating()">
-            <header class="border-b p-5"><h2 id="monitoring-breeding-title" class="text-xl font-bold text-slate-900">Mating Record</h2></header>
+            <header class="flex items-center justify-between gap-3 border-b p-5">
+                <h2 id="monitoring-breeding-title" class="text-xl font-bold text-slate-900">Mating Record</h2>
+                <button type="button" @click="$root.close()" class="cbed-close-button" aria-label="Close mating record">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </header>
             <div class="space-y-4 p-5">
                 <label class="block text-sm font-medium text-slate-700">Cooperative<input readonly :value="monitoringMatingContext?.cooperative || ''" class="form-input mt-1 bg-slate-50"></label>
                 @include('partials.mating-edit-form', ['monitoringMating' => true])
@@ -106,7 +111,7 @@
             <footer class="flex flex-wrap justify-end gap-2 border-t bg-slate-50 p-4">
                 <button x-show="monitoringMatingContext?.hasService" type="button" @click="finishMonitoringMating(null)" class="mr-auto rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Remove service</button>
                 <button type="button" @click="$root.close()" class="action-secondary">Cancel</button>
-                <button type="submit" class="action-primary">Save Mating Details</button>
+                <button type="submit" class="cbed-save-button" x-text="monitoringMatingContext?.hasService ? 'Update Record' : 'Save Record'">Save Record</button>
             </footer>
         </form>
     </dialog>
@@ -115,7 +120,7 @@
     </dialog>
     @include('partials.animal-exit-dialog', ['monitoringExit' => true])
 
-    <details class="group inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <details @if(request()->hasAny(['view', 'month', 'date'])) open @endif class="group inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5 [&::-webkit-details-marker]:hidden">
             <h2 class="text-lg font-bold text-slate-900">Monitoring Calendar</h2>
             <span class="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-700">
@@ -130,6 +135,10 @@
                     <p class="mt-1 text-sm text-slate-500">Browse actual monitoring, breeding, calf, and health service dates. {{ number_format($calendarEvents->count()) }} dated record(s) in 2026.</p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <a href="{{ route('ui.monitoring', request()->only(['cooperative_id', 'report_search']) + ['calendar_report' => 'print']) }}"
+                       class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        <i class="fa-solid fa-print" aria-hidden="true"></i> Print calendar report
+                    </a>
                     <a href="{{ route('ui.monitoring', ['month' => $previousMonth, 'cooperative_id' => $selectedCooperativeId ?: null, 'report_search' => $reportSearch ?: null, 'report_specification'=>$reportSpecification?:null, 'report_availability'=>$reportAvailability?:null, 'report_status'=>$reportStatus?:null]) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></a>
                     <span class="min-w-36 text-center font-semibold text-slate-800">{{ \Carbon\Carbon::createFromFormat('Y-m', $selectedMonth)->format('F Y') }}</span>
                     <a href="{{ route('ui.monitoring', ['month' => $nextMonth, 'cooperative_id' => $selectedCooperativeId ?: null, 'report_search' => $reportSearch ?: null, 'report_specification'=>$reportSpecification?:null, 'report_availability'=>$reportAvailability?:null, 'report_status'=>$reportStatus?:null]) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></a>
@@ -168,17 +177,18 @@
         @php
             $calendarCells = array_merge(array_fill(0, $calendarStartOffset, null), range(1, $calendarDaysInMonth));
             while (count($calendarCells) % 7 !== 0) $calendarCells[] = null;
+            $calendarLinkFilters = request()->only(['cooperative_id', 'report_search', 'report_specification', 'report_availability', 'report_status', 'year']);
         @endphp
         @if($calendarView==='year')
             <div class="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
                 @for($monthNo=1;$monthNo<=12;$monthNo++) @php $monthKey=sprintf('2026-%02d',$monthNo); @endphp
-                    <a href="{{ route('ui.monitoring',['view'=>'month','month'=>$monthKey]) }}" class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50"><b>{{ \Carbon\Carbon::create(2026,$monthNo,1)->format('F') }}</b><span class="float-right text-sm text-slate-500">{{ $calendarEvents->filter(fn($e)=>substr((string)$e->date,0,7)===$monthKey)->count() }} record(s)</span></a>
+                    <a href="{{ route('ui.monitoring', $calendarLinkFilters + ['view'=>'month','month'=>$monthKey]) }}" class="rounded-lg border border-slate-200 p-4 hover:bg-slate-50"><b>{{ \Carbon\Carbon::create(2026,$monthNo,1)->format('F') }}</b><span class="float-right text-sm text-slate-500">{{ $calendarEvents->filter(fn($e)=>substr((string)$e->date,0,7)===$monthKey)->count() }} record(s)</span></a>
                 @endfor
             </div>
         @elseif($calendarView==='day' && $selectedDate)
-            <div class="border-t p-4"><h3 class="mb-3 font-semibold">Services on {{ \Carbon\Carbon::parse($selectedDate)->format('F j, Y') }}</h3>
+            <details class="border-t p-4" open><summary class="mb-3 cursor-pointer font-semibold">Individual records · {{ \Carbon\Carbon::parse($selectedDate)->format('F j, Y') }}</summary>
                 @forelse($calendarEventsByDate->get($selectedDate,collect()) as $event)<div class="mb-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm"><b>{{ $event->service }}</b> · {{ $event->animal_id ?? 'Animal ID unavailable' }} @if(!empty($event->bolus_id)) · Bolus {{ $event->bolus_id }} @endif @if(!empty($event->farmer_name)) · {{ $event->farmer_name }} @endif @if(!empty($event->cooperative_name)) · {{ $event->cooperative_name }} @endif</div>@empty<p class="text-sm text-slate-500">No records for this date.</p>@endforelse
-            </div>
+            </details>
         @else
         <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-[10px] font-bold uppercase tracking-wide text-slate-500 sm:text-xs">
             @foreach(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as $weekday)<div class="border-r border-slate-200 px-1 py-3 last:border-r-0">{{ $weekday }}</div>@endforeach
@@ -188,8 +198,12 @@
                 <div class="min-h-28 border-b border-r border-slate-200 p-1.5 last:border-r-0 sm:min-h-36 sm:p-2">
                     @if($day)
                         <div class="mb-1 text-xs font-semibold text-slate-500">{{ $day }}</div>
-                        @foreach($calendarEventsByDate->get(sprintf('2026-%02d-%02d',(int)substr($selectedMonth,5,2),$day), collect()) as $event)
-                            <a href="{{ route('ui.monitoring',['view'=>'day','date'=>sprintf('2026-%02d-%02d',(int)substr($selectedMonth,5,2),$day),'month'=>$selectedMonth]) }}" class="mb-1 block rounded-md border border-blue-200 bg-blue-50 p-1.5 text-[10px] leading-snug text-blue-950 hover:bg-blue-100 sm:p-2 sm:text-xs"><span class="block font-bold">{{ $event->service }}</span><span>{{ $event->animal_id ?? 'Animal ID unavailable' }}@if(!empty($event->bolus_id)) · {{ $event->bolus_id }}@endif</span>@if(!empty($event->cooperative_name))<span class="block">{{ $event->cooperative_name }}</span>@endif</a>
+                        @php $calendarDate = $selectedMonth.'-'.sprintf('%02d', $day); @endphp
+                        @foreach($calendarServicesByDate->get($calendarDate, collect()) as $cooperative => $services)
+                            <a href="{{ route('ui.monitoring', $calendarLinkFilters + ['view'=>'day','date'=>$calendarDate,'month'=>$selectedMonth]) }}" class="mb-1 block break-words rounded-md border border-blue-200 bg-blue-50 p-1.5 text-[10px] leading-snug text-blue-950 hover:bg-blue-100 sm:p-2 sm:text-xs">
+                                <span class="block font-bold">{{ $cooperative }}</span>
+                                <span>{{ $services->map(fn ($count, $service) => $service.' '.$count)->implode(' · ') }}</span>
+                            </a>
                         @endforeach
                     @endif
                 </div>
@@ -201,7 +215,7 @@
         @endif
     </details>
 
-    <section id="monitoring-record-table" class="inventory-panel pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section id="monitoring-record-table" class="inventory-panel pcc-records-panel scroll-mt-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="font-bold text-slate-800">Animal Monitoring Report Table</h2><p class="mt-1 text-sm text-slate-500">{{ number_format($consolidatedRowsPage->total()) }} live animal(s) · {{ $reportYear }}</p></div><div class="flex flex-wrap gap-2"><label class="self-center text-xs font-semibold">Paper size<select id="monitoring-paper-size" onchange="document.documentElement.classList.toggle('paper-a4',this.value==='a4')" class="ml-1 rounded border px-2 py-2"><option value="legal">Legal landscape</option><option value="a4">A4 landscape</option></select></label><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'xlsx'])) }}" class="rounded-lg bg-emerald-700 px-4 py-2.5 text-center text-sm font-semibold text-white">Export filtered Excel</a><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'csv'])) }}" class="rounded-lg border border-emerald-700 px-3 py-2.5 text-center text-sm font-semibold text-emerald-800">CSV</a><button type="button" onclick="window.print()" class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Print report</button></div></div>
         <form method="GET" action="{{ route('ui.monitoring') }}" class="grid grid-cols-1 gap-3 border-b p-4 sm:grid-cols-2 xl:grid-cols-4">
             <label class="text-xs font-semibold text-slate-600">Monitoring year<input name="year" type="number" min="2000" max="2100" value="{{ $reportYear }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></label>
@@ -219,46 +233,34 @@
             <label class="text-xs font-semibold text-slate-600">Service type<select name="table_service" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All services</option>@foreach($categoryLabels as $key=>$label)<option value="{{ $key }}" @selected($tableService===$key)>{{ $label }}</option>@endforeach</select></label>
             <div class="flex items-end gap-2"><button class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Apply filters</button><a href="{{ route('ui.monitoring') }}#monitoring-record-table" class="rounded-lg border px-4 py-2.5 text-sm">Clear</a></div>
         </form>
-        <div class="overflow-x-auto print:hidden"><table class="w-full min-w-[980px] border-collapse text-sm">
-            <thead class="bg-slate-100 text-left text-xs uppercase text-slate-600"><tr>@foreach(['No.','Farmer','Animal ID','Classification','BCS','DIM','Pregnancy','Services','Monitoring Date','Remarks'] as $heading)<th class="border px-3 py-2">{{ $heading }}</th>@endforeach</tr></thead>
-            <tbody>
-                @forelse($consolidatedRowsPage as $index=>$row)
-                    <tr class="align-top even:bg-slate-50"><td class="border px-3 py-2 text-center">{{ $consolidatedRowsPage->firstItem()+$index }}</td><td class="border px-3 py-2">{{ $row['farmer'] }}</td><td class="border px-3 py-2 font-medium">{{ $row['animal_id'] }}</td><td class="border px-3 py-2">{{ $row['classification'] }}</td><td class="border px-3 py-2">{{ $row['bcs'] ?? '–' }}</td><td class="border px-3 py-2">{{ $row['dim'] ?? '–' }} @if(!empty($row['dry_off_review']))<span class="mt-1 block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">For Dry-off Review</span>@endif</td><td class="border px-3 py-2">{{ $row['pregnancy'] }}</td><td class="border px-3 py-2">@forelse($row['compact_services'] as $service)<span class="mr-1 inline-block rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800">{{ $service }}</span>@empty – @endforelse</td><td class="border px-3 py-2">{{ !empty($row['monitoring_date']) ? \Carbon\Carbon::parse($row['monitoring_date'])->format('F j, Y') : '–' }}</td><td class="border px-3 py-2">{{ $row['remarks'] ?: '–' }}</td></tr>
-                @empty<tr><td colspan="10" class="border px-3 py-8 text-center text-slate-500">No live female animals match these filters.</td></tr>@endforelse
-            </tbody>
-        </table></div>
+        <div class="overflow-x-auto print:hidden">
+            @include('partials.monitoring-report-table', [
+                'reportRows' => $consolidatedRowsPage, 'firstRow' => $consolidatedRowsPage->firstItem(),
+                'tbodyId' => 'monitoring-table-rows',
+            ])
+        </div>
         <div id="animal-monitoring-print">
             <header class="monitoring-print-header">
                 <p>Department of Agriculture</p><p>Philippine Carabao Center at</p><p>Central Luzon State University</p><p>Science City of Muñoz, Nueva Ecija</p>
                 <h1>ANIMAL MONITORING</h1>
                 <div class="monitoring-print-meta"><span><b>Cooperative/Association:</b> {{ $tableCooperative ?: 'All cooperatives' }}</span><span><b>Province:</b> {{ $tableProvince ?: 'All provinces' }}</span><span><b>Municipality:</b> {{ $tableMunicipality ?: 'All municipalities' }}</span><span><b>Barangay:</b> {{ $tableBarangay ?: 'All barangays' }}</span><span><b>Date:</b> @if($tableDateStart && $tableDateEnd){{ \Carbon\Carbon::parse($tableDateStart)->format('M j, Y') }} – {{ \Carbon\Carbon::parse($tableDateEnd)->format('M j, Y') }}@elseif($tableDateStart){{ \Carbon\Carbon::parse($tableDateStart)->format('F j, Y') }}@elseif($tableDateEnd){{ \Carbon\Carbon::parse($tableDateEnd)->format('F j, Y') }}@else{{ \Carbon\Carbon::parse($gipReportingDate)->format('F j, Y') }}@endif</span></div>
             </header>
-            <div class="inventory-table-scroll overflow-x-auto"><table class="monitoring-report-grid w-full min-w-[2200px] border-collapse text-[11px]">
-                <thead class="sticky top-0 z-20 bg-slate-50 text-center text-slate-700"><tr><th rowspan="2" class="border px-2 py-2">No.</th><th rowspan="2" class="border px-2 py-2">Name of Farmer</th><th colspan="4" class="border px-2 py-2">Animal Information</th><th colspan="5" class="border px-2 py-2">Calf Monitoring</th><th colspan="6" class="border px-2 py-2">Breeding</th><th colspan="7" class="border px-2 py-2">Health and Nutrition</th><th colspan="4" class="border px-2 py-2">Other Services</th><th rowspan="2" class="border px-2 py-2">Latest Monitoring Date</th><th rowspan="2" class="border px-2 py-2">Remarks</th></tr>
-                    <tr>@foreach(['Animal ID','Date of Birth','Dam Breed','BCS','Last Calving','Calf Sex','Breeding Method','Sire ID','Monitoring Date','PD','Type of Estrus','Breeding Method','Sire ID','Breeding Date','Monitoring Date','BCS','Fecalysis (FS)','Vaccination','Deworming','Vitamins','Uterine Flushing','Monitoring Date','Ear Tagging','Bolus','Other Service','Monitoring Date'] as $heading)<th class="border px-2 py-2">{{ $heading }}</th>@endforeach</tr>
-                </thead>
-                <tbody>
-                    @forelse($consolidatedRows->values() as $index=>$row)
-                        @php($readableDate=fn($value)=>$value?\Carbon\Carbon::parse($value)->format('M j, Y'):'–')
-                        @php($health=$row['health']) @php($other=$row['other'])
-                        <tr class="align-top"><td class="border px-2 py-1 text-center">{{ $index+1 }}</td><td class="border px-2 py-1">{{ $row['farmer'] }}</td>
-                            <td class="border px-2 py-1">{{ $row['animal_id'] }}</td><td class="border px-2 py-1">{{ $readableDate($row['birth_date']) }}</td><td class="border px-2 py-1">{{ $row['dam_breed'] ?: '–' }}</td><td class="border px-2 py-1">{{ $row['bcs'] ?? '–' }}<br><small>{{ $readableDate($row['bcs_date']) }}</small></td>
-                            <td class="border px-2 py-1">{{ $row['calf'] ? $readableDate($row['calf']['date']) : '–' }}</td><td class="border px-2 py-1">{{ $row['calf']['sex'] ?? '–' }}</td><td class="border px-2 py-1">{{ $row['calf']['method'] ?? '–' }}</td><td class="border px-2 py-1">{{ $row['calf']['sire_id'] ?? '–' }}</td><td class="border px-2 py-1">{{ $readableDate($row['calf']['monitoring_date'] ?? null) }}</td>
-                            <td class="border px-2 py-1">{{ $row['breeding']['pd'] ?? '–' }}</td><td class="border px-2 py-1">{{ $row['breeding']['estrus'] ?? '–' }}</td><td class="border px-2 py-1">{{ $row['breeding']['method'] ?? '–' }}</td><td class="border px-2 py-1">{{ $row['breeding']['sire_id'] ?? '–' }}</td><td class="border px-2 py-1">{{ $readableDate($row['breeding']['date'] ?? null) }}</td><td class="border px-2 py-1">{{ $readableDate($row['breeding']['monitoring_date'] ?? null) }}</td>
-                            <td class="border px-2 py-1">{{ $health['bcs']['value'] ?? ($row['bcs'] ?? '–') }}</td><td class="border px-2 py-1">{{ $health['fecalysis']['value'] ?? '–' }}</td><td class="border px-2 py-1">{{ $health['vaccine']['value'] ?? '–' }}</td><td class="border px-2 py-1">{{ $health['deworming']['value'] ?? '–' }}</td><td class="border px-2 py-1">{{ $health['vi_supp']['value'] ?? '–' }}</td><td class="border px-2 py-1">{{ $health['flushing']['value'] ?? '–' }}</td><td class="border px-2 py-1">{{ $readableDate($row['health_monitoring_date']) }}</td>
-                            <td class="border px-2 py-1">{{ $other['ear_tagging']['value'] ?? ($row['tag_number'] ?: '–') }}</td><td class="border px-2 py-1">{{ $other['bolus']['value'] ?? ($row['bolus_id'] ?: '–') }}</td><td class="border px-2 py-1">@php($otherList=collect($other)->reject(fn($value,$key)=>in_array($key,['ear_tagging','bolus'],true))->pluck('name')->unique()->implode(', ')){{ $otherList ?: '–' }}</td><td class="border px-2 py-1">{{ $readableDate($row['other_monitoring_date']) }}</td>
-                            <td class="border px-2 py-1">{{ $readableDate($row['monitoring_date']) }}</td><td class="border px-2 py-1">{{ $row['remarks'] ?: '–' }}</td></tr>
-                    @empty<tr><td colspan="30" class="border px-3 py-8 text-center">No live animals match these filters.</td></tr>@endforelse
-                </tbody>
-            </table></div>
+            <div class="inventory-table-scroll overflow-x-auto">
+                @include('partials.monitoring-report-table', ['reportRows' => $consolidatedRows->values(), 'firstRow' => 1])
+            </div>
             <footer class="monitoring-print-signatures"><div><b>Monitored By:</b><span></span><small>Name and Signature</small><strong>AI TECHNICIAN</strong><small>Position/Designation</small></div><div><b>Attested By:</b><span></span><strong>KRISTINE JOY C. CUIZON</strong><small>Name and Signature</small><strong>DATA CUSTODIAN / MONITORING OFFICER</strong><small>Position/Designation</small></div><div><b>Noted By:</b><span></span><strong>REBECCA RUBY G. GABRIEL</strong><small>Name and Signature</small><strong>CBED COORDINATOR</strong><small>Position/Designation</small></div></footer>
         </div>
-        @include('partials.server-table-pagination', [
-            'paginator' => $consolidatedRowsPage,
-            'sizeParam' => 'table_per_page',
-            'filterParams' => request()->except(['table_page', 'table_per_page', 'table_export']),
-            'unfilteredTotal' => $liveAnimalTotal,
-        ])
+        <div id="monitoring-table-pagination" class="print:hidden" tabindex="-1">
+            @include('partials.server-table-pagination', [
+                'paginator' => $consolidatedRowsPage,
+                'sizeParam' => 'table_per_page',
+                'filterParams' => request()->except(['table_page', 'table_per_page', 'table_export']),
+                'unfilteredTotal' => $liveAnimalTotal,
+                'jumpToPage' => true,
+                'inPlace' => true,
+            ])
+        </div>
+        <p id="monitoring-pagination-status" class="sr-only print:hidden" role="status"></p>
     </section>
 </div>
 @endsection
@@ -274,8 +276,7 @@
 .monitoring-page .pcc-brand-mark{position:relative;flex:none;width:4.35rem;height:4.35rem;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.34);border-radius:1.35rem;background:linear-gradient(145deg,rgba(255,255,255,.22),rgba(255,255,255,.07));color:#ffd05b;font-size:2rem;box-shadow:0 10px 22px rgba(0,28,52,.2)}
 .monitoring-page .pcc-brand-mark span{position:absolute;right:-.45rem;bottom:-.4rem;display:grid;width:1.65rem;height:1.65rem;place-items:center;border:2px solid #075785;border-radius:999px;background:#ffd05b;color:#12345a;font-size:.75rem}
 .monitoring-page .pcc-program-tag{display:inline-flex;align-items:center;gap:.4rem;margin-top:.7rem;border:1px solid rgba(255,213,91,.35);border-radius:999px;background:rgba(4,37,68,.24);padding:.35rem .7rem;color:#ffe08a;font-size:.7rem;font-weight:700;letter-spacing:.035em}
-.monitoring-page .action-primary,.monitoring-page .action-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.5rem;padding:.625rem 1rem;font-size:.875rem;font-weight:600}
-.monitoring-page .action-primary{background:#ffd05b;color:#12345a;box-shadow:0 7px 16px rgba(4,37,68,.2)}.monitoring-page .action-primary:hover{background:#ffdc7d}
+.monitoring-page .action-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;border-radius:.5rem;padding:.625rem 1rem;font-size:.875rem;font-weight:600}
 .monitoring-page .action-secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.monitoring-page .action-secondary:hover{background:#f1f5f9}
 .monitoring-page .pcc-mating-hero .action-secondary{border-color:rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;backdrop-filter:blur(8px)}
 .monitoring-page .pcc-mating-hero .action-secondary:hover{background:rgba(255,255,255,.2)}
@@ -325,6 +326,7 @@
     #animal-monitoring-print .monitoring-print-signatures small{font-size:6pt}
     #animal-monitoring-print .monitoring-report-grid{min-width:0!important;width:100%!important;table-layout:fixed!important;border-collapse:collapse!important;border-spacing:0!important;font-size:6.5pt!important;line-height:1.15!important;text-align:center!important}
     #animal-monitoring-print .monitoring-report-grid th,#animal-monitoring-print .monitoring-report-grid td{border:.35pt solid #000!important;padding:1.1mm .6mm!important;text-align:center!important;vertical-align:middle!important;overflow-wrap:anywhere!important}
+    #animal-monitoring-print .monitoring-report-grid time,#animal-monitoring-print .monitoring-report-grid td small{font-size:.9em!important;line-height:inherit!important}
     #animal-monitoring-print .monitoring-report-grid thead{display:table-header-group!important;position:static!important}
     #animal-monitoring-print .monitoring-report-grid thead th{position:static!important}
     #animal-monitoring-print .monitoring-report-grid tr{break-inside:avoid!important;page-break-inside:avoid!important}
@@ -346,61 +348,69 @@ let monitoringSubmitting = false;
 let monitoringAnimalsRequest = null;
 const monitoringDialog = document.getElementById('monitoring-modal');
 
-function monitoringPicker() {
-    return {
-        open: false,
-        search: '',
-        options: [],
-        selected: '',
-        observer: null,
-        init() {
-            this.$nextTick(() => {
-                const select = this.$refs.select;
-                const refresh = () => {
-                    this.options = Array.from(select.options, option => ({
-                        label: option.textContent.trim(),
-                        value: option.value,
-                    }));
-                    this.selected = select.value;
-                    if (this.options.length <= 1) this.open = false;
-                };
-                refresh();
-                this.observer = new MutationObserver(refresh);
-                this.observer.observe(select, {childList: true, subtree: true});
+(() => {
+    const pager = document.getElementById('monitoring-table-pagination');
+    const rows = document.getElementById('monitoring-table-rows');
+    const status = document.getElementById('monitoring-pagination-status');
+    let pending;
+
+    async function loadPage(url, focusSelector) {
+        pending?.abort();
+        const request = new AbortController();
+        pending = request;
+        pager.setAttribute('aria-busy', 'true');
+        status.classList.add('sr-only');
+        status.textContent = 'Loading monitoring records…';
+        try {
+            const response = await fetch(url, {signal: request.signal});
+            if (!response.ok) throw new Error('Page unavailable');
+            const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+            const newRows = page.getElementById(rows.id);
+            const newPager = page.getElementById(pager.id);
+            const printable = page.getElementById('animal-monitoring-print');
+            if (!newRows || !newPager || !printable) throw new Error('Incomplete page');
+            if (request.signal.aborted) return;
+
+            const restoreFocus = pager.contains(document.activeElement);
+            rows.replaceChildren(...newRows.children);
+            pager.replaceChildren(...newPager.children);
+            document.getElementById('animal-monitoring-print').replaceWith(printable);
+            document.querySelector('#monitoring-record-table input[name="table_per_page"]').value =
+                pager.querySelector('select[name="table_per_page"]').value;
+            if (restoreFocus) (pager.querySelector(focusSelector) || pager).focus({preventScroll: true});
+            status.textContent = pager.querySelector('p').textContent.replace(/\s+/g, ' ').trim();
+        } catch (error) {
+            if (request.signal.aborted) return;
+            pager.querySelectorAll('select').forEach(select => {
+                select.value = select.querySelector('option[selected]')?.value ?? select.value;
             });
-        },
-        destroy() {
-            this.observer?.disconnect();
-        },
-        get selectedLabel() {
-            return this.options.find(option => option.value === this.selected)?.label ?? '';
-        },
-        get matches() {
-            const query = this.search.trim().toLowerCase();
-            return this.options.filter(option => option.label.toLowerCase().includes(query));
-        },
-        togglePicker() {
-            this.open = !this.open;
-            if (this.open) {
-                this.search = '';
-                this.$nextTick(() => this.$refs.search.focus());
+            status.classList.remove('sr-only');
+            status.classList.add('px-5', 'pb-4', 'text-sm', 'text-rose-700');
+            status.textContent = 'Could not load that page. Try again.';
+        } finally {
+            if (pending === request) {
+                pending = null;
+                pager.removeAttribute('aria-busy');
             }
-        },
-        closePicker() {
-            this.open = false;
-            this.$refs.trigger.focus();
-        },
-        choose(value) {
-            if (value !== this.selected) {
-                const select = this.$refs.select;
-                this.selected = select.value = value;
-                select.dispatchEvent(new Event('input', {bubbles: true}));
-                select.dispatchEvent(new Event('change', {bubbles: true}));
-            }
-            this.closePicker();
-        },
-    };
-}
+        }
+    }
+
+    pager.addEventListener('click', event => {
+        const link = event.target.closest('[data-page-direction]');
+        if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        loadPage(link.href, '[data-page-direction="' + link.dataset.pageDirection + '"]');
+    });
+    pager.addEventListener('change', event => {
+        if (event.target.matches('[data-page-jump]')) loadPage(event.target.value, '[data-page-jump]');
+    });
+    pager.addEventListener('submit', event => {
+        event.preventDefault();
+        const url = new URL(event.target.action);
+        url.search = new URLSearchParams(new FormData(event.target));
+        loadPage(url, 'select[name="table_per_page"]');
+    });
+})();
 
 monitoringDialog.addEventListener('cancel', (event) => {
     if (monitoringSubmitting) event.preventDefault();
@@ -550,11 +560,13 @@ function openMonitoringService(index, service) {
         carabaoId: row.carabao_id,
         animalId: row.animal_id || row.registry_number || String(row.carabao_id),
         registryId: row.registry_number || row.animal_id || String(row.carabao_id),
+        bolusId: row.bolus_id,
         cooperativeId: cooperative.value,
         cooperative: cooperative.selectedOptions[0]?.textContent.trim() || '',
         farmerId: row.farmer_id || row._farmerId,
         farmer: row.farmer_name || row._farmerName,
         reportDate: monitoringDialog.querySelector('[name="monitoring_date"]').value,
+        bodyConditionScore: row._bcs,
         hasService: Boolean(row._services[service]),
         data: row._services[service] || {},
     };
@@ -573,9 +585,12 @@ for (const [eventName, service] of Object.entries({
     'monitoring-exit-draft': 'nature_of_exit',
 })) {
     window.addEventListener(eventName, event => {
-        const {index, data} = event.detail;
+        const {index, data, bodyConditionScore} = event.detail;
         const row = monitoringAnimals[index];
         if (!row) return;
+        if (service === 'health_nutrition' && bodyConditionScore !== undefined) {
+            row._bcs = bodyConditionScore ?? '';
+        }
         if (data) row._services[service] = data;
         else delete row._services[service];
         renderMonitoringRows();
@@ -643,7 +658,7 @@ document.getElementById('monitoring-form').addEventListener('submit', (event) =>
     monitoringSubmitting = true;
     const button = document.getElementById('monitoring-submit-button');
     button.disabled = true;
-    button.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Saving…';
+    button.textContent = 'Saving…';
 });
 document.getElementById('monitoring-animal-rows').addEventListener('input', (event) => {
     const field = event.target.name.match(/^rows\[(\d+)\]\[(remarks|body_condition_score)\]$/);

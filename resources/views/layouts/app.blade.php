@@ -11,6 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/table-drag-scroll.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/cbed-buttons.css') }}">
     <script defer src="{{ asset('js/table-drag-scroll.js') }}"></script>
 
     <style>
@@ -97,7 +98,7 @@
 
         <div x-cloak x-show="cooperativeImportOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" @keydown.escape.window="cooperativeImportOpen = false" @click.self="cooperativeImportOpen = false">
             <div x-show="cooperativeImportOpen" x-transition class="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="coop-import-title">
-                <div class="flex items-start justify-between gap-4"><div><h2 id="coop-import-title" class="text-xl font-bold">Import cooperative workbook</h2><p class="mt-1 text-sm text-slate-600">Select the cooperative, then choose the Excel inventory file.</p></div><button type="button" @click="cooperativeImportOpen = false" class="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close">✕</button></div>
+                <div class="flex items-start justify-between gap-4"><div><h2 id="coop-import-title" class="text-xl font-bold">Import cooperative workbook</h2><p class="mt-1 text-sm text-slate-600">Select the cooperative, then choose the Excel inventory file.</p></div><button type="button" @click="cooperativeImportOpen = false" class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button></div>
                 <form class="mt-5 space-y-4" method="POST" action="{{ route('imports.cooperative.preview') }}" enctype="multipart/form-data">
                     @csrf
                     <div><label for="modal_cooperative_id" class="mb-1 block text-sm font-semibold">Existing cooperative</label><select id="modal_cooperative_id" name="cooperative_id" required class="w-full rounded-lg border-slate-300"><option value="">Select cooperative</option>@foreach($importCooperatives as $cooperative)<option value="{{ $cooperative->id }}">{{ $cooperative->cooperative_name }} (ID {{ $cooperative->id }})</option>@endforeach</select>@if($importCooperatives->isEmpty())<p class="mt-1 text-xs text-amber-700">Add a cooperative first in the Cooperatives module.</p>@endif</div>
@@ -108,7 +109,7 @@
         </div>
     </div>
 
-    {{-- Athena temporarily disabled for local development --}}
+    @include('partials.athena')
 
     @include('partials.table-pagination-assets')
 </body>

@@ -11,7 +11,7 @@
     <form @submit.prevent="save()">
         <header class="flex items-center justify-between gap-3 border-b p-5">
             <h2 id="animal-exit-title" class="text-xl font-bold text-[#12345a]" x-text="titles[mode]"></h2>
-            <button type="button" @click="$root.close()" :disabled="saving" aria-label="Close exit dialog" class="rounded-lg p-2 hover:bg-slate-100"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            <button type="button" @click="$root.close()" :disabled="saving" aria-label="Close exit dialog" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
         </header>
         <div class="space-y-4 p-5">
             <p x-show="mode==='delete'" class="text-sm text-slate-600">This permanently deletes the selected exit record.</p>
@@ -66,7 +66,7 @@
         <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
             <button x-show="mode==='monitoring' && monitoringContext?.hasService" type="button" @click="finishMonitoringExit(null)" class="mr-auto rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Remove service</button>
             <button type="button" x-ref="cancel" @click="$root.close()" :disabled="saving" class="action-secondary" x-text="mode==='view' ? 'Close' : 'Cancel'"></button>
-            <button x-show="entryMode" type="submit" :disabled="saving || (mode==='add' && !animal) || !entryMode" class="action-primary disabled:opacity-50" x-text="saving ? 'Saving…' : (mode==='edit' ? 'Update Record' : 'Save Exit')"></button>
+            <button x-show="entryMode" type="submit" :disabled="saving || (mode==='add' && !animal) || !entryMode" class="cbed-save-button" x-text="saving ? 'Saving&hellip;' : (mode==='edit' ? 'Update Record' : 'Save Record')"></button>
             <button x-show="mode==='delete'" type="submit" :disabled="saving || mode!=='delete'" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50" x-text="saving ? 'Deleting…' : 'Delete record'"></button>
         </footer>
     </form>

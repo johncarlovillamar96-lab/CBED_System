@@ -11,6 +11,8 @@ use App\Support\AnimalClassification;
 use App\Support\AnimalExitRecord;
 use App\Support\CalfBreedSeries;
 use App\Support\CalfRegistryId;
+use App\Support\HealthWorksheetMapping;
+use App\Support\InventoryBolusApplication;
 use App\Support\TablePagination;
 
 class MonitoringReportController extends Controller
@@ -458,6 +460,7 @@ class MonitoringReportController extends Controller
                 'services.*.type' => ['nullable', 'string', 'max:100'],
                 'services.*.other_service_name' => ['nullable', 'string', 'max:255'],
                 'services.*.dosage_ml' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+                'services.*.bolus_number' => ['nullable', 'string', 'max:100'],
                 'services.*.remarks' => ['nullable', 'string', 'max:2000'],
             ],
             'dry_off' => [
@@ -508,6 +511,10 @@ class MonitoringReportController extends Controller
                 if ($service['type'] === 'Other Services' && $service['other_service_name'] === '') {
                     abort(422, 'Animal row '.($index + 1).': enter the name of the other service.');
                 }
+                if (($data['activity_form'] ?? false) && HealthWorksheetMapping::isBolusService($service['type'])
+                    && blank($service['bolus_number'])) {
+                    abort(422, 'Animal row '.($index + 1).': enter the bolus number for the Bolus service.');
+                }
             }
             $types = array_column($services, 'type');
             if (! ($data['activity_form'] ?? false) && count($types) !== count(array_unique($types))) {
@@ -526,6 +533,8 @@ class MonitoringReportController extends Controller
                 'type' => trim((string) ($service['type'] ?? '')),
                 'other_service_name' => trim((string) ($service['other_service_name'] ?? '')),
                 'dosage_ml' => ($service['dosage_ml'] ?? '') !== '' ? (string) $service['dosage_ml'] : null,
+                'bolus_number' => HealthWorksheetMapping::isBolusService((string) ($service['type'] ?? ''))
+                    ? trim((string) ($service['bolus_number'] ?? '')) : null,
                 'remarks' => trim((string) ($service['remarks'] ?? '')),
             ])->values()->all();
     }
@@ -913,7 +922,7 @@ class MonitoringReportController extends Controller
             $serviceSummary = collect($services)->map(function ($service) {
                 $name = $service['type'] === 'Other Services' ? $service['other_service_name'] : $service['type'];
                 $dosage = $service['dosage_ml'] !== null ? $service['dosage_ml'].' mL' : null;
-                return trim(implode(' — ', array_filter([$name, $dosage, $service['remarks']])));
+                return trim(implode(' — ', array_filter([$name, $dosage, $service['bolus_number'], $service['remarks']], fn ($value) => filled($value))));
             })->values()->all();
             $healthStatus = trim((string) ($data['health_status'] ?? '')) ?: ($services ? 'Services Provided' : null);
             if (empty($healthStatus) && $services === []) return $pending;
@@ -935,7 +944,11 @@ class MonitoringReportController extends Controller
                 'updated_at' => now(),
             ];
             $existingId = $detail->destination_module === $module ? $detail->destination_record_id : null;
-            if ($existingId && DB::table('health_records')->where('id', $existingId)->exists()) {
+            $previous = $existingId ? DB::table('health_records')->where('id', $existingId)->lockForUpdate()->first(['carabao_id', 'source_data']) : null;
+            $previousSource = $previous ? json_decode((string) $previous->source_data, true) : [];
+            $previousServices = (int) ($previous->carabao_id ?? 0) === (int) $animal->id ? ($previousSource['services'] ?? []) : [];
+            InventoryBolusApplication::sync((int) $animal->id, $services, $previousServices);
+            if ($previous) {
                 DB::table('health_records')->where('id', $existingId)->update($recordFields);
                 $recordId = (int) $existingId;
             } else {

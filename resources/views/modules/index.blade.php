@@ -90,15 +90,15 @@
             </a>
         @endunless
         @if($module === 'health')
-            <button type="button" onclick="openHealthEditor()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Activity</button>
+            <button type="button" onclick="openHealthEditor()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Activity</button>
         @elseif($module === 'milk')
-            <button type="button" onclick="document.getElementById('milk-production-form').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Milk Production</button>
+            <button type="button" onclick="document.getElementById('milk-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Milk Production</button>
         @elseif($isProduct)
-            <button type="button" onclick="document.getElementById('{{ $module }}-production-form').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add {{ $productLabel }} Production</button>
+            <button type="button" onclick="document.getElementById('{{ $module }}-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add {{ $productLabel }} Production</button>
         @elseif($module === 'mtd')
-            <button type="button" onclick="document.getElementById('mtd-entry').showModal()" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bulk Add MTD Records</button>
+            <button type="button" onclick="document.getElementById('mtd-entry').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bulk Add MTD Records</button>
         @elseif($module === 'exits')
-            <button type="button" x-data @click="$dispatch('exit-record',{mode:'add'})" class="cbed-add-button action-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Exit</button>
+            <button type="button" x-data @click="$dispatch('exit-record',{mode:'add'})" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Exit</button>
         @endif
     </x-admin-page-header>
 
@@ -471,8 +471,9 @@
                                     'disposal_province' => 'Disposal Province',
                                     'disposal_municipality' => 'Disposal Municipality',
                                     'disposal_barangay' => 'Disposal Barangay',
-                                    'registry_id' => $module === 'health' ? 'Animal Registry ID' : 'Registry ID',
+                                    'registry_id' => in_array($module, ['health', 'bcs'], true) ? 'Animal Registry ID' : 'Registry ID',
                                     'tag_number' => 'Tag Number',
+                                    'bolus_number' => 'Bolus Number',
                                     'cooperative_name' => in_array($module,['health','bcs'],true) ? 'Cooperative Name' : 'Cooperative',
                                     'breed' => 'Breed',
                                     'date_of_birth' => 'Date of Birth',
@@ -542,7 +543,7 @@
                                             <form x-show="editing" x-cloak @submit.prevent="save()" class="space-y-2">
                                                 <input x-ref="input" type="date" x-model="draftDate" :disabled="saving" aria-label="Dry Off Date for {{ $row->animal_identifier }}" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
                                                 <div class="flex gap-2">
-                                                    <button type="submit" :disabled="saving" class="rounded bg-blue-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50" x-text="saving?'Saving…':'Save'"></button>
+                                                    <button type="submit" :disabled="saving" class="cbed-save-button cbed-save-button--compact rounded px-2 py-1 text-xs font-semibold" x-text="saving?'Saving&hellip;':'Update Record'"></button>
                                                     <button type="button" @click="cancel()" :disabled="saving" class="rounded border px-2 py-1 text-xs text-slate-600">Cancel</button>
                                                 </div>
                                             </form>
@@ -674,7 +675,7 @@
                 @csrf
                 <header class="flex items-center justify-between gap-3 border-b p-5">
                     <h2 id="milk-production-title" class="text-xl font-bold text-[#12345a]">Add Milk Production</h2>
-                    <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg p-2 text-slate-600 hover:bg-slate-100" aria-label="Close milk production form"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                    <button type="button" onclick="this.closest('dialog').close()" class="cbed-close-button" aria-label="Close milk production form"><span aria-hidden="true">&times;</span></button>
                 </header>
                 <div class="grid gap-4 p-5 sm:grid-cols-2">
                     @if($errors->milkProduction->any())
@@ -717,7 +718,7 @@
                 </div>
                 <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
                     <button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button>
-                    <button type="submit" :disabled="!cooperative || !farmer" class="action-primary disabled:opacity-50">Save Milk Production</button>
+                    <button type="submit" :disabled="!cooperative || !farmer" class="cbed-save-button">Save Record</button>
                 </footer>
             </form>
         </dialog>
@@ -727,7 +728,7 @@
                 @csrf
                 <header class="flex items-center justify-between gap-3 border-b p-5">
                     <h2 id="product-production-title" class="text-xl font-bold text-[#12345a]">Add {{ $productLabel }} Production</h2>
-                    <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close {{ $module }} production form"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                    <button type="button" onclick="this.closest('dialog').close()" class="cbed-close-button" aria-label="Close {{ $module }} production form"><span aria-hidden="true">&times;</span></button>
                 </header>
                 <div class="grid gap-4 p-5 sm:grid-cols-2">
                     @if($errors->productProduction->any())<ul role="alert" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-800 sm:col-span-2">@foreach($errors->productProduction->all() as $error)<li>{{ $error }}</li>@endforeach</ul>@endif
@@ -739,7 +740,7 @@
                     <label class="text-sm font-semibold">Farm Gate Price per kg (₱)<input type="number" name="price_per_kg" value="{{ old('price_per_kg') }}" min="0" step="0.01" class="filter-input mt-1"></label>
                     <label class="text-sm font-semibold">Production Value (₱)<input type="number" name="value_php" value="{{ old('value_php') }}" min="0" step="0.01" class="filter-input mt-1"></label>
                 </div>
-                <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4"><button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button><button type="submit" class="action-primary">Save {{ $productLabel }} Production</button></footer>
+                <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4"><button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button><button type="submit" class="cbed-save-button">Save Record</button></footer>
             </form>
         </dialog>
     @elseif($module === 'health')

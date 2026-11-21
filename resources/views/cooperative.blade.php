@@ -331,8 +331,8 @@
                     </p>
                 </div>
                 <button type="button" @click="showFormModal = false"
-                    class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                    class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 
@@ -530,9 +530,8 @@
                         Cancel
                     </button>
                     <button type="submit"
-                        class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">
-                        <i class="fa-solid fa-floppy-disk mr-2"></i>
-                        <span x-text="editing ? 'Update Cooperative' : 'Save Cooperative'"></span>
+                        class="cbed-save-button">
+                        <span x-text="editing ? 'Update Record' : 'Save Record'"></span>
                     </button>
                 </div>
             </form>
@@ -557,8 +556,8 @@
                     </p>
                 </div>
                 <button type="button" @click="showDetailModal = false"
-                    class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                    class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 
@@ -621,8 +620,8 @@
         </div>
 
         <button type="button" @click="toast.show = false"
-            class="text-slate-400 hover:text-slate-700">
-            <i class="fa-solid fa-xmark"></i>
+            class="cbed-close-button" aria-label="Dismiss notification">
+            <span aria-hidden="true">&times;</span>
         </button>
     </div>
 
@@ -718,7 +717,7 @@
         <section x-show="showImportModal" x-transition class="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="cooperative-import-heading">
             <div class="flex items-start justify-between gap-4">
                 <div><h2 id="cooperative-import-heading" class="text-xl font-bold text-slate-900">Import cooperative file</h2><p class="mt-1 text-sm text-slate-500">Select an Excel workbook or CSV, then press Import.</p></div>
-                <button type="button" @click="showImportModal = false" class="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100" aria-label="Close">✕</button>
+                <button type="button" @click="showImportModal = false" class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button>
             </div>
             <form method="POST" action="{{ route('admin.cooperatives.import') }}" enctype="multipart/form-data" class="mt-5 space-y-4">
                 @csrf

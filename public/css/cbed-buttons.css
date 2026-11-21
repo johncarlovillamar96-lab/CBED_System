@@ -1,0 +1,75 @@
+button.cbed-close-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: .5rem;
+    background: #fff;
+    color: #475569;
+    font: 600 1.5rem/1 Arial, sans-serif;
+}
+
+button.cbed-close-button:not([hidden]):not(.hidden) {
+    display: inline-flex;
+}
+
+button.cbed-close-button:hover:not(:disabled) {
+    background: #f1f5f9;
+    color: #0b1f3a;
+}
+
+button.cbed-save-button {
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    background: #0b1f3a;
+    color: #fff;
+    font-weight: 600;
+}
+
+button.cbed-save-button:not([hidden]):not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+button.cbed-save-button:not(.cbed-save-button--compact) {
+    box-sizing: border-box;
+    block-size: calc(2.25rem + 2px);
+    padding: 0 1rem;
+    font-size: .875rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+}
+
+button.cbed-save-button:hover:not(:disabled) {
+    background: #122b4d;
+}
+
+button:is(.cbed-add-button, .cbed-close-button, .cbed-save-button):focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+button:is(.cbed-add-button, .cbed-close-button, .cbed-save-button):disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+:root {
+    --cbed-add-bg: #ffd05b;
+    --cbed-add-hover: #ffdc7d;
+    --cbed-add-text: #12345a;
+}
+
+button.cbed-add-button {
+    border-color: transparent;
+    background: var(--cbed-add-bg);
+    color: var(--cbed-add-text);
+    box-shadow: 0 7px 16px rgba(4, 37, 68, .2);
+}
+
+button.cbed-add-button:hover:not(:disabled) {
+    background: var(--cbed-add-hover);
+}

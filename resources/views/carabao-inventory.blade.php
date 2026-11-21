@@ -19,10 +19,10 @@
         <button type="button" @click="downloadTemplate()" class="action-secondary">
             <i class="fa-solid fa-download"></i> Downloadable template
         </button>
-        <button type="button" @click="openBulk()" class="cbed-add-button action-secondary">
+        <button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-layer-group"></i> Bulk Add
         </button>
-        <button type="button" @click="openAdd()" class="cbed-add-button action-primary">
+        <button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-plus"></i> Add Carabao
         </button>
     </x-admin-page-header>
@@ -281,7 +281,7 @@
                     <h3 class="text-lg font-bold" x-text="formMode==='edit'?'Edit Carabao Record':'Add Carabao Record'"></h3>
                     <p class="text-sm text-slate-500">Complete the available animal information.</p>
                 </div>
-                <button type="button" @click="showForm=false"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" @click="showForm=false" aria-label="Close" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
             </div>
 
             <form @submit.prevent="saveAnimal()" class="p-5 sm:p-6">
@@ -450,7 +450,7 @@
 
                 <div class="mt-6 flex justify-end gap-2 border-t pt-4">
                     <button type="button" @click="showForm=false" class="rounded-lg border px-4 py-2.5">Cancel</button>
-                    <button type="submit" :disabled="saving" class="rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white disabled:opacity-50" x-text="saving?'Saving...':(formMode==='edit'?'Update Record':'Save Record')"></button>
+                    <button type="submit" :disabled="saving" class="cbed-save-button" x-text="saving?'Saving&hellip;':(formMode==='edit'?'Update Record':'Save Record')"></button>
                 </div>
             </form>
         </div>
@@ -461,7 +461,7 @@
         <div @click.outside="showBulk=false" class="inventory-modal-panel max-h-[94vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div class="inventory-modal-header flex items-center justify-between border-b p-5">
                 <div><h3 class="text-lg font-bold">Bulk Add Carabaos</h3><p class="text-sm text-slate-500">Enter multiple records below.</p></div>
-                <button type="button" @click="showBulk=false"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" @click="showBulk=false" aria-label="Close" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="p-5">
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -497,7 +497,7 @@
                 </div>
                 <div class="mt-5 flex justify-end gap-2 border-t pt-4">
                     <button type="button" @click="showBulk=false" class="rounded-lg border px-4 py-2.5">Cancel</button>
-                    <button type="button" @click="saveBulk()" :disabled="saving" class="rounded-lg bg-blue-700 px-5 py-2.5 font-semibold text-white disabled:opacity-50" x-text="saving?'Saving...':'Save All Records'"></button>
+                    <button type="button" @click="saveBulk()" :disabled="saving" class="cbed-save-button" x-text="saving?'Saving&hellip;':'Save All Records'"></button>
                 </div>
             </div>
         </div>
@@ -508,7 +508,7 @@
         <div @click.outside="showView=false" class="inventory-modal-panel max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div class="inventory-modal-header flex items-center justify-between border-b p-5">
                 <h3 class="text-lg font-bold">Animal Record Details</h3>
-                <button type="button" @click="showView=false"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" @click="showView=false" aria-label="Close" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
             </div>
             <div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
                 <template x-for="field in fields" :key="field.key">

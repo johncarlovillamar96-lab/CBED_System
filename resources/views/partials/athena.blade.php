@@ -26,22 +26,27 @@
                     <p class="mt-0.5 text-xs text-blue-100">CBED AI assistant</p>
                 </div>
             </div>
-            <button type="button" @click="open = false" class="rounded-lg p-2 text-white/80 hover:bg-white/10 hover:text-white" aria-label="Close Athena">
-                <i class="fa-solid fa-xmark"></i>
+            <button type="button" @click="open = false" class="cbed-close-button" aria-label="Close Athena">
+                <span aria-hidden="true">&times;</span>
             </button>
         </header>
 
         <div x-ref="conversation" class="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-4">
             <div x-show="messages.length === 0" class="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
                 <p class="font-semibold text-slate-800">Hello! I’m Athena.</p>
-                <p class="mt-1 text-sm leading-6 text-slate-600">Ask me about CBED operations, request an aggregate data summary, or ask me to draft a report.</p>
-                <p class="mt-3 text-xs text-slate-500">Your question and aggregate CBED summaries are sent to the configured AI provider. Individual names and animal records are not included automatically; avoid entering sensitive personal information.</p>
+                <p class="mt-1 text-sm leading-6 text-slate-600">Ask a general question, get help with CBED operations, or request a data summary or report.</p>
+                <p class="mt-3 text-xs text-slate-500">Athena sends your question and relevant query totals to the AI provider. Record lists are displayed directly from CBED.</p>
+                @if (\App\Support\AthenaData::authorized(auth()->user()))
                 <div class="mt-4 flex flex-wrap gap-2">
                     <button type="button" @click="ask('Summarize the current CBED data.')"
                             class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100">Summarize CBED data</button>
                     <button type="button" @click="ask('Draft a concise CBED system report using the available aggregate data.')"
                             class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100">Draft a report</button>
                 </div>
+                @else
+                    <button type="button" @click="ask('Show the public dashboard totals.')"
+                            class="mt-4 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100">Show dashboard totals</button>
+                @endif
             </div>
 
             <template x-for="(message, index) in messages" :key="index">
@@ -49,6 +54,50 @@
                     <div class="max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm"
                          :class="message.role === 'user' ? 'rounded-br-md bg-[#0b1f3a] text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700'">
                         <div class="whitespace-pre-wrap break-words" x-text="message.content"></div>
+                        <template x-for="(result, resultIndex) in message.data || []" :key="resultIndex">
+                            <details class="mt-3 rounded-lg border border-slate-200 p-3" :open="!!result.page || result.source === 'Dashboard'">
+                                <summary class="cursor-pointer font-semibold" x-text="result.source"></summary>
+                                <p class="text-xs text-slate-500" x-text="'As of ' + result.as_of + ' (Asia/Manila)'"></p>
+                                <p x-show="Object.keys(result.filters).length" class="mt-1 text-xs" x-text="formatEntries(result.filters)"></p>
+                                <p x-show="result.record_dates?.earliest" class="mt-1 text-xs"
+                                   x-text="result.record_dates?.earliest + ' to ' + result.record_dates?.latest"></p>
+                                <dl class="mt-2 space-y-1">
+                                    <template x-for="[name, value] in Object.entries(result.totals)" :key="name">
+                                        <div class="flex justify-between gap-4 text-xs">
+                                            <dt x-text="label(name)"></dt><dd class="font-semibold" x-text="formatValue(value)"></dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                                <template x-for="[name, totals] in Object.entries(result.breakdown || {})" :key="name">
+                                    <p x-show="Object.keys(totals).length" class="mt-2 text-xs">
+                                        <strong x-text="label(name)"></strong>
+                                        <span x-text="formatEntries(totals)"></span>
+                                    </p>
+                                </template>
+                                <p x-show="result.note" x-text="result.note" class="mt-2 text-xs text-slate-500"></p>
+                                <a x-show="result.url" :href="result.url" class="mt-2 inline-block text-xs font-semibold text-blue-700 underline">Open module</a>
+                                <template x-if="result.page">
+                                    <div class="mt-3 border-t border-slate-200 pt-2">
+                                        <p class="text-xs font-semibold" x-text="result.page.total + ' matching results'"></p>
+                                        <ul class="divide-y divide-slate-100">
+                                            <template x-for="(row, rowIndex) in result.page.rows" :key="rowIndex">
+                                                <li class="py-1 text-xs" x-text="formatEntries(row)"></li>
+                                            </template>
+                                        </ul>
+                                        <div x-show="result.page.total > result.page.size" class="mt-2 flex items-center justify-between gap-2 text-xs">
+                                            <button type="button" class="text-blue-700 disabled:text-slate-400"
+                                                    :disabled="result.loading || result.page.number <= 1"
+                                                    @click="loadRecords(result, result.page.number - 1)">Previous</button>
+                                            <span x-text="'Page ' + result.page.number"></span>
+                                            <button type="button" class="text-blue-700 disabled:text-slate-400"
+                                                    :disabled="result.loading || result.page.number * result.page.size >= result.page.total"
+                                                    @click="loadRecords(result, result.page.number + 1)">Next</button>
+                                        </div>
+                                        <p x-show="result.error" x-text="result.error" role="alert" class="mt-1 text-xs text-red-700"></p>
+                                    </div>
+                                </template>
+                            </details>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -62,10 +111,11 @@
         </div>
 
         <form @submit.prevent="send()" class="border-t border-slate-200 bg-white p-4">
+            <p x-show="error" x-text="error" role="alert" class="mb-2 text-sm text-red-700"></p>
             <label for="athena-question" class="sr-only">Ask Athena a question</label>
             <div class="flex items-end gap-2 rounded-2xl border border-slate-300 bg-white p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100">
                 <textarea id="athena-question" x-ref="question" x-model="question" rows="2" maxlength="2000"
-                          @keydown.enter.prevent="if (!$event.shiftKey) send()"
+                          @keydown.enter="if (!$event.shiftKey && !$event.isComposing) { $event.preventDefault(); send(); }"
                           placeholder="Ask a question or request a report…"
                           class="max-h-32 min-h-12 flex-1 resize-y border-0 px-2 py-2 text-sm text-slate-800 outline-none focus:ring-0"></textarea>
                 <button type="submit" :disabled="busy || !question.trim()"
@@ -85,8 +135,10 @@
             open: false,
             busy: false,
             question: '',
+            error: '',
             messages: [],
             ask(prompt) {
+                if (this.busy) return;
                 this.question = prompt;
                 this.send();
             },
@@ -96,27 +148,72 @@
 
                 this.messages.push({ role: 'user', content });
                 this.question = '';
+                this.error = '';
                 this.busy = true;
                 this.scrollToEnd();
 
                 try {
-                    const response = await fetch(@json(route('athena.chat')), {
+                    const response = await fetch(@json(route('athena.chat', [], false)), {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                         },
-                        body: JSON.stringify({ messages: this.messages.slice(-12) })
+                        body: JSON.stringify({
+                            messages: this.messages.slice(-11).map(({ role, content }) => ({
+                                role,
+                                content: Array.from(content).slice(0, 2000).join('').trimEnd()
+                            }))
+                        })
                     });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.message || 'Athena could not answer right now.');
-                    this.messages.push({ role: 'assistant', content: result.message });
+                    const result = await response.json().catch(() => null);
+                    if ([401, 419].includes(response.status)) {
+                        throw new Error('Your session expired. Refresh the page and sign in again.');
+                    }
+                    if (!response.ok || !result?.message) {
+                        throw new Error(result?.message || 'Athena could not answer right now.');
+                    }
+                    this.messages.push({ role: 'assistant', content: result.message, data: result.data });
                 } catch (error) {
-                    this.messages.push({ role: 'assistant', content: error.message || 'Athena could not answer right now.' });
+                    this.messages.pop();
+                    if (!this.question) this.question = content;
+                    this.error = error.message || 'Athena could not answer right now.';
                 } finally {
                     this.busy = false;
                     this.scrollToEnd();
+                }
+            },
+            label(key) {
+                const label = key.replaceAll('_', ' ');
+                return label.charAt(0).toUpperCase() + label.slice(1);
+            },
+            formatValue(value) {
+                return typeof value === 'number' ? value.toLocaleString() : (value ?? 'Unavailable');
+            },
+            formatEntries(entries) {
+                return Object.entries(entries).map(([key, value]) => this.label(key) + ' · ' + this.formatValue(value)).join(' | ');
+            },
+            async loadRecords(result, page) {
+                result.loading = true;
+                result.error = '';
+                try {
+                    const response = await fetch(@json(route('athena.records', [], false)), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                        },
+                        body: JSON.stringify({ token: result.page.token, page })
+                    });
+                    const data = await response.json().catch(() => null);
+                    if (!response.ok || !data?.page) throw new Error();
+                    result.page = { ...data.page, token: result.page.token };
+                } catch {
+                    result.error = 'The records could not be loaded. Ask Athena again to refresh the list.';
+                } finally {
+                    result.loading = false;
                 }
             },
             scrollToEnd() {

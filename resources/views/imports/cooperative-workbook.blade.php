@@ -61,8 +61,8 @@
                         </div>
                         <button id="bulk-progress-results" type="button" hidden class="mt-3 text-xs font-semibold text-blue-800 hover:underline">View import results</button>
                     </div>
-                    <button id="bulk-progress-close" type="button" hidden aria-label="Close import progress" class="h-9 w-9 shrink-0 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800">
-                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    <button id="bulk-progress-close" type="button" hidden aria-label="Close import progress" class="cbed-close-button">
+                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
             </section>

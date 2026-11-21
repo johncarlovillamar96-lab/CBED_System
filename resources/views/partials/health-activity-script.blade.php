@@ -9,61 +9,105 @@ function closeHealthEditor() {
     document.getElementById('monitoring-health-dialog')?.close();
     healthMonitoringContext = null;
 }
-function finishMonitoringHealth(data) {
+function finishMonitoringHealth(data, bodyConditionScore) {
     const index = healthMonitoringContext.index;
     closeHealthEditor();
-    window.dispatchEvent(new CustomEvent('monitoring-health-draft', {detail: {index, data}}));
+    window.dispatchEvent(new CustomEvent('monitoring-health-draft', {detail: {index, data, bodyConditionScore}}));
 }
 function updateHealthTreatmentCount() {
-    const types = [...document.querySelectorAll('#health-service-rows [data-service="type"]')];
-    document.getElementById('health-treatments').value = types.filter(input => input.value.trim()).length;
+    const rows = [...document.querySelectorAll('#health-service-rows .health-service-row')];
+    document.getElementById('health-treatments').value = rows.filter(healthServiceType).length;
 }
-function updateHealthServiceDosage(row) {
-    const type = row.querySelector('[data-service="type"]').value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function healthServiceType(row) {
+    const choice = row.querySelector('[data-service-choice]').value;
+    return choice === '__other__' ? row.querySelector('[data-custom-service]').value.trim() : choice;
+}
+
+function updateHealthServiceFields(row) {
+    const choice = row.querySelector('[data-service-choice]');
+    const custom = row.querySelector('[data-custom-service]');
+    const isOther = choice.value === '__other__';
+    custom.closest('label').hidden = !isOther;
+    custom.disabled = !isOther;
+    custom.required = isOther;
+
+    const type = healthServiceType(row).toLowerCase().replace(/[^a-z0-9]/g, '');
     const allowsDosage = /^(deworm|vaccin|vitamin)/.test(type);
     const dosage = row.querySelector('[data-service="dosage_ml"]');
     dosage.closest('label').hidden = !allowsDosage;
     dosage.disabled = !allowsDosage;
+    const requiresBolus = ['bolus', 'bolusapplication'].includes(type);
+    const bolus = row.querySelector('[data-service="bolus_number"]');
+    bolus.closest('[data-bolus-field]').hidden = !requiresBolus;
+    bolus.disabled = !requiresBolus;
+    bolus.required = requiresBolus;
+    updateHealthBolusWarning(row);
 }
 
-function addHealthServiceRow(service={}){const row=document.createElement('div');row.className='health-service-row grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1.4fr_.7fr_auto]';row.innerHTML=`<label class="text-xs font-semibold">Service Type<input list="health-service-options" data-service="type" oninput="updateHealthServiceDosage(this.closest('.health-service-row')); updateHealthTreatmentCount()" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Choose or enter a type" required></label><label class="text-xs font-semibold">Dosage (mL)<input data-service="dosage_ml" type="number" min="0" step="0.01" class="mt-1 w-full rounded border px-2 py-2 text-sm" placeholder="Not applicable"></label><input type="hidden" data-service="remarks"><button type="button" class="self-end rounded border border-red-200 px-3 py-2 text-sm text-red-700 hover:bg-red-50" aria-label="Remove service" onclick="this.closest('.health-service-row').remove(); updateHealthTreatmentCount()">Remove</button>`;row.querySelector('[data-service="type"]').value=service.type==='Other Services'?(service.other_service_name||'Other Services'):(service.type||'');row.querySelector('[data-service="dosage_ml"]').value=service.dosage_ml??'';row.querySelector('[data-service="remarks"]').value=service.remarks??'';updateHealthServiceDosage(row);document.getElementById('health-service-rows').appendChild(row);}
-function filterHealthAnimals() {
-    const query = document.getElementById('health-animal-search').value.trim().toLowerCase();
-    let hasMatches = false;
-    for (const option of document.querySelectorAll('#health-animal-options button')) {
-        const matches = option.dataset.registryId.toLowerCase().includes(query);
-        option.hidden = !matches;
-        hasMatches ||= matches;
-    }
-    document.getElementById('health-animal-no-results').hidden = hasMatches;
+function updateHealthBolusWarning(row) {
+    const bolus = row.querySelector('[data-service="bolus_number"]');
+    const inventoryId = document.getElementById('health-carabao-id').selectedOptions[0]?.dataset.bolusId?.trim() || '';
+    const warning = row.querySelector('[data-bolus-warning]');
+    const hasInventoryId = !['', '-', '--', 'n/a', 'na', 'none', 'unknown', '0'].includes(inventoryId.toLowerCase());
+    warning.hidden = bolus.disabled || !hasInventoryId;
+    const entered = bolus.value.trim();
+    warning.textContent = warning.hidden ? '' : entered && entered.toLowerCase() !== inventoryId.toLowerCase()
+        ? 'Saving will replace this animal’s Carabao Inventory Bolus ID (' + inventoryId + ') with the number entered.'
+        : 'This animal already has Bolus ID ' + inventoryId + ' in Carabao Inventory.';
 }
 
-function closeHealthAnimalPicker() {
-    document.getElementById('health-animal-picker').open = false;
-    document.getElementById('health-animal-selection').focus();
+function addHealthServiceRow(service = {}, focus = false) {
+    const row = document.getElementById('health-service-row-template').content.firstElementChild.cloneNode(true);
+    const choice = row.querySelector('[data-service-choice]');
+    const custom = row.querySelector('[data-custom-service]');
+    const storedName = service.type === 'Other Services' ? (service.other_service_name || service.type) : (service.type || '');
+    const storedType = storedName.toLowerCase() === 'bolus' ? 'Bolus Application' : storedName;
+    const existing = [...choice.options].find(option => option.value !== '__other__' && option.value.toLowerCase() === storedType.toLowerCase());
+    choice.value = existing?.value ?? '__other__';
+    custom.value = existing ? '' : storedType;
+    row.querySelector('[data-service="dosage_ml"]').value = service.dosage_ml ?? '';
+    row.querySelector('[data-service="bolus_number"]').value = service.bolus_number ?? service.bolus_id ?? '';
+    row.querySelector('[data-service="remarks"]').value = service.remarks ?? '';
+
+    const refresh = () => {
+        updateHealthServiceFields(row);
+        updateHealthTreatmentCount();
+    };
+    choice.addEventListener('change', () => {
+        refresh();
+        if (choice.value === '__other__') custom.focus();
+    });
+    custom.addEventListener('input', refresh);
+    row.querySelector('[data-service="bolus_number"]').addEventListener('input', () => updateHealthBolusWarning(row));
+    row.querySelector('[data-remove-service]').addEventListener('click', () => {
+        row.remove();
+        updateHealthTreatmentCount();
+        document.getElementById('health-add-service-button').focus();
+    });
+    document.getElementById('health-service-rows').appendChild(row);
+    refresh();
+    if (focus) choice.focus();
 }
 
-function selectHealthAnimal(id, focus = true) {
-    const value = String(id ?? '');
-    const option = [...document.querySelectorAll('#health-animal-options button')].find(button => button.dataset.animalId === value);
-    document.getElementById('health-carabao-id').value = option ? value : '';
-    document.getElementById('health-animal-selection').textContent = option?.textContent.trim() || 'Select animal';
-    document.getElementById('health-animal-picker').open = false;
-    document.getElementById('health-animal-search').value = '';
-    filterHealthAnimals();
-    if (focus) closeHealthAnimalPicker();
-}
+document.getElementById('health-carabao-id').addEventListener('change', () => {
+    document.querySelectorAll('#health-service-rows .health-service-row').forEach(updateHealthBolusWarning);
+});
 async function openHealthEditor(id = null, readOnly = false, monitoringContext = null) {
     healthMonitoringContext = monitoringContext;
     const form = document.getElementById('health-editor-form');
     form.reset();
-    selectHealthAnimal('', false);
-    form.querySelectorAll('input,textarea').forEach(control => control.disabled = false);
+    const animalSelect = document.getElementById('health-carabao-id');
+    animalSelect.querySelector('[data-monitoring-animal]')?.remove();
+    form.querySelectorAll('input,select,textarea').forEach(control => control.disabled = false);
     document.getElementById('health-record-id').value = '';
     document.getElementById('health-service-rows').replaceChildren();
     document.getElementById('health-editor-title').textContent = !id ? 'Add Health and Nutrition Activity' : readOnly ? 'View Health and Nutrition Activity' : 'Edit Health and Nutrition Activity';
-    document.getElementById('health-animal-picker').inert = readOnly || Boolean(monitoringContext);
-    document.getElementById('health-save-button').hidden = readOnly;
+    animalSelect.disabled = readOnly || Boolean(monitoringContext);
+    animalSelect.dispatchEvent(new Event('change', {bubbles: true}));
+    const saveButton = document.getElementById('health-save-button');
+    saveButton.hidden = readOnly;
+    saveButton.textContent = id || monitoringContext?.hasService ? 'Update Record' : 'Save Record';
     document.getElementById('health-add-service-button').hidden = readOnly;
     document.getElementById('health-remove-service').hidden = !monitoringContext?.hasService;
     const editor = document.getElementById('health-editor');
@@ -78,18 +122,29 @@ async function openHealthEditor(id = null, readOnly = false, monitoringContext =
             data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Could not load this activity.');
             document.getElementById('health-record-id').value = data.id;
-            selectHealthAnimal(data.carabao_id, false);
+            animalSelect.value = String(data.carabao_id ?? '');
         } else if (monitoringContext) {
-            document.getElementById('health-carabao-id').value = monitoringContext.carabaoId;
-            document.getElementById('health-animal-selection').textContent = monitoringContext.registryId;
+            const animalId = String(monitoringContext.carabaoId ?? '');
+            animalSelect.value = animalId;
+            if (animalId && !animalSelect.value) {
+                const option = new Option(monitoringContext.registryId || animalId, animalId);
+                option.setAttribute('data-monitoring-animal', '');
+                option.dataset.bolusId = monitoringContext.bolusId ?? '';
+                animalSelect.add(option);
+                animalSelect.value = animalId;
+            }
         }
+        animalSelect.dispatchEvent(new Event('change', {bubbles: true}));
         document.getElementById('health-monitoring-date').value = String(data.monitoring_date || monitoringContext?.reportDate || new Date().toISOString()).slice(0, 10);
+        document.getElementById('health-body-condition-score').value = monitoringContext
+            ? (monitoringContext.bodyConditionScore ?? '')
+            : (data.body_condition_score ?? '');
         document.getElementById('health-activity-remarks').value = data.remarks || '';
         const services = (data.services || []).filter(service => service.selected ?? true);
         services.forEach(service => addHealthServiceRow(service));
         if (!services.length) addHealthServiceRow();
         updateHealthTreatmentCount();
-        if (readOnly) form.querySelectorAll('input,textarea,#health-service-rows button').forEach(control => control.disabled = true);
+        if (readOnly) form.querySelectorAll('input,select,textarea,#health-service-rows button').forEach(control => control.disabled = true);
     } catch (error) {
         alert(error.message);
         closeHealthEditor();
@@ -100,13 +155,20 @@ async function saveHealthActivity(event) {
     event.preventDefault();
     const carabaoId = document.getElementById('health-carabao-id').value;
     if (!carabaoId) {
-        document.getElementById('health-animal-picker').open = true;
-        document.getElementById('health-animal-search').focus();
+        const trigger = document.getElementById('health-carabao-id-trigger');
+        if (trigger.getAttribute('aria-expanded') === 'true') {
+            document.getElementById('health-carabao-id-search').focus();
+        } else {
+            trigger.click();
+        }
         return;
     }
     const services = [...document.querySelectorAll('#health-service-rows .health-service-row')]
-        .map(row => Object.fromEntries([...row.querySelectorAll('[data-service]:not(:disabled)')]
-            .map(input => [input.dataset.service, input.value.trim()])))
+        .map(row => ({
+            type: healthServiceType(row),
+            ...Object.fromEntries([...row.querySelectorAll('[data-service]:not(:disabled)')]
+                .map(input => [input.dataset.service, input.value.trim()])),
+        }))
         .filter(service => service.type);
     if (!services.length) {
         alert('Add at least one service.');
@@ -115,6 +177,7 @@ async function saveHealthActivity(event) {
     const payload = {
         carabao_id: Number(carabaoId),
         monitoring_date: document.getElementById('health-monitoring-date').value,
+        body_condition_score: document.getElementById('health-body-condition-score').value || null,
         remarks: document.getElementById('health-activity-remarks').value,
         services,
     };
@@ -125,7 +188,7 @@ async function saveHealthActivity(event) {
             monitoring_date: payload.monitoring_date,
             remarks: payload.remarks,
             services: services.map(service => ({...service, selected: true, dosage_ml: service.dosage_ml || null})),
-        });
+        }, payload.body_condition_score);
         return;
     }
     const id = document.getElementById('health-record-id').value;

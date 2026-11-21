@@ -126,8 +126,8 @@
                     <h2 class="font-bold text-slate-800">Add CBED Mapping Record</h2>
                     <p class="mt-1 text-xs text-slate-500">Enter the sample record details.</p>
                 </div>
-                <button @click="showAdd = false" class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                <button type="button" @click="showAdd = false" class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 
@@ -148,8 +148,8 @@
                         Cancel
                     </button>
                     <button type="submit"
-                        class="cbed-add-button rounded-lg px-5 py-2.5 text-sm font-semibold">
-                        <i class="fa-solid fa-plus mr-1"></i> Add Record
+                        class="cbed-save-button">
+Save Record
                     </button>
                 </div>
             </form>

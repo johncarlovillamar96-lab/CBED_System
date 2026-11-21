@@ -339,8 +339,8 @@
                     <span x-show="!editing" class="whitespace-nowrap rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
                         <span x-text="bulkRows.length"></span> animal(s)
                     </span>
-                    <button type="button" @click="showAddModal=false" class="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100">
-                        <i class="fa-solid fa-xmark text-lg"></i>
+                    <button type="button" @click="showAddModal=false" class="cbed-close-button" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
             </div>
@@ -571,8 +571,8 @@
 
                 <div class="flex shrink-0 flex-col-reverse gap-3 border-t bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
                     <button type="button" @click="showAddModal=false" class="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold">Cancel</button>
-                    <button type="submit" :disabled="saving" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-                        <i class="fa-solid fa-floppy-disk mr-2"></i><span x-text="saving ? 'Saving...' : (editing ? 'Update Carabao' : 'Save Carabaos')"></span>
+                    <button type="submit" :disabled="saving" class="cbed-save-button">
+<span x-text="saving ? 'Saving&hellip;' : (editing ? 'Update Record' : 'Save All Records')"></span>
                     </button>
                 </div>
             </form>
@@ -590,8 +590,8 @@
                     <h2 class="text-xl font-bold">Carabao Details</h2>
                     <p class="mt-1 text-sm text-slate-500">Animal identification and inventory information.</p>
                 </div>
-                <button type="button" @click="showDetailModal=false" class="icon-button">
-                    <i class="fa-solid fa-xmark"></i>
+                <button type="button" @click="showDetailModal=false" class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 
@@ -639,7 +639,7 @@
             <p class="font-bold" x-text="toast.type === 'error' ? 'Unable to complete' : 'Notice'"></p>
             <p class="mt-1 text-sm text-slate-600" x-text="toast.message"></p>
         </div>
-        <button type="button" @click="toast.show=false"><i class="fa-solid fa-xmark"></i></button>
+        <button type="button" @click="toast.show=false" aria-label="Dismiss notification" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
     </div>
 </div>
 @endsection

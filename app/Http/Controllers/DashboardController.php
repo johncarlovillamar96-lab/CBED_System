@@ -95,25 +95,7 @@ class DashboardController extends Controller
                 ->sortBy('classification')
                 ->values();
 
-            $animals = DB::table('carabaos as animal')
-                ->select('animal.id', 'animal.province', 'animal.status', 'animal.sex', 'animal.classification')
-                ->addSelect(Schema::hasColumn('carabaos', 'nature_of_exit')
-                    ? 'animal.nature_of_exit'
-                    : DB::raw('NULL as nature_of_exit'));
-
-            if (Schema::hasColumn('carabaos', 'exit_reason')) {
-                $animals->addSelect('animal.exit_reason');
-            }
-            if (Schema::hasColumns('fhpr_records', ['carabao_id', 'days_in_milk'])) {
-                $animals->addSelect([
-                    'days_in_milk' => DB::table('fhpr_records')
-                        ->select('days_in_milk')
-                        ->whereColumn('carabao_id', 'animal.id')
-                        ->whereNotNull('days_in_milk')
-                        ->orderByDesc('id')
-                        ->limit(1),
-                ]);
-            }
+            $animals = InventoryClassification::breedingInventoryQuery()->addSelect('animal.province');
 
             foreach ($animals->get() as $animal) {
                 $province = trim((string) ($animal->province ?? '')) ?: 'Unknown Province';
@@ -127,8 +109,7 @@ class DashboardController extends Controller
                 ];
 
                 $status = strtolower(trim((string) ($animal->status ?? '')));
-                $exitReason = trim((string) ($animal->exit_reason ?? ''));
-                $isLive = $status === 'live' || ($status === '' && $exitReason === '');
+                $isLive = InventoryClassification::isLiveInInventorySummary($animal);
                 if ($isLive) {
                     $provincialSummary[$province]['live']++;
                 }

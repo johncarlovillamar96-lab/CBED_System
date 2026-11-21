@@ -2,7 +2,7 @@
         <form @submit.prevent="saveCalf()" role="dialog" aria-modal="true" aria-labelledby="add-calf-title" class="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <header class="flex shrink-0 items-center justify-between border-b border-slate-200 p-5">
                 <h3 id="add-calf-title" class="text-xl font-bold text-slate-900">Add Calf Record</h3>
-                <button type="button" @click="closeCalfForm()" :disabled="savingCalf" aria-label="Close add calf form" class="rounded-lg p-2 hover:bg-slate-100"><i class="fa-solid fa-xmark"></i></button>
+                <button type="button" @click="closeCalfForm()" :disabled="savingCalf" aria-label="Close add calf form" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
             </header>
             <div class="min-h-0 overflow-y-auto p-4 sm:p-5">
                 <div x-show="!monitoringCalf" class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Calf entry method">
@@ -178,7 +178,7 @@
             <footer class="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50 p-4">
                 <button x-show="monitoringCalf?.hasService" type="button" @click="finishMonitoringCalf(null)" class="mr-auto rounded-lg px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Remove service</button>
                 <button type="button" @click="closeCalfForm()" :disabled="savingCalf" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold">Cancel</button>
-                <button type="submit" :disabled="savingCalf || invalidNumericSirePrefix" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" x-text="savingCalf ? 'Saving...' : 'Save Calf Record'"></button>
+                <button type="submit" :disabled="savingCalf || invalidNumericSirePrefix" class="cbed-save-button" x-text="savingCalf ? 'Saving&hellip;' : 'Save Record'"></button>
             </footer>
         </form>
     </div>

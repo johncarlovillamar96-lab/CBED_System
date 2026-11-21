@@ -22,6 +22,7 @@ Route::get('/login', [AuthController::class, 'show'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 Route::post('/athena/chat', [AthenaController::class, 'chat'])->middleware('throttle:10,1')->name('athena.chat');
+Route::post('/athena/records', [AthenaController::class, 'records'])->middleware(['auth', 'throttle:10,1'])->name('athena.records');
 
 // Dashboard - temporary access without login
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');

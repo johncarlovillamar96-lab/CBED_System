@@ -3,7 +3,7 @@
     <form @submit.prevent="save()">
         <header class="flex items-center justify-between gap-3 border-b p-5">
             <h2 id="mtd-record-dialog-title" class="text-xl font-bold text-[#12345a]" x-text="mode==='edit' ? 'Edit MTD Record' : (mode==='delete' ? 'Delete MTD record?' : 'MTD Record Details')"></h2>
-            <button type="button" @click="$root.close()" :disabled="saving" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close record dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            <button type="button" @click="$root.close()" :disabled="saving" class="cbed-close-button" aria-label="Close record dialog"><span aria-hidden="true">&times;</span></button>
         </header>
         <div class="space-y-4 p-5">
             <p x-show="mode==='delete'" class="text-sm text-slate-600">This permanently deletes the selected Milk Test Day record.</p>
@@ -33,7 +33,7 @@
         </div>
         <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
             <button type="button" x-ref="cancel" @click="$root.close()" :disabled="saving" class="action-secondary" x-text="mode==='view' ? 'Close' : 'Cancel'"></button>
-            <button x-show="mode==='edit'" type="submit" :disabled="mode!=='edit' || saving" class="action-primary" x-text="saving ? 'Saving…' : 'Update Record'"></button>
+            <button x-show="mode==='edit'" type="submit" :disabled="mode!=='edit' || saving" class="cbed-save-button" x-text="saving ? 'Saving&hellip;' : 'Update Record'"></button>
             <button x-show="mode==='delete'" type="submit" :disabled="mode!=='delete' || saving" class="rounded-lg bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50" x-text="saving ? 'Deleting…' : 'Delete record'"></button>
         </footer>
     </form>

@@ -4,6 +4,11 @@ namespace App\Support;
 
 class HealthWorksheetMapping
 {
+    public static function isBolusService(string $name): bool
+    {
+        return in_array(preg_replace('/[^a-z0-9]/', '', strtolower($name)), ['bolus', 'bolusapplication'], true);
+    }
+
     public const ADDITIONAL_SERVICES = [
         'fecalysis' => 'Fecalysis',
         'recruitment' => 'Recruitment',

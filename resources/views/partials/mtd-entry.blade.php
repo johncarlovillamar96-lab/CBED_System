@@ -5,7 +5,7 @@
         @csrf
         <header class="flex items-center justify-between gap-3 border-b p-5">
             <h2 id="mtd-entry-title" class="text-xl font-bold text-[#12345a]">Bulk Add MTD Records</h2>
-            <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Close bulk MTD entry"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            <button type="button" onclick="this.closest('dialog').close()" class="cbed-close-button" aria-label="Close bulk MTD entry"><span aria-hidden="true">&times;</span></button>
         </header>
         <div class="space-y-4 p-5">
             @if($errors->mtdEntry->any())
@@ -31,7 +31,7 @@
             </div>
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-slate-600">Mark a missing teat to cross it out in future reports for this animal. Leave an untested teat blank.</p>
-                <button type="button" @click="addRow()" :disabled="rows.length>=100" class="cbed-add-button action-secondary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Row</button>
+                <button type="button" @click="addRow()" :disabled="rows.length>=100" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Row</button>
             </div>
             <div class="overflow-x-auto rounded-lg border" role="region" aria-label="MTD entry rows" tabindex="0">
                 <table class="w-full min-w-[90rem] table-fixed text-left text-sm">
@@ -77,7 +77,7 @@
         </div>
         <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
             <button type="button" onclick="this.closest('dialog').close()" class="action-secondary">Cancel</button>
-            <button type="submit" :disabled="!cooperative || !farmer" class="action-primary disabled:opacity-50">Save MTD Records</button>
+            <button type="submit" :disabled="!cooperative || !farmer" class="cbed-save-button">Save All Records</button>
         </footer>
     </form>
 </dialog>

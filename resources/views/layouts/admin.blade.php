@@ -34,37 +34,19 @@
     {{-- Alpine.js --}}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="{{ asset('css/table-drag-scroll.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/cbed-buttons.css') }}">
     <script defer src="{{ asset('js/table-drag-scroll.js') }}"></script>
 
     <style>
         :root {
             --cbed-navy: #0b1f3a;
             --cbed-hover: #122b4d;
-            --cbed-add-bg: #ffd05b;
-            --cbed-add-hover: #ffdc7d;
-            --cbed-add-text: #12345a;
             --page-bg: #f4f7fb;
             --sidebar-width: 13rem;
         }
 
         [x-cloak] {
             display: none !important;
-        }
-
-        button.cbed-add-button {
-            border-color: transparent;
-            background: var(--cbed-add-bg);
-            color: var(--cbed-add-text);
-            box-shadow: 0 7px 16px rgba(4, 37, 68, .2);
-        }
-
-        button.cbed-add-button:hover:not(:disabled) {
-            background: var(--cbed-add-hover);
-        }
-
-        button.cbed-add-button:disabled {
-            opacity: .5;
-            cursor: not-allowed;
         }
 
         html {
@@ -370,7 +352,7 @@
         </footer>
     </div>
 
-    {{-- Athena temporarily disabled for local development --}}
+    @include('partials.athena')
 
     {{-- PAGE SCRIPTS --}}
     @include('partials.table-pagination-assets')

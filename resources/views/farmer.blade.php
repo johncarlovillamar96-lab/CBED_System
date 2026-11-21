@@ -287,10 +287,10 @@
                     <span class="whitespace-nowrap rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
                         <span x-text="bulkRows.length"></span> farmer(s)
                     </span>
-                    <button @click="bulkModalOpen = false"
-                            class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
-                            title="Close">
-                        <i class="fa-solid fa-xmark text-xl"></i>
+                    <button type="button" @click="bulkModalOpen = false"
+                            class="cbed-close-button"
+                            title="Close" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
             </div>
@@ -441,9 +441,8 @@
                         Cancel
                     </button>
                     <button @click="saveBulkFarmers()"
-                            class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">
-                        <i class="fa-solid fa-floppy-disk"></i>
-                        Save All Farmers
+                            class="cbed-save-button">
+                        Save All Records
                     </button>
                 </div>
             </div>
@@ -462,8 +461,8 @@
                     <h2 class="text-lg font-bold text-slate-900">Farmer Details</h2>
                     <p class="mt-1 text-sm text-slate-500">Farmer profile information.</p>
                 </div>
-                <button @click="viewModalOpen = false" class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                <button type="button" @click="viewModalOpen = false" class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2">
@@ -495,9 +494,9 @@
                     <p class="mt-1 text-sm text-slate-500">Edit the farmer's details and save changes to MySQL.</p>
                 </div>
                 <button type="button" @click="editModalOpen = false"
-                        class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                        class="cbed-close-button"
                         aria-label="Close edit farmer modal">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 
@@ -590,9 +589,8 @@
                     Cancel
                 </button>
                 <button type="button" @click="saveFarmerUpdate()" :disabled="isSavingEdit"
-                        class="inline-flex items-center gap-2 rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d] disabled:opacity-60">
-                    <i class="fa-solid" :class="isSavingEdit ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
-                    <span x-text="isSavingEdit ? 'Saving...' : 'Save Changes'"></span>
+                        class="cbed-save-button">
+                    <span x-text="isSavingEdit ? 'Saving&hellip;' : 'Update Record'"></span>
                 </button>
             </div>
         </div>
@@ -609,8 +607,8 @@
                     <h2 class="text-lg font-bold text-slate-900">Import Farmer Excel File</h2>
                     <p class="mt-1 text-sm text-slate-500">Choose a cooperative, then import farmer names in A–Z order.</p>
                 </div>
-                <button type="button" @click="closeImportModal()" :disabled="importing || loadingImport" class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50">
-                    <i class="fa-solid fa-xmark text-lg"></i>
+                <button type="button" @click="closeImportModal()" :disabled="importing || loadingImport" class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
 

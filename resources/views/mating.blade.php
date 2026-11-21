@@ -26,7 +26,7 @@
             <i class="fa-solid fa-download"></i> Downloadable template
         </button>
 
-        <button type="button" @click="openBulk()" class="cbed-add-button action-primary">
+        <button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-plus"></i> Add Mating Records
         </button>
     </x-admin-page-header>
@@ -224,8 +224,8 @@
                 </div>
                 <div class="flex items-center gap-3">
                     <b x-show="!editingId" class="text-sm" x-text="bulkRows.length+' row(s)'"></b>
-                    <button type="button" @click="closeModal()" aria-label="Close mating form" class="rounded-lg p-2 hover:bg-slate-100">
-                        <i class="fa-solid fa-xmark text-xl"></i>
+                    <button type="button" @click="closeModal()" aria-label="Close mating form" class="cbed-close-button">
+                        <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
             </div>
@@ -258,7 +258,7 @@
                 @include('partials.mating-edit-form')
 
                 <div x-show="!editingId" class="mb-4 flex flex-wrap justify-end gap-2">
-                    <button type="button" x-show="!editingId" @click="addRow()" class="cbed-add-button action-primary">
+                    <button type="button" x-show="!editingId" @click="addRow()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
                         <i class="fa-solid fa-plus"></i> Add Row
                     </button>
                 </div>
@@ -453,9 +453,8 @@
                     </div>
                     <div class="flex justify-end gap-2">
                         <button type="button" @click="closeModal()" class="action-secondary" x-text="editingId?'Close':'Cancel'"></button>
-                        <button type="button" @click.stop="editingId ? updateRecord() : saveBulk()" :disabled="saving||(editingId&&!bulkRows.length)" class="action-primary">
-                            <i class="fa-solid" :class="saving?'fa-spinner fa-spin':'fa-floppy-disk'"></i>
-                            <span x-text="saving?'Saving...':(editingId?'Update Record':'Save to MySQL')"></span>
+                        <button type="button" @click.stop="editingId ? updateRecord() : saveBulk()" :disabled="saving||(editingId&&!bulkRows.length)" class="cbed-save-button">
+                            <span x-text="saving?'Saving&hellip;':(editingId?'Update Record':'Save All Records')"></span>
                         </button>
                     </div>
                 </div>
@@ -469,8 +468,8 @@
                             <h3 id="pending-pd-title" class="text-lg font-bold text-slate-900">Update Pending PD</h3>
                             <p class="mt-1 text-sm text-slate-600" x-text="pdDraft ? pdDraft.animal_id + ' · Mating on ' + displayDate(pdDraft.breeding_date) : ''"></p>
                         </div>
-                        <button type="button" @click="$refs.pendingPdDialog.close()" :disabled="pdSaving" aria-label="Close PD update" class="rounded-lg p-2 hover:bg-slate-100">
-                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        <button type="button" @click="$refs.pendingPdDialog.close()" :disabled="pdSaving" aria-label="Close PD update" class="cbed-close-button">
+                            <span aria-hidden="true">&times;</span>
                         </button>
                     </header>
                     <template x-if="pdDraft">
@@ -497,7 +496,7 @@
                     </template>
                     <footer class="flex justify-end gap-2 border-t bg-slate-50 p-4">
                         <button type="button" @click="$refs.pendingPdDialog.close()" :disabled="pdSaving" class="action-secondary">Cancel</button>
-                        <button type="submit" :disabled="pdSaving" class="action-primary" x-text="pdSaving ? 'Updating…' : 'Update PD Result'"></button>
+                        <button type="submit" :disabled="pdSaving" class="cbed-save-button" x-text="pdSaving ? 'Saving&hellip;' : 'Update Record'"></button>
                     </footer>
                 </form>
             </dialog>
@@ -509,8 +508,8 @@
         <div @click.outside="showView=false" class="w-full max-w-5xl overflow-hidden rounded-xl bg-white shadow-xl">
             <div class="flex items-center justify-between border-b p-5">
                 <h3 class="text-lg font-bold">Mating Record Details</h3>
-                <button type="button" @click="showView=false" class="rounded-lg p-2 hover:bg-slate-100">
-                    <i class="fa-solid fa-xmark"></i>
+                <button type="button" @click="showView=false" class="cbed-close-button" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3">
