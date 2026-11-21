@@ -73,10 +73,7 @@
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700">
                     <span x-text="filteredCooperatives().length"></span> records
                 </span>
-                <button type="button" @click="resetFilters()"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">
-                    <i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters
-                </button>
+                <x-reset-filters x-on:click="resetFilters()" />
             </div>
         </div>
 

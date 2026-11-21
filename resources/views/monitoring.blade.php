@@ -169,7 +169,7 @@
                 </label>
                 <div class="flex items-end gap-2">
                     <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b1f3a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-filter"></i>Apply filters</button>
-                    <a href="{{ route('ui.monitoring') }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear</a>
+                    <x-reset-filters :href="route('ui.monitoring')" />
                 </div>
             </form>
         </div>
@@ -231,7 +231,7 @@
             <label class="text-xs font-semibold text-slate-600">Monitoring date to<input name="table_date_end" type="date" value="{{ $tableDateEnd }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></label>
             <label class="text-xs font-semibold text-slate-600">Search<input name="table_search" value="{{ $tableSearch }}" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" placeholder="Farmer, animal or cooperative"></label>
             <label class="text-xs font-semibold text-slate-600">Service type<select name="table_service" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All services</option>@foreach($categoryLabels as $key=>$label)<option value="{{ $key }}" @selected($tableService===$key)>{{ $label }}</option>@endforeach</select></label>
-            <div class="flex items-end gap-2"><button class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Apply filters</button><a href="{{ route('ui.monitoring') }}#monitoring-record-table" class="rounded-lg border px-4 py-2.5 text-sm">Clear</a></div>
+            <div class="flex items-end gap-2"><button class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Apply filters</button><x-reset-filters :href="route('ui.monitoring').'#monitoring-record-table'" /></div>
         </form>
         <div class="overflow-x-auto print:hidden">
             @include('partials.monitoring-report-table', [

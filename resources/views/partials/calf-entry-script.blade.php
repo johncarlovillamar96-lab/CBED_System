@@ -4,6 +4,7 @@ function calfDropPage(monitoringMode = false) {
     return {
         storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoading: false, search: '', filterProvince: '', filterBreed: '', filterSex: '',
         currentYear: String(new Date().getFullYear()),
+        filterReportedYear: '',
         showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 15,
         monitoringCalf: null,
         showMatingPicker: false, dueMatings: [], matingDamKeys: new Set(), loadingDueMatings: false, dueMatingsError: '',
@@ -287,11 +288,15 @@ function calfDropPage(monitoringMode = false) {
                 return terms.every(term=>values.some(value=>value.includes(term)));
             });
         },
-        isCurrentReportedYear(record) {
-            const year = String(record.reported_year ?? '').trim() || String(record.date_of_birth ?? '').slice(0, 4);
-            return year === this.currentYear;
+        recordReportedYear(record) {
+            return String(record.reported_year ?? '').trim() || String(record.date_of_birth ?? '').slice(0, 4);
         },
-        get filteredRecords() { return this.matchingCalfRecords.filter(record => this.isCurrentReportedYear(record)).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
+        get reportedYearOptions() {
+            return [...new Set(this.allRecords.map(record => this.recordReportedYear(record)))]
+                .filter(year => /^\d{4}$/.test(year))
+                .sort((a, b) => Number(b) - Number(a));
+        },
+        get filteredRecords() { return this.matchingCalfRecords.filter(record => !this.filterReportedYear || this.recordReportedYear(record) === this.filterReportedYear).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
         get summaryCards() {
             const records=this.filteredRecords;
             const status=record=>String(record.animal_status ?? '').trim().toLowerCase();
@@ -812,7 +817,7 @@ function calfDropPage(monitoringMode = false) {
                 this.deletingCalf=false;
             }
         },
-        resetFilters() { this.search='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.page=1; },
+        resetFilters() { this.search='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.filterReportedYear='';this.page=1; },
         msg(message) { this.notice=message;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice='';},3500); },
         exportCSV() { const escapeCSV=value=> '"'+String(value??'').replace(/"/g,'""')+'"';const lines=[this.fields.map(escapeCSV).join(','),...this.filteredRecords.map(r=>this.fields.map(f=>escapeCSV(r[f])).join(','))];const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='calfdrop_records.csv';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); },
         importCSV(event) {

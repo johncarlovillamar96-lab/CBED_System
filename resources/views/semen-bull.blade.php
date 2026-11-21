@@ -23,7 +23,7 @@
     <section class="cbed-card dashboard-panel overflow-hidden">
         <div class="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 class="text-lg font-bold text-[#0b1f3a]">Semen Bull Records</h2><p class="mt-1 text-sm text-slate-500">Search, filter, view, import, export, or add semen bull profiles using Excel workbooks.</p></div>
-            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><button type="button" @click="resetFilters()" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters</button><button type="button" @click="fetchBulls()" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
+            <div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredBulls().length"></span> records</span><x-reset-filters x-on:click="resetFilters()" /><button type="button" @click="fetchBulls()" :disabled="loading" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><i class="fa-solid fa-rotate mr-1" :class="loading ? 'animate-spin' : ''"></i> Refresh</button></div>
         </div>
 
         {{-- FILTERS --}}

@@ -153,10 +153,7 @@
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     <span x-text="filteredCarabaos().length"></span> records
                 </span>
-                <button type="button" @click="resetFilters()"
-                    class="rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-                    <i class="fa-solid fa-rotate-left mr-1"></i> Reset Filters
-                </button>
+                <x-reset-filters x-on:click="resetFilters()" />
             </div>
         </div>
 

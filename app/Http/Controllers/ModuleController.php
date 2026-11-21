@@ -441,6 +441,10 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              'classification' => ['nullable', 'string', 'max:150'],
              'pregnancy_status' => ['nullable', 'string', 'max:100'],
              'mating_type' => ['nullable', 'string', 'max:100'],
+             'mating_year' => ['nullable', 'digits:4'],
+             'mating_date' => ['nullable', 'date_format:Y-m-d'],
+             'unreported_calves' => ['nullable', 'boolean'],
+             'overdue_calves' => ['nullable', 'boolean'],
          ]);
          $fhprCooperatives=$records->whereNotNull('_filter_cooperative_id')
              ->unique('_filter_cooperative_id')->sortBy('cooperative_name_display', SORT_NATURAL | SORT_FLAG_CASE);
@@ -450,7 +454,8 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              $fhprOptions[$filter]=$records->pluck($column)->filter(fn($value)=>filled($value))
                  ->unique()->sort(SORT_NATURAL | SORT_FLAG_CASE)->values();
          }
-         $searchColumns=[...$columns, '_date_search', '_date_of_birth_search', '_inventory_animal_id', '_inventory_registry_number', '_inventory_tag_number', '_inventory_bolus_id'];
+         $fhprOptions['mating_year']=$records->pluck('_mating_year')->filter()->unique()->sortDesc()->values();
+         $searchColumns=[...$columns, '_date_search', '_date_of_birth_search', '_inventory_animal_id', '_inventory_registry_number', '_inventory_tag_number', '_inventory_bolus_id', '_mating_search'];
          $searchTerms=Str::of($search)->ascii()->lower()->squish()->explode(' ')->filter(fn($term)=>$term!=='');
          $records=$records->filter(function($row)use($fhprFilters,$filterColumns,$searchColumns,$searchTerms){
              if(isset($fhprFilters['cooperative_id']) && (int)$row->_filter_cooperative_id !== (int)$fhprFilters['cooperative_id']){
@@ -460,6 +465,12 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
                  if(filled($fhprFilters[$filter]??null) && $row->{$column} !== $fhprFilters[$filter]){
                      return false;
                  }
+             }
+             if ((filled($fhprFilters['mating_year'] ?? null) && $row->_mating_year !== (string) $fhprFilters['mating_year'])
+                 || (filled($fhprFilters['mating_date'] ?? null) && $row->_mating_date !== $fhprFilters['mating_date'])
+                 || (!empty($fhprFilters['unreported_calves']) && $row->pregnancy_status !== 'Positive')
+                 || (!empty($fhprFilters['overdue_calves']) && ($row->days_pregnant ?? 0) < 280)) {
+                 return false;
              }
              if($searchTerms->isEmpty())return true;
              $values=array_map(fn($column)=>(string)($row->{$column}??''),$searchColumns);
@@ -833,10 +844,12 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          ->addSelect('latest_ai.last_ai_date as last_ai_date')
          ->selectRaw('COALESCE(latest_ai.ai_count, 0) as ai_count')
          ->selectSub($latestPd,'pregnancy_status')
+         ->selectSub((clone $latestPd)->select('id'),'_pregnancy_record_id')
          ->selectSub((clone $latestPd)->select('mating_date'),'_pregnancy_mating_date')
          ->selectSub((clone $latestPd)->select('pregnancy_check_date'),'actual_pd_date')
          ->selectSub((clone $latestPd)->select('expected_calving_date'),'expected_calving_date')
          ->selectSub((clone $latestMating)->select('mating_type'),'ai_or_n')
+         ->selectSub((clone $latestMating)->select('mating_date'),'_mating_date')
          ->selectSub((clone $latestMating)->select('bull_id'),'sire_used')
          ->selectSub((clone $latestMating)->select('source_data'),'_latest_mating_source')
          ->selectRaw("COALESCE(NULLIF(inventory_animal.registry_number, ''), NULLIF(inventory_animal.animal_id, ''), NULLIF(fhpr_records.registry_number, ''), 'N/A') as animal_identifier")
@@ -846,8 +859,15 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              $records->addSelect("inventory_animal.$column as _inventory_$column");
          }
      }
+     if (Schema::hasColumn('mating_records', 'technician')) {
+         $records->selectSub((clone $latestMating)->select('technician'), '_mating_technician');
+     }
      $records=$records->get();
-     $records->each(function($row)use($dateColumns){
+     $bullNames=Schema::hasTable('semen_bulls')
+         ? DB::table('semen_bulls')->whereIn('bull_id', $records->pluck('sire_used')->filter()->unique())->pluck('bull_name', 'bull_id')
+         : collect();
+     $reportedPregnancies=$this->fhprReportedPregnancies($records);
+     $records->each(function($row)use($dateColumns,$reportedPregnancies,$bullNames){
          $lactationStart=\App\Support\FhprLactation::start($row);
          $row->_lactation_start_date=$lactationStart?->toDateString();
          $row->_lactation_start_display=$lactationStart?->format('F j,Y');
@@ -862,6 +882,13 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          };
          $matingSource=json_decode((string)$row->_latest_mating_source,true)?:[];
          $matingFields=$matingSource['mating_api_fields']??$matingSource['monitoring_fields']??[];
+         $row->_mating_year=substr((string) ($row->_mating_date ?: $row->actual_pd_date), 0, 4);
+         $row->_mating_search=implode(' ', [
+             $bullNames->get($row->sire_used) ?? '',
+             $matingFields['bull_name'] ?? $matingSource['bull_name'] ?? '',
+             $row->_mating_technician ?? $matingFields['technician'] ?? '',
+             $matingFields['pd_technician'] ?? '',
+         ]);
          $row->estrus_type=$row->ai_or_n==='AI'
              ?(array_key_exists('estrus_type',$matingFields)?$matingFields['estrus_type']
                  :($matingSource['mating_column_mapping']['estrus_type']??$matingSource['Type of estrus']??null))
@@ -872,6 +899,9 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              'pending','null','n/a','na','?'=>'Pending',
              default=>$row->pregnancy_status,
          };
+         if($row->pregnancy_status==='Positive' && $reportedPregnancies->has($row->_pregnancy_record_id)){
+             $row->pregnancy_status=null;
+         }
          $row->status_updated=\App\Support\FhprClassification::resolve($row->status_updated,$row->days_in_milk??null,$row->dry_off_date??null,$row->pregnancy_status);
          $row->days_pregnant=$row->pregnancy_status==='Positive'
              ?($row->_pregnancy_mating_date
@@ -892,9 +922,33 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      $ordered->each(function($row)use($dateColumns){
          $row->tag_number=$this->displayFhprTagNumber($row->tag_number??null);
          foreach($dateColumns as $column)$row->{$column}=$this->formatFhprDate($row->{$column}??null);
-         unset($row->cooperative_id,$row->registry_number,$row->source_data,$row->_pregnancy_mating_date,$row->_latest_mating_source);
+         unset($row->cooperative_id,$row->registry_number,$row->source_data,$row->_pregnancy_record_id,$row->_pregnancy_mating_date,$row->_latest_mating_source);
      });
      return $ordered;
+ }
+
+ private function fhprReportedPregnancies(\Illuminate\Support\Collection $records): \Illuminate\Support\Collection
+ {
+     $damIds=$records->whereNotNull('_pregnancy_record_id')->pluck('carabao_id')->unique();
+     if($damIds->isEmpty()) return collect();
+
+     $matings=DB::table('mating_records as mating')
+         ->join('carabaos as dam','dam.id','=','mating.carabao_id')
+         ->whereIn('mating.carabao_id',$damIds)
+         ->whereRaw("LOWER(TRIM(mating.pregnancy_result)) IN ('+', 'p', 'positive', 'pregnant', 'yes')")
+         ->get(['mating.id','mating.carabao_id','mating.mating_date','mating.pregnancy_check_date',
+             'mating.pregnancy_result','dam.animal_id as animal_registry_id','dam.registry_number']);
+     if($matings->isEmpty()) return collect();
+
+     $calves=Schema::hasTable('calves')
+         ? DB::table('calves')->whereIn('dam_id',$damIds)->get(['dam_id','birth_date'])
+         : collect();
+     $inventoryCalves=Schema::hasColumns('carabaos',['dam_id','birth_date'])
+         ? DB::table('carabaos')->whereNotNull('dam_id')->whereNotNull('birth_date')->get(['dam_id as mother_id','birth_date'])
+         : collect();
+
+     return \App\Support\MatingCalfReports::annotate($matings,$calves,$inventoryCalves)
+         ->where('calf_drop_reported',true)->keyBy('id');
  }
 
  private function formatFhprDate($date): string

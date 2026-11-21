@@ -51,7 +51,7 @@
             <input type="hidden" name="per_page" value="{{ $reports->perPage() }}">
             <div class="flex items-end gap-2 lg:col-span-2">
                 <button type="submit" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#12345a]">Apply filters</button>
-                <a href="{{ route('ui.activity-logs') }}" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Clear</a>
+                <x-reset-filters :href="route('ui.activity-logs')" />
             </div>
         </form>
 

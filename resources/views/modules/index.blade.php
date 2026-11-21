@@ -281,22 +281,23 @@
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     {{ number_format($totalRecords) }} records
                 </span>
-                @if(!$detailedSearch && ($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->contains(fn($value)=>$value!==''))))
-                    <a href="{{ url()->current() }}" class="action-secondary">Reset Filters</a>
+                @if($module === 'fhpr' || (!$detailedSearch && ($searchValue !== '' || ($module === 'milk' && collect($milkFilters)->contains(fn($value)=>$value!=='')))))
+                    <x-reset-filters :href="url()->current()" />
                 @endif
             </div>
         </div>
 
         {{-- SEARCH --}}
         <form method="GET" action="{{ url()->current() }}"
+              @if($module === 'fhpr') id="fhpr-filters" @endif
               class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ $detailedSearch ? 'xl:grid-cols-8' : 'xl:grid-cols-6' }}">
             @if(in_array($module, ['health', 'fhpr'], true))
                 <input type="hidden" name="per_page" value="{{ $rows->perPage() }}">
             @endif
             <div class="sm:col-span-2 {{ $detailedSearch ? 'xl:col-span-2' : 'xl:col-span-4' }}">
-                <label for="search" class="filter-label">{{ $detailedSearch ? 'Search Records' : 'Search' }}</label>
+                <label for="search" class="filter-label">{{ $detailedSearch && $module !== 'fhpr' ? 'Search Records' : 'Search' }}</label>
                 <input id="search" type="search" name="search" value="{{ $searchValue }}"
-                       class="filter-input" placeholder="{{ match($module) { 'health' => 'Farmer, registry ID, tag, or service', 'bcs', 'mtd' => 'Farmer, cooperative, animal ID, or tag', 'fhpr' => 'Animal ID, tag, farmer, or cooperative', 'exits' => 'Farmer, animal, or exit reason', 'milk' => 'Cooperative or farmer name...', 'meat', 'manure' => 'Cooperative name or code', default => 'Search records...' } }}">
+                       class="filter-input" placeholder="{{ match($module) { 'health' => 'Farmer, registry ID, tag, or service', 'bcs', 'mtd' => 'Farmer, cooperative, animal ID, or tag', 'fhpr' => 'Animal, farmer, bull ID/name, technician', 'exits' => 'Farmer, animal, or exit reason', 'milk' => 'Cooperative or farmer name...', 'meat', 'manure' => 'Cooperative name or code', default => 'Search records...' } }}">
             </div>
             @if($module === 'health')
                 <div>
@@ -329,17 +330,30 @@
                         @endforeach
                     </select>
                 </div>
-                @foreach (['classification' => 'Classification', 'pregnancy_status' => 'PD Result', 'mating_type' => 'Mating Type'] as $filter => $label)
+                @foreach (['mating_type' => 'Mating Type', 'mating_year' => 'Year', 'pregnancy_status' => 'PD Result'] as $filter => $label)
                     <div>
                         <label for="fhpr-{{ $filter }}-filter" class="filter-label">{{ $label }}</label>
                         <select id="fhpr-{{ $filter }}-filter" name="{{ $filter }}" class="filter-input">
-                            <option value="">Any {{ $label }}</option>
+                            <option value="">{{ ['mating_type' => 'All types', 'mating_year' => 'All years', 'pregnancy_status' => 'All results'][$filter] }}</option>
                             @foreach ($fhprOptions[$filter] as $value)
-                                <option value="{{ $value }}" @selected(($fhprFilters[$filter] ?? null) === $value)>{{ $value }}</option>
+                                <option value="{{ $value }}" @selected((string) ($fhprFilters[$filter] ?? '') === (string) $value)>{{ $filter === 'mating_type' ? (['AI' => 'Artificial Insemination (AI)', 'NM' => 'Natural Mating (NM)'][$value] ?? $value) : $value }}</option>
                             @endforeach
                         </select>
                     </div>
                 @endforeach
+                <div>
+                    <label for="fhpr-mating-date" class="filter-label">Mating Date</label>
+                    <input id="fhpr-mating-date" type="date" name="mating_date" value="{{ $fhprFilters['mating_date'] ?? '' }}" class="filter-input">
+                </div>
+                <div>
+                    <label for="fhpr-classification-filter" class="filter-label">Classification</label>
+                    <select id="fhpr-classification-filter" name="classification" class="filter-input">
+                        <option value="">All classifications</option>
+                        @foreach ($fhprOptions['classification'] as $value)
+                            <option value="{{ $value }}" @selected(($fhprFilters['classification'] ?? null) === $value)>{{ $value }}</option>
+                        @endforeach
+                    </select>
+                </div>
             @elseif($module === 'bcs')
                 <div>
                     <label for="bcs-cooperative-filter" class="filter-label">Cooperative</label>
@@ -420,16 +434,28 @@
                     </select>
                 </div>
             @endif
-            <div class="flex items-end gap-2 xl:col-span-2">
-                <button type="submit" class="action-primary {{ $module === 'milk' ? 'h-11' : '' }}">
-                    <i class="fa-solid fa-magnifying-glass"></i> {{ $detailedSearch ? 'Apply Filters' : 'Search' }}
-                </button>
-                @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'fhpr' && array_filter($fhprFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
-                    <a href="{{ url()->current() }}" class="action-secondary">
-                        <i class="fa-solid fa-xmark"></i> Clear
-                    </a>
-                @endif
-            </div>
+            @if($module === 'fhpr')
+                <div class="flex flex-wrap items-center gap-4 sm:col-span-2 xl:col-span-6">
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" name="unreported_calves" value="1" @checked($fhprFilters['unreported_calves'] ?? false) class="rounded border-slate-300">
+                        Positive PD with no calf-drop report
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" name="overdue_calves" value="1" @checked($fhprFilters['overdue_calves'] ?? false) class="rounded border-slate-300">
+                        280+ days, calf drop not reported
+                    </label>
+                </div>
+            @endif
+            @unless($module === 'fhpr')
+                <div class="flex items-end gap-2 xl:col-span-2">
+                    <button type="submit" class="action-primary {{ $module === 'milk' ? 'h-11' : '' }}">
+                        <i class="fa-solid fa-magnifying-glass"></i> {{ $detailedSearch ? 'Apply Filters' : 'Search' }}
+                    </button>
+                    @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
+                        <x-reset-filters :href="url()->current()" />
+                    @endif
+                </div>
+            @endunless
         </form>
 
         {{-- TABLE --}}
@@ -958,6 +984,37 @@ if(healthPanel){
 @if($module === 'fhpr')
 @push('scripts')
 <script>
+{
+    const filters = document.getElementById('fhpr-filters');
+    const search = filters.elements.namedItem('search');
+    let searchTimer;
+
+    const applyFilters = () => {
+        clearTimeout(searchTimer);
+        filters.requestSubmit();
+    };
+
+    const scheduleSearch = () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(applyFilters, 500);
+    };
+    search.addEventListener('input', event => {
+        if (!event.isComposing) scheduleSearch();
+    });
+    search.addEventListener('compositionstart', () => clearTimeout(searchTimer));
+    search.addEventListener('compositionend', scheduleSearch);
+    search.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.isComposing) {
+            event.preventDefault();
+            applyFilters();
+        }
+    });
+    filters.addEventListener('change', event => {
+        if (event.target !== search) applyFilters();
+    });
+    filters.addEventListener('submit', () => clearTimeout(searchTimer));
+}
+
 function fhprMilkDate(id, days, startDate, displayDate) {
     return {
         id, days, startDate:startDate||'', displayDate:displayDate||'',

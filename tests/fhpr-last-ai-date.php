@@ -16,7 +16,11 @@ Schema::create('cooperatives', function (Blueprint $t) { $t->id(); $t->string('c
 Schema::create('farmers', function (Blueprint $t) { $t->id(); $t->integer('cooperative_id'); });
 Schema::create('carabaos', function (Blueprint $t) {
     $t->id(); $t->integer('farmer_id')->nullable(); $t->integer('cooperative_id');
-    foreach (['sex', 'classification', 'registry_number', 'animal_id'] as $column) $t->string($column)->nullable();
+    foreach (['sex', 'classification', 'registry_number', 'animal_id', 'dam_id'] as $column) $t->string($column)->nullable();
+    $t->date('birth_date')->nullable();
+});
+Schema::create('calves', function (Blueprint $t) {
+    $t->id(); $t->integer('dam_id'); $t->date('birth_date');
 });
 Schema::create('fhpr_records', function (Blueprint $t) {
     $t->id(); $t->integer('carabao_id'); $t->integer('cooperative_id');
@@ -91,6 +95,17 @@ DB::table('mating_records')->where('id', 5)->update(['mating_date' => '2026-06-0
 $check($read()[1]->days_pregnant === 169, 'Days did not refresh after Mating Date correction');
 DB::table('mating_records')->where('id', 5)->update(['mating_date' => '2027-01-01']);
 $check($read()[1]->days_pregnant === 0, 'Future mating date produced negative pregnancy days');
+DB::table('mating_records')->where('id', 5)->update(['mating_date' => '2026-06-01']);
+DB::table('calves')->insert(['dam_id' => 1, 'birth_date' => '2026-01-01']);
+$check($read()[1]->pregnancy_status === 'Positive', 'Earlier calf must not clear the current pregnancy');
+DB::table('calves')->insert(['dam_id' => 1, 'birth_date' => '2026-11-10']);
+$closed = $read()[1];
+$check($closed->pregnancy_status === null && $closed->days_pregnant === null && $closed->expected_calving_date === '-', 'Reported calf must clear active pregnancy fields');
+$check($closed->actual_pd_date === 'September 1,2026', 'Historical diagnosis date must remain visible');
+DB::table('calves')->where('birth_date', '2026-11-10')->delete();
+DB::table('carabaos')->insert(['cooperative_id' => 1, 'animal_id' => 'CALF-1', 'dam_id' => 'animal-1', 'birth_date' => '2026-11-10']);
+$check($read()[1]->pregnancy_status === null && $read()[2]->pregnancy_status === 'Pending', 'Inventory calf must close the matching pregnancy only');
+$check(DB::table('mating_records')->where('id',5)->value('pregnancy_result') === 'Positive', 'Historical pregnancy result was overwritten');
 $check(DB::table('fhpr_records')->get()->toJson() === $original, 'Saved FHPR data was overwritten');
 \Carbon\Carbon::setTestNow();
 echo "PASS: Latest AI only, matching animal identity, edited-date refresh, missing dates, formatting, no duplicate rows and unchanged stored FHPR data.\n";

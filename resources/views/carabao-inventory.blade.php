@@ -144,7 +144,7 @@
                 <button type="button" @click="exportXLSX(filteredRecords,'cbed_carabao_inventory_filtered.xlsx')" class="action-secondary">
                     <i class="fa-solid fa-file-excel"></i> Export Filtered
                 </button>
-                <button type="button" @click="clearFilters()" class="action-secondary">Reset Filters</button>
+                <x-reset-filters x-on:click="clearFilters()" />
             </div>
         </div>
 

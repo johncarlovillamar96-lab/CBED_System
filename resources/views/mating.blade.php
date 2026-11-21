@@ -61,7 +61,7 @@
                 <span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold">
                     <span x-text="filteredRecords().length"></span> records
                 </span>
-                <button type="button" @click="resetFilters()" class="action-secondary">Reset Filters</button>
+                <x-reset-filters x-on:click="resetFilters()" />
             </div>
         </div>
 
