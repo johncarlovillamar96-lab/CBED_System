@@ -16,15 +16,15 @@
             <i class="fa-solid fa-file-import" aria-hidden="true"></i> Import
             <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" @change="importExcel($event)">
         </label>
-        <button type="button" @click="downloadTemplate()" class="action-secondary">
+        @if(auth()->user()->isAdmin())<button type="button" @click="downloadTemplate()" class="action-secondary">
             <i class="fa-solid fa-download"></i> Downloadable template
-        </button>
-        <button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+        </button>@endif
+        @if(auth()->user()->isAdmin())<button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-layer-group"></i> Bulk Add
-        </button>
-        <button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+        </button>@endif
+        @if(auth()->user()->isAdmin())<button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-plus"></i> Add Carabao
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
     {{-- SUMMARY CARDS --}}
@@ -253,9 +253,9 @@
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex justify-end gap-1">
-                                    <button type="button" @click="viewAnimal(animal)" title="View" class="rounded p-2 text-slate-600 hover:bg-slate-100"><i class="fa-solid fa-eye"></i></button>
-                                    <button type="button" @click="editAnimal(animal)" title="Edit" class="rounded p-2 text-blue-700 hover:bg-blue-50"><i class="fa-solid fa-pen-to-square"></i></button>
-                                    <button type="button" @click="deleteAnimal(animal)" title="Delete" class="rounded p-2 text-rose-600 hover:bg-rose-50"><i class="fa-solid fa-trash"></i></button>
+                                    <button type="button" @click="viewAnimal(animal)" title="View" class="cbed-record-action cbed-record-action--view" aria-label="View"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="editAnimal(animal)" title="Edit" class="cbed-record-action cbed-record-action--edit" aria-label="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="deleteAnimal(animal)" title="Delete" class="cbed-record-action cbed-record-action--delete" aria-label="Delete"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>@endif
                                 </div>
                             </td>
                         </tr>
@@ -466,7 +466,7 @@
             <div class="p-5">
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <span class="text-sm font-semibold"><span x-text="bulkRows.length"></span> animal(s)</span>
-                    <button type="button" @click="addBulkRow()" class="cbed-add-button rounded-lg border px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i> Add Row</button>
+                    @if(auth()->user()->isAdmin())<button type="button" @click="addBulkRow()" class="cbed-add-button rounded-lg border px-3 py-2 text-sm font-semibold"><i class="fa-solid fa-plus mr-1"></i> Add Row</button>@endif
                 </div>
                 <div class="overflow-x-auto rounded-lg border">
                     <table class="min-w-[1100px] w-full text-sm">
@@ -518,7 +518,7 @@
                     </div>
                 </template>
                 <div class="flex items-center justify-end sm:col-span-2 lg:col-span-3">
-                    <button type="button" @click="editAnimal(selectedAnimal)" class="rounded-lg bg-blue-700 px-4 py-2.5 font-semibold text-white">Edit Record</button>
+                    @if(auth()->user()->isAdmin())<button type="button" @click="editAnimal(selectedAnimal)" class="rounded-lg bg-blue-700 px-4 py-2.5 font-semibold text-white">Edit Record</button>@endif
                 </div>
             </div>
         </div>

@@ -81,24 +81,24 @@
         <a href="{{ route('modules.export', $module) }}" class="action-secondary">
             <i class="fa-solid fa-file-export"></i> {{ in_array($module, ['health', 'fhpr', 'milk', 'bcs', 'meat', 'manure', 'mtd', 'exits'], true) ? 'Export' : 'Export CSV' }}
         </a>
-        <button type="button" onclick="document.getElementById('{{ $module }}-csv-import').showModal()" aria-haspopup="dialog" class="action-secondary">
+        @if(auth()->user()->isAdmin())<button type="button" onclick="document.getElementById('{{ $module }}-csv-import').showModal()" aria-haspopup="dialog" class="action-secondary">
             <i class="fa-solid fa-file-import" aria-hidden="true"></i> Import
-        </button>
+        </button>@endif
         @unless($module === 'fhpr')
-            <a href="{{ route('modules.template', $module) }}" class="{{ in_array($module, ['health', 'milk', 'meat', 'manure', 'mtd', 'exits'], true) ? 'action-secondary' : 'action-primary' }}">
+            @if(auth()->user()->isAdmin())<a href="{{ route('modules.template', $module) }}" class="{{ in_array($module, ['health', 'milk', 'meat', 'manure', 'mtd', 'exits'], true) ? 'action-secondary' : 'action-primary' }}">
                 <i class="fa-solid fa-download" aria-hidden="true"></i> Download Template
-            </a>
+            </a>@endif
         @endunless
         @if($module === 'health')
-            <button type="button" onclick="openHealthEditor()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Activity</button>
+            @if(auth()->user()->isAdmin())<button type="button" onclick="openHealthEditor()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Activity</button>@endif
         @elseif($module === 'milk')
-            <button type="button" onclick="document.getElementById('milk-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Milk Production</button>
+            @if(auth()->user()->isAdmin())<button type="button" onclick="document.getElementById('milk-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Milk Production</button>@endif
         @elseif($isProduct)
-            <button type="button" onclick="document.getElementById('{{ $module }}-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add {{ $productLabel }} Production</button>
+            @if(auth()->user()->isAdmin())<button type="button" onclick="document.getElementById('{{ $module }}-production-form').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add {{ $productLabel }} Production</button>@endif
         @elseif($module === 'mtd')
-            <button type="button" onclick="document.getElementById('mtd-entry').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bulk Add MTD Records</button>
+            @if(auth()->user()->isAdmin())<button type="button" onclick="document.getElementById('mtd-entry').showModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Bulk Add MTD Records</button>@endif
         @elseif($module === 'exits')
-            <button type="button" x-data @click="$dispatch('exit-record',{mode:'add'})" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Exit</button>
+            @if(auth()->user()->isAdmin())<button type="button" x-data @click="$dispatch('exit-record',{mode:'add'})" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Exit</button>@endif
         @endif
     </x-admin-page-header>
 
@@ -564,7 +564,7 @@
                                         <div x-data="fhprDryOffEditor(@js(route('fhpr.dry-off.update', $row->id)), @js($row->_dry_off_date), @js($value), @js($row->id))">
                                             <div x-show="!editing" class="flex items-center gap-3">
                                                 <span x-text="displayDate"></span>
-                                                <button type="button" @click="open()" class="rounded border border-blue-200 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50" title="Update Dry Off Date" aria-label="Update Dry Off Date for {{ $row->animal_identifier }}"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                                                @if(auth()->user()->isAdmin())<button type="button" @click="open()" class="cbed-record-action cbed-record-action--edit" title="Update Dry Off Date" aria-label="Update Dry Off Date for {{ $row->animal_identifier }}"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
                                             </div>
                                             <form x-show="editing" x-cloak @submit.prevent="save()" class="space-y-2">
                                                 <input x-ref="input" type="date" x-model="draftDate" :disabled="saving" aria-label="Dry Off Date for {{ $row->animal_identifier }}" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
@@ -594,9 +594,9 @@
                                         @endif
                                     @elseif($module === 'health' && $columnKey === 'actions')
                                         <div class="flex items-center gap-1">
-                                            <button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-slate-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }},true)" aria-label="View health record" title="View details"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
-                                            <button type="button" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" onclick="openHealthEditor({{ $row->id }})" aria-label="Edit health record" title="Edit health record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
-                                            <button type="button" class="rounded-lg px-3 py-2 text-red-600 hover:bg-red-50" onclick="deleteHealthActivity({{ $row->id }})" aria-label="Delete health record" title="Delete health record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                            <button type="button" class="cbed-record-action cbed-record-action--view" onclick="openHealthEditor({{ $row->id }},true)" aria-label="View health record" title="View details"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            @if(auth()->user()->isAdmin())<button type="button" class="cbed-record-action cbed-record-action--edit" onclick="openHealthEditor({{ $row->id }})" aria-label="Edit health record" title="Edit health record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
+                                            @if(auth()->user()->isAdmin())<button type="button" class="cbed-record-action cbed-record-action--delete" onclick="deleteHealthActivity({{ $row->id }})" aria-label="Delete health record" title="Delete health record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>@endif
                                         </div>
                                     @elseif($module === 'health' && $columnKey === 'remarks')
                                         @php
@@ -624,18 +624,18 @@
                                         <span class="whitespace-pre-wrap break-words">{{ $value !== null && $value !== '' ? $value : '—' }}</span>
                                     @elseif($module === 'mtd' && $columnKey === 'actions')
                                         <div class="flex items-center gap-1" x-data="{ record: @js(array_intersect_key((array) $row, array_flip([...$columns, 'id', 'missing_teats', 'milk_yield_liters']))) }">
-                                            <button type="button" @click="$dispatch('mtd-record',{mode:'view',record})" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details" aria-label="View MTD record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
-                                            <button type="button" @click="$dispatch('mtd-record',{mode:'edit',record})" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit record" aria-label="Edit MTD record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
-                                            <button type="button" @click="$dispatch('mtd-record',{mode:'delete',record})" class="rounded-lg px-3 py-2 text-rose-600 hover:bg-rose-50" title="Delete record" aria-label="Delete MTD record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                            <button type="button" @click="$dispatch('mtd-record',{mode:'view',record})" class="cbed-record-action cbed-record-action--view" title="View details" aria-label="View MTD record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            @if(auth()->user()->isAdmin())<button type="button" @click="$dispatch('mtd-record',{mode:'edit',record})" class="cbed-record-action cbed-record-action--edit" title="Edit record" aria-label="Edit MTD record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
+                                            @if(auth()->user()->isAdmin())<button type="button" @click="$dispatch('mtd-record',{mode:'delete',record})" class="cbed-record-action cbed-record-action--delete" title="Delete record" aria-label="Delete MTD record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>@endif
                                         </div>
                                     @elseif($module === 'exits' && $columnKey === 'exit_date')
                                         {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('d-M-y') : '—' }}
                                     @elseif($module === 'exits' && $columnKey === 'actions')
                                         <div class="flex items-center gap-1" x-data="{ record: @js($row) }">
-                                            <button type="button" @click="$dispatch('exit-record',{mode:'view',record})" class="rounded-lg border border-slate-200 px-3 py-2 hover:bg-blue-50" title="View details" aria-label="View exit record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+                                            <button type="button" @click="$dispatch('exit-record',{mode:'view',record})" class="cbed-record-action cbed-record-action--view" title="View details" aria-label="View exit record"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
                                             @if($row->record_id)
-                                                <button type="button" @click="$dispatch('exit-record',{mode:'edit',record})" class="rounded-lg border border-blue-200 px-3 py-2 text-blue-700 hover:bg-blue-50" title="Edit record" aria-label="Edit exit record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
-                                                <button type="button" @click="$dispatch('exit-record',{mode:'delete',record})" class="rounded-lg px-3 py-2 text-rose-600 hover:bg-rose-50" title="Delete record" aria-label="Delete exit record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                                                @if(auth()->user()->isAdmin())<button type="button" @click="$dispatch('exit-record',{mode:'edit',record})" class="cbed-record-action cbed-record-action--edit" title="Edit record" aria-label="Edit exit record"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
+                                                @if(auth()->user()->isAdmin())<button type="button" @click="$dispatch('exit-record',{mode:'delete',record})" class="cbed-record-action cbed-record-action--delete" title="Delete record" aria-label="Delete exit record"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>@endif
                                             @endif
                                         </div>
                                     @elseif(is_null($value) || $value === '')
@@ -683,7 +683,7 @@
                     <h2 id="{{ $module }}-import-title" class="text-xl font-bold text-[#12345a]">{{ match($module) { 'health' => 'Import Health CSV', 'fhpr' => 'Import Breeding Summary CSV', 'milk' => 'Import Milk CSV', 'meat', 'manure' => 'Import '.$productLabel.' CSV', 'mtd' => 'Import MTD CSV', 'exits' => 'Import Exit Records CSV', 'bcs' => 'Import BCS CSV', default => 'Import CSV' } }}</h2>
                     @if($module === 'fhpr')
                         <p class="text-sm text-slate-600">Each Animal ID must match a classified female in inventory. Add the cooperative name or code if the ID is shared.</p>
-                        <a href="{{ route('modules.template', 'fhpr') }}" class="inline-block text-sm font-semibold text-blue-800 underline">Download CSV template</a>
+                        @if(auth()->user()->isAdmin())<a href="{{ route('modules.template', 'fhpr') }}" class="inline-block text-sm font-semibold text-blue-800 underline">Download CSV template</a>@endif
                     @endif
                     <label class="block text-sm font-semibold">CSV file<input type="file" name="file" accept=".csv,.txt" required class="mt-1 block w-full rounded-lg border border-slate-300 text-sm file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-2"></label>
                 </div>

@@ -32,22 +32,22 @@
             Export
         </button>
 
-        <button type="button"
+        @if(auth()->user()->isAdmin())<button type="button"
             @click="openImportModal()"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
             <i class="fa-solid fa-file-import"></i>
             Import
-        </button>
-        <a href="{{ route('admin.farmers.template') }}" class="action-secondary">
+        </button>@endif
+        @if(auth()->user()->isAdmin())<a href="{{ route('admin.farmers.template') }}" class="action-secondary">
             <i class="fa-solid fa-download" aria-hidden="true"></i> Downloadable Template
-        </a>
+        </a>@endif
 
-        <button type="button"
+        @if(auth()->user()->isAdmin())<button type="button"
             @click="openBulkModal()"
             class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-users"></i>
             Bulk Add Farmers
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
 
@@ -228,17 +228,17 @@
                             <td class="whitespace-nowrap px-4 py-4 text-right">
                                 <div class="flex justify-end gap-1.5">
                                     <button type="button" @click="viewFarmer(farmer)" title="View" aria-label="View farmer"
-                                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100">
+                                            class="cbed-record-action cbed-record-action--view">
                                         <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="editFarmer(farmer)" title="Edit" aria-label="Edit farmer"
-                                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
-                                        <i class="fa-solid fa-pen" aria-hidden="true"></i>
-                                    </button>
-                                    <button type="button" @click="deleteFarmer(farmer)" title="Delete" aria-label="Delete farmer"
-                                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50">
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="editFarmer(farmer)" title="Edit" aria-label="Edit farmer"
+                                            class="cbed-record-action cbed-record-action--edit">
+                                        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                    </button>@endif
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="deleteFarmer(farmer)" title="Delete" aria-label="Delete farmer"
+                                            class="cbed-record-action cbed-record-action--delete">
                                         <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                                    </button>
+                                    </button>@endif
                                 </div>
                             </td>
                         </tr>
@@ -298,11 +298,11 @@
                     Fields marked <span class="font-bold text-red-500">*</span> are required.
                 </p>
                 <div class="flex flex-wrap gap-2">
-                    <button @click="addBulkRow()"
+                    @if(auth()->user()->isAdmin())<button @click="addBulkRow()"
                             class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold">
                         <i class="fa-solid fa-plus"></i>
                         Add Row
-                    </button>
+                    </button>@endif
                 </div>
             </div>
 

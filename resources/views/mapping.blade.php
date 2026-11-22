@@ -1,4 +1,4 @@
-﻿@extends('layouts.admin')
+@extends('layouts.admin')
 
 @section('title', 'CBED Mapping')
 @section('dataSource', 'sample')
@@ -37,10 +37,10 @@
 }" class="space-y-6">
 
     <x-admin-page-header title="CBED Mapping" description="View recorded farmer, cooperative, and animal locations.">
-        <button @click="showAdd = true"
+        @if(auth()->user()->isAdmin())<button @click="showAdd = true"
             class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-plus"></i> Add Record
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">

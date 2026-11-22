@@ -4,12 +4,15 @@
 @section('page-heading', 'Activity Logs')
 
 @section('content')
-    <x-admin-page-header title="Activity Logs" section="Monitoring" description="Track saved monitoring visits and open reports to review or print.">
+    <x-admin-page-header title="Monitoring Visits" section="Activity Logs" description="Track saved monitoring visits and open reports to review or print.">
+        @if (auth()->user()->isAdmin())
+            <a href="{{ route('ui.activity-logs') }}">System activity</a>
+        @endif
         <a href="{{ route('ui.monitoring') }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Monitoring</a>
     </x-admin-page-header>
 
     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Saved visits">
-        <form method="get" action="{{ route('ui.activity-logs') }}" class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
+        <form method="get" action="{{ route('ui.activity-logs.monitoring') }}" class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
             <label class="text-xs font-semibold text-slate-700">Search cooperative or creator
                 <input type="search" name="report_search" value="{{ $filters['report_search'] ?? '' }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
             </label>
@@ -51,7 +54,7 @@
             <input type="hidden" name="per_page" value="{{ $reports->perPage() }}">
             <div class="flex items-end gap-2 lg:col-span-2">
                 <button type="submit" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#12345a]">Apply filters</button>
-                <x-reset-filters :href="route('ui.activity-logs')" />
+                <x-reset-filters :href="route('ui.activity-logs.monitoring')" />
             </div>
         </form>
 
@@ -76,7 +79,7 @@
                             <td class="px-5 py-3">{{ $report->service_labels->implode(', ') ?: '—' }}</td>
                             <td class="px-5 py-3">{{ $report->created_by_name ?: '—' }}</td>
                             <td class="whitespace-nowrap px-5 py-3 text-right">
-                                <a href="{{ route('ui.monitoring.reports.show', $report->id) }}" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-100"><i class="fa-regular fa-folder-open" aria-hidden="true"></i>Open report</a>
+                                <a href="{{ route('ui.monitoring.reports.show', $report->id) }}" class="cbed-record-action cbed-record-action--view" aria-label="View report for {{ $report->cooperative_name }}" title="View report"><i class="fa-solid fa-eye" aria-hidden="true"></i></a>
                             </td>
                         </tr>
                     @empty

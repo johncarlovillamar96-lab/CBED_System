@@ -1,8 +1,8 @@
-
 <?php
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AnimalExitController;
 use App\Http\Controllers\AthenaController;
 use App\Http\Controllers\DashboardController;
@@ -17,102 +17,111 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 
-// Login routes
-Route::get('/login', [AuthController::class, 'show'])->name('login');
-Route::post('/login', [AuthController::class, 'login'])->name('login.post');
-Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-Route::post('/athena/chat', [AthenaController::class, 'chat'])->middleware('throttle:10,1')->name('athena.chat');
-Route::post('/athena/records', [AthenaController::class, 'records'])->middleware(['auth', 'throttle:10,1'])->name('athena.records');
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'show'])->name('login');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1')->name('login.post');
+});
 
-// Dashboard - temporary access without login
-Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.page');
-Route::get('/imports/cooperative', [CooperativeImportController::class, 'create'])->name('imports.cooperative.create');
-Route::post('/imports/cooperative/preview', [CooperativeImportController::class, 'preview'])->name('imports.cooperative.preview');
-Route::post('/imports/cooperative/commit', [CooperativeImportController::class, 'import'])->name('imports.cooperative.import');
-Route::get('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'create'])->name('imports.cooperative-workbook.create');
-Route::post('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'import'])->name('imports.cooperative-workbook.import');
-Route::post('/imports/cooperative-workbook/batches', [CooperativeWorkbookImportController::class, 'createBatch'])->name('imports.cooperative-workbook.batches.create');
-Route::post('/imports/cooperative-workbook/batches/{batchId}/files', [CooperativeWorkbookImportController::class, 'stageBatchFile'])
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
+
+Route::middleware(['auth', 'workspace:admin'])->group(function () {
+    Route::get('/signup', [AuthController::class, 'showSignup'])->name('signup');
+    Route::post('/signup', [AuthController::class, 'signup'])->name('signup.store');
+    Route::put('/signup/{account}', [AuthController::class, 'updateAccount'])->whereNumber('account')->name('signup.update');
+    Route::delete('/signup/{account}', [AuthController::class, 'deleteAccount'])->whereNumber('account')->name('signup.destroy');
+    Route::post('/athena/chat', [AthenaController::class, 'chat'])->middleware('throttle:10,1')->name('athena.chat');
+    Route::post('/athena/records', [AthenaController::class, 'records'])->middleware('throttle:10,1')->name('athena.records');
+});
+
+Route::middleware(['auth', 'workspace'])->get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::middleware(['auth', 'workspace'])->get('/dashboard', [DashboardController::class, 'index'])->name('dashboard.page');
+Route::middleware(['auth', 'workspace:admin'])->get('/imports/cooperative', [CooperativeImportController::class, 'create'])->name('imports.cooperative.create');
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative/preview', [CooperativeImportController::class, 'preview'])->name('imports.cooperative.preview');
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative/commit', [CooperativeImportController::class, 'import'])->name('imports.cooperative.import');
+Route::middleware(['auth', 'workspace:admin'])->get('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'create'])->name('imports.cooperative-workbook.create');
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook', [CooperativeWorkbookImportController::class, 'import'])->name('imports.cooperative-workbook.import');
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/batches', [CooperativeWorkbookImportController::class, 'createBatch'])->name('imports.cooperative-workbook.batches.create');
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/batches/{batchId}/files', [CooperativeWorkbookImportController::class, 'stageBatchFile'])
     ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.files.stage');
-Route::post('/imports/cooperative-workbook/batches/{batchId}/confirm', [CooperativeWorkbookImportController::class, 'confirmBatch'])
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/batches/{batchId}/confirm', [CooperativeWorkbookImportController::class, 'confirmBatch'])
     ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.confirm');
-Route::post('/imports/cooperative-workbook/unmapped/{identifierId}/map', [CooperativeWorkbookImportController::class, 'mapUnmappedIdentifier'])
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/unmapped/{identifierId}/map', [CooperativeWorkbookImportController::class, 'mapUnmappedIdentifier'])
     ->whereNumber('identifierId')->name('imports.cooperative-workbook.unmapped.map');
-Route::post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/import', [CooperativeWorkbookImportController::class, 'importBatchFile'])
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/import', [CooperativeWorkbookImportController::class, 'importBatchFile'])
     ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.import');
-Route::post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/retry', [CooperativeWorkbookImportController::class, 'retryBatchFile'])
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}/retry', [CooperativeWorkbookImportController::class, 'retryBatchFile'])
     ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.retry');
-Route::delete('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}', [CooperativeWorkbookImportController::class, 'removeBatchFile'])
+Route::middleware(['auth', 'workspace'])->delete('/imports/cooperative-workbook/batches/{batchId}/files/{fileId}', [CooperativeWorkbookImportController::class, 'removeBatchFile'])
     ->whereNumber('batchId')->whereNumber('fileId')->name('imports.cooperative-workbook.batches.files.remove');
-Route::delete('/imports/cooperative-workbook/batches/{batchId}', [CooperativeWorkbookImportController::class, 'cancelBatch'])
+Route::middleware(['auth', 'workspace'])->delete('/imports/cooperative-workbook/batches/{batchId}', [CooperativeWorkbookImportController::class, 'cancelBatch'])
     ->whereNumber('batchId')->name('imports.cooperative-workbook.batches.cancel');
-Route::post('/imports/cooperative-workbook/{cooperativeId}/{sheetKey}', [CooperativeWorkbookImportController::class, 'importSheet'])
+Route::middleware(['auth', 'workspace'])->post('/imports/cooperative-workbook/{cooperativeId}/{sheetKey}', [CooperativeWorkbookImportController::class, 'importSheet'])
     ->whereNumber('cooperativeId')
     ->name('imports.cooperative-workbook.import-sheet');
-Route::delete('/imports/cooperative-workbook/history', [CooperativeWorkbookImportController::class, 'clearHistory'])
+Route::middleware(['auth', 'workspace'])->delete('/imports/cooperative-workbook/history', [CooperativeWorkbookImportController::class, 'clearHistory'])
     ->name('imports.cooperative-workbook.clear-history');
-Route::get('/admin/cooperatives/export', [CooperativeSpreadsheetController::class, 'export'])->name('admin.cooperatives.export');
-Route::get('/admin/cooperatives/template', [CooperativeSpreadsheetController::class, 'template'])->name('admin.cooperatives.template');
-Route::post('/admin/cooperatives/import', [CooperativeSpreadsheetController::class, 'import'])->name('admin.cooperatives.import');
+Route::middleware(['auth', 'workspace'])->get('/admin/cooperatives/export', [CooperativeSpreadsheetController::class, 'export'])->name('admin.cooperatives.export');
+Route::middleware(['auth', 'workspace:admin'])->get('/admin/cooperatives/template', [CooperativeSpreadsheetController::class, 'template'])->name('admin.cooperatives.template');
+Route::middleware(['auth', 'workspace'])->post('/admin/cooperatives/import', [CooperativeSpreadsheetController::class, 'import'])->name('admin.cooperatives.import');
 
 // Original CBED_NEW Blade screens
-Route::view('/farmers', 'farmer')->name('ui.farmers');
-Route::view('/cooperatives', 'cooperative')->name('ui.cooperatives');
-Route::view('/carabaos', 'carabao')->name('ui.carabaos');
-Route::view('/mating', 'mating')->name('ui.mating');
-Route::view('/calves', 'calf-drop')->name('ui.calves');
-Route::redirect('/calf-drop', '/calves')->name('ui.calf-drop');
-Route::view('/health-nutrition', 'health-nutrition')->name('ui.health-nutrition');
-Route::view('/milk-production', 'milk-production')->name('ui.milk-production');
-Route::view('/mil-test', 'mil-test')->name('ui.mil-test');
-Route::get('/nature-of-exit', [AnimalExitController::class, 'index'])->name('ui.nature-of-exit');
-Route::view('/mapping', 'mapping')->name('ui.mapping');
-Route::view('/carabao-inventory', 'carabao-inventory')->name('admin.carabao-inventory');
-Route::permanentRedirect('/admin/carabao-inventory', '/carabao-inventory');
-Route::view('/admin/semen-bulls', 'semen-bull')->name('admin.semen-bulls');
-Route::get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
-Route::patch('/fhpr/{id}/dry-off-date', [ModuleController::class, 'updateFhprDryOffDate'])->whereNumber('id')->name('fhpr.dry-off.update');
-Route::get('/bcs', [ModuleController::class, 'index'])->defaults('module', 'bcs')->name('ui.bcs');
-Route::get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
-Route::post('/milk', [ModuleController::class, 'storeMilkProduction'])->name('milk.production.store');
-Route::get('/mtd', [MtdController::class, 'index'])->name('ui.mtd');
-Route::post('/mtd', [MtdController::class, 'store'])->name('mtd.store');
-Route::put('/mtd/{record}', [MtdController::class, 'update'])->whereNumber('record')->name('mtd.update');
-Route::delete('/mtd/{record}', [MtdController::class, 'destroy'])->whereNumber('record')->name('mtd.delete');
-Route::get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
-Route::get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
-Route::get('/activity-logs', [MonitoringReportController::class, 'activityLogs'])->name('ui.activity-logs');
-Route::get('/monitoring/cooperatives/{cooperative}/animals', [MonitoringReportController::class, 'animals'])->whereNumber('cooperative')->name('ui.monitoring.animals');
-Route::get('/monitoring/bcs-scores', [MonitoringReportController::class, 'bcsScores'])->name('ui.monitoring.bcs-scores');
-Route::get('/monitoring/semen-bulls', fn () => DB::table('semen_bulls')->whereRaw('LOWER(status) = ?', ['active'])->orderBy('bull_name')->get(['id','bull_id','bull_name','breed','status']))->name('ui.monitoring.semen-bulls');
-Route::post('/monitoring/reports', [MonitoringReportController::class, 'store'])->name('ui.monitoring.reports.store');
-Route::get('/monitoring/reports/{report}/data', [MonitoringReportController::class, 'editData'])->whereNumber('report')->name('ui.monitoring.reports.data');
-Route::get('/monitoring/reports/{report}/export', [MonitoringReportController::class, 'export'])->whereNumber('report')->name('ui.monitoring.reports.export');
-Route::get('/monitoring/reports/{report}', [MonitoringReportController::class, 'show'])->whereNumber('report')->name('ui.monitoring.reports.show');
-Route::put('/monitoring/reports/{report}', [MonitoringReportController::class, 'update'])->whereNumber('report')->name('ui.monitoring.reports.update');
-Route::get('/exits', [AnimalExitController::class, 'index'])->name('ui.exits');
-Route::post('/exits', [AnimalExitController::class, 'store'])->name('exits.store');
-Route::put('/exits/{record}', [AnimalExitController::class, 'update'])->whereNumber('record')->name('exits.update');
-Route::delete('/exits/{record}', [AnimalExitController::class, 'destroy'])->whereNumber('record')->name('exits.delete');
-Route::get('/meat', [ModuleController::class, 'index'])->defaults('module', 'meat')->name('ui.meat');
-Route::post('/meat', [ModuleController::class, 'storeProductProduction'])->defaults('module', 'meat')->name('meat.production.store');
-Route::get('/manure', [ModuleController::class, 'index'])->defaults('module', 'manure')->name('ui.manure');
-Route::post('/manure', [ModuleController::class, 'storeProductProduction'])->defaults('module', 'manure')->name('manure.production.store');
+Route::view('/farmers', 'farmer')->middleware(['auth', 'workspace'])->name('ui.farmers');
+Route::view('/cooperatives', 'cooperative')->middleware(['auth', 'workspace'])->name('ui.cooperatives');
+Route::view('/carabaos', 'carabao')->middleware(['auth', 'workspace'])->name('ui.carabaos');
+Route::view('/mating', 'mating')->middleware(['auth', 'workspace'])->name('ui.mating');
+Route::view('/calves', 'calf-drop')->middleware(['auth', 'workspace'])->name('ui.calves');
+Route::redirect('/calf-drop', '/calves')->middleware(['auth', 'workspace'])->name('ui.calf-drop');
+Route::view('/health-nutrition', 'health-nutrition')->middleware(['auth', 'workspace'])->name('ui.health-nutrition');
+Route::view('/milk-production', 'milk-production')->middleware(['auth', 'workspace'])->name('ui.milk-production');
+Route::view('/mil-test', 'mil-test')->middleware(['auth', 'workspace'])->name('ui.mil-test');
+Route::middleware(['auth', 'workspace'])->get('/nature-of-exit', [AnimalExitController::class, 'index'])->name('ui.nature-of-exit');
+Route::view('/mapping', 'mapping')->middleware(['auth', 'workspace'])->name('ui.mapping');
+Route::view('/carabao-inventory', 'carabao-inventory')->middleware(['auth', 'workspace'])->name('admin.carabao-inventory');
+Route::permanentRedirect('/admin/carabao-inventory', '/carabao-inventory')->middleware(['auth', 'workspace']);
+Route::view('/admin/semen-bulls', 'semen-bull')->middleware(['auth', 'workspace'])->name('admin.semen-bulls');
+Route::middleware(['auth', 'workspace'])->get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
+Route::middleware(['auth', 'workspace'])->patch('/fhpr/{id}/dry-off-date', [ModuleController::class, 'updateFhprDryOffDate'])->whereNumber('id')->name('fhpr.dry-off.update');
+Route::middleware(['auth', 'workspace'])->get('/bcs', [ModuleController::class, 'index'])->defaults('module', 'bcs')->name('ui.bcs');
+Route::middleware(['auth', 'workspace'])->get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
+Route::middleware(['auth', 'workspace'])->post('/milk', [ModuleController::class, 'storeMilkProduction'])->name('milk.production.store');
+Route::middleware(['auth', 'workspace'])->get('/mtd', [MtdController::class, 'index'])->name('ui.mtd');
+Route::middleware(['auth', 'workspace'])->post('/mtd', [MtdController::class, 'store'])->name('mtd.store');
+Route::middleware(['auth', 'workspace'])->put('/mtd/{record}', [MtdController::class, 'update'])->whereNumber('record')->name('mtd.update');
+Route::middleware(['auth', 'workspace'])->delete('/mtd/{record}', [MtdController::class, 'destroy'])->whereNumber('record')->name('mtd.delete');
+Route::middleware(['auth', 'workspace'])->get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs', [ActivityLogController::class, 'index'])->name('ui.activity-logs');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs/monitoring', [MonitoringReportController::class, 'activityLogs'])->name('ui.activity-logs.monitoring');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/cooperatives/{cooperative}/animals', [MonitoringReportController::class, 'animals'])->whereNumber('cooperative')->name('ui.monitoring.animals');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/bcs-scores', [MonitoringReportController::class, 'bcsScores'])->name('ui.monitoring.bcs-scores');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/semen-bulls', fn () => DB::table('semen_bulls')->whereRaw('LOWER(status) = ?', ['active'])->orderBy('bull_name')->get(['id','bull_id','bull_name','breed','status']))->name('ui.monitoring.semen-bulls');
+Route::middleware(['auth', 'workspace:monitoring'])->post('/monitoring/reports', [MonitoringReportController::class, 'store'])->name('ui.monitoring.reports.store');
+Route::middleware(['auth', 'workspace:monitoring-entry'])->get('/monitoring/reports/{report}/data', [MonitoringReportController::class, 'editData'])->whereNumber('report')->name('ui.monitoring.reports.data');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/reports/{report}/export', [MonitoringReportController::class, 'export'])->whereNumber('report')->name('ui.monitoring.reports.export');
+Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/reports/{report}', [MonitoringReportController::class, 'show'])->whereNumber('report')->name('ui.monitoring.reports.show');
+Route::middleware(['auth', 'workspace:monitoring'])->put('/monitoring/reports/{report}', [MonitoringReportController::class, 'update'])->whereNumber('report')->name('ui.monitoring.reports.update');
+Route::middleware(['auth', 'workspace'])->get('/exits', [AnimalExitController::class, 'index'])->name('ui.exits');
+Route::middleware(['auth', 'workspace'])->post('/exits', [AnimalExitController::class, 'store'])->name('exits.store');
+Route::middleware(['auth', 'workspace'])->put('/exits/{record}', [AnimalExitController::class, 'update'])->whereNumber('record')->name('exits.update');
+Route::middleware(['auth', 'workspace'])->delete('/exits/{record}', [AnimalExitController::class, 'destroy'])->whereNumber('record')->name('exits.delete');
+Route::middleware(['auth', 'workspace'])->get('/meat', [ModuleController::class, 'index'])->defaults('module', 'meat')->name('ui.meat');
+Route::middleware(['auth', 'workspace'])->post('/meat', [ModuleController::class, 'storeProductProduction'])->defaults('module', 'meat')->name('meat.production.store');
+Route::middleware(['auth', 'workspace'])->get('/manure', [ModuleController::class, 'index'])->defaults('module', 'manure')->name('ui.manure');
+Route::middleware(['auth', 'workspace'])->post('/manure', [ModuleController::class, 'storeProductProduction'])->defaults('module', 'manure')->name('manure.production.store');
 
 // Names used by the copied Blade screens; API integration is being retained separately.
-Route::get('/admin/carabaos', fn () => DB::table('carabaos')->orderByDesc('id')->get())->name('admin.carabaos.index');
-Route::get('/admin/carabaos/options', fn () => response()->json([
+Route::middleware(['auth', 'workspace'])->get('/admin/carabaos', fn () => DB::table('carabaos')->orderByDesc('id')->get())->name('admin.carabaos.index');
+Route::middleware(['auth', 'workspace'])->get('/admin/carabaos/options', fn () => response()->json([
     'cooperatives' => DB::table('cooperatives')->orderBy('cooperative_name')->get(),
     'farmers' => DB::table('farmers')->orderBy('last_name')->get(),
 ]))->name('admin.carabaos.options');
-Route::get('/admin/carabao-inventory-api', fn () => DB::table('carabaos')
+Route::middleware(['auth', 'workspace'])->get('/admin/carabao-inventory-api', fn () => DB::table('carabaos')
     ->leftJoin('fhpr_records as fhpr', 'fhpr.carabao_id', '=', 'carabaos.id')
     ->select('carabaos.*', 'fhpr.days_in_milk')
     ->orderByDesc('carabaos.id')->get()->each(function ($animal) {
         $animal->live_breedable_female = \App\Support\InventoryClassification::isLiveBreedableFemale($animal);
     }));
-Route::get('/admin/calf-drop-api', function () {
+Route::middleware(['auth', 'workspace'])->get('/admin/calf-drop-api', function () {
     return DB::table('calves as calf')
         ->join('carabaos as dam', 'dam.id', '=', 'calf.dam_id')
         ->leftJoin('carabaos as child', 'child.animal_id', '=', 'calf.calf_animal_id')
@@ -138,7 +147,7 @@ Route::get('/admin/calf-drop-api', function () {
             'remarks' => trim(implode(' · ', array_filter([$row->calf_findings, $row->remarks]))),
         ]);
 })->name('admin.calf-drop.records');
-Route::patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, int $id) {
+Route::middleware(['auth', 'workspace'])->patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, int $id) {
     $data = $request->validate([
         'date_of_birth' => ['required', 'date'],
         'sex' => ['required', 'in:Male,Female'],
@@ -158,7 +167,7 @@ Route::patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, 
     ]);
     return response()->json(['message' => 'Calf inventory record updated.']);
 })->whereNumber('id')->name('admin.calf-drop.inventory.update');
-Route::put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
+Route::middleware(['auth', 'workspace'])->put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
     $data = $request->validate([
         'date_of_birth' => ['required', 'date'],
         'sex' => ['required', 'in:Male,Female'],
@@ -182,12 +191,12 @@ Route::put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
     ]);
     return response()->json(['message' => 'Calf Drop record updated.']);
 })->whereNumber('id')->name('admin.calf-drop.database.update');
-Route::delete('/admin/calf-drop-api/{id}', function (int $id) {
+Route::middleware(['auth', 'workspace'])->delete('/admin/calf-drop-api/{id}', function (int $id) {
     abort_unless(DB::table('calves')->where('id', $id)->delete(), 404, 'Calf record was not found.');
 
     return response()->noContent();
 })->whereNumber('id')->name('admin.calf-drop.database.delete');
-Route::delete('/admin/calf-drop-api/inventory/{id}', function (int $id) {
+Route::middleware(['auth', 'workspace'])->delete('/admin/calf-drop-api/inventory/{id}', function (int $id) {
     DB::transaction(function () use ($id) {
         $animal = DB::table('carabaos')->where('id', $id)->lockForUpdate()->first();
         $dam = strtolower(trim((string) ($animal->dam_id ?? '')));
@@ -208,7 +217,7 @@ Route::delete('/admin/calf-drop-api/inventory/{id}', function (int $id) {
 
     return response()->noContent();
 })->whereNumber('id')->name('admin.calf-drop.inventory.delete');
-Route::get('/admin/calf-drop-api/series', function (Request $request) {
+Route::middleware(['auth', 'workspace:monitoring-entry'])->get('/admin/calf-drop-api/series', function (Request $request) {
     $data = $request->validate([
         'dam_id' => ['required', 'integer', 'exists:carabaos,id'],
         'cooperative_id' => ['nullable', 'integer', 'exists:cooperatives,id'],
@@ -226,7 +235,7 @@ Route::get('/admin/calf-drop-api/series', function (Request $request) {
     return response()->json(\App\Support\CalfRegistryId::sequence($data['breed'], $herdCode, $data['date_of_birth']));
 })->name('admin.calf-drop.series');
 
-Route::post('/admin/calf-drop-api', function (Request $request) {
+Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function (Request $request) {
     $data = $request->validate([
         'calf_id' => ['nullable', 'string', 'max:255'],
         'mother_id' => ['required', 'string', 'max:255'],
@@ -332,7 +341,7 @@ Route::post('/admin/calf-drop-api', function (Request $request) {
         'animal' => DB::table('carabaos')->where('id', $id)->first(),
     ], 201);
 })->name('admin.calf-drop.store');
-Route::patch('/admin/carabao-inventory-api/{id}/classification', function (\Illuminate\Http\Request $request, int $id) {
+Route::middleware(['auth', 'workspace'])->patch('/admin/carabao-inventory-api/{id}/classification', function (\Illuminate\Http\Request $request, int $id) {
     $data = $request->validate(['classification' => ['nullable', 'string', 'max:255']]);
     $animal = DB::table('carabaos')->where('id', $id)->first();
     abort_unless($animal, 404, 'Carabao record not found.');
@@ -343,8 +352,8 @@ Route::patch('/admin/carabao-inventory-api/{id}/classification', function (\Illu
     abort_if($updated === 0 && ! DB::table('carabaos')->where('id', $id)->exists(), 404, 'Carabao record not found.');
     return response()->json(['message' => 'Classification updated.']);
 })->name('admin.carabaos.classification');
-Route::get('/admin/semen-bulls-api', fn () => DB::table('semen_bulls')->orderBy('bull_name')->get());
-Route::get('/admin/health-nutrition-api', function () {
+Route::middleware(['auth', 'workspace'])->get('/admin/semen-bulls-api', fn () => DB::table('semen_bulls')->orderBy('bull_name')->get());
+Route::middleware(['auth', 'workspace'])->get('/admin/health-nutrition-api', function () {
     return DB::table('health_records as record')
         ->leftJoin('carabaos as animal', 'animal.id', '=', 'record.carabao_id')
         ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
@@ -381,15 +390,15 @@ Route::get('/admin/health-nutrition-api', function () {
             ];
         });
 })->name('admin.health-nutrition.records');
-Route::get('/admin/health-records/{record}', [ModuleController::class, 'healthRecord'])->whereNumber('record')->name('admin.health-records.show');
-Route::post('/admin/health-records', [ModuleController::class, 'storeHealthRecord'])->name('admin.health-records.store');
-Route::put('/admin/health-records/{record}', [ModuleController::class, 'updateHealthRecord'])->whereNumber('record')->name('admin.health-records.update');
-Route::delete('/admin/health-records/{record}', [ModuleController::class, 'deleteHealthRecord'])->whereNumber('record')->name('admin.health-records.delete');
-Route::post('/admin/carabaos', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.store');
-Route::post('/admin/carabaos/bulk', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.bulk');
-Route::post('/admin/carabaos/import', fn () => response()->json(['message' => 'Use the cooperative workbook import.'], 501))->name('admin.carabaos.import');
-Route::get('/admin/cooperatives/data', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.cooperatives.data');
-Route::post('/admin/cooperatives', function (Request $request) {
+Route::middleware(['auth', 'workspace'])->get('/admin/health-records/{record}', [ModuleController::class, 'healthRecord'])->whereNumber('record')->name('admin.health-records.show');
+Route::middleware(['auth', 'workspace'])->post('/admin/health-records', [ModuleController::class, 'storeHealthRecord'])->name('admin.health-records.store');
+Route::middleware(['auth', 'workspace'])->put('/admin/health-records/{record}', [ModuleController::class, 'updateHealthRecord'])->whereNumber('record')->name('admin.health-records.update');
+Route::middleware(['auth', 'workspace'])->delete('/admin/health-records/{record}', [ModuleController::class, 'deleteHealthRecord'])->whereNumber('record')->name('admin.health-records.delete');
+Route::middleware(['auth', 'workspace'])->post('/admin/carabaos', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.store');
+Route::middleware(['auth', 'workspace'])->post('/admin/carabaos/bulk', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.bulk');
+Route::middleware(['auth', 'workspace'])->post('/admin/carabaos/import', fn () => response()->json(['message' => 'Use the cooperative workbook import.'], 501))->name('admin.carabaos.import');
+Route::middleware(['auth', 'workspace'])->get('/admin/cooperatives/data', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.cooperatives.data');
+Route::middleware(['auth', 'workspace'])->post('/admin/cooperatives', function (Request $request) {
     $data = $request->validate([
         'cooperative_code' => ['required', 'string', 'max:255', 'unique:cooperatives,cooperative_code'],
         'cooperative_name' => ['required', 'string', 'max:255'],
@@ -428,7 +437,7 @@ Route::post('/admin/cooperatives', function (Request $request) {
         'data' => DB::table('cooperatives')->find($id),
     ], 201);
 })->name('admin.cooperatives.store');
-Route::put('/cooperatives/{id}', function (Request $request, $id) {
+Route::middleware(['auth', 'workspace'])->put('/cooperatives/{id}', function (Request $request, $id) {
     $data = $request->all();
 
     DB::table('cooperatives')->where('id', $id)->update([
@@ -449,15 +458,15 @@ Route::put('/cooperatives/{id}', function (Request $request, $id) {
 
     return response()->json(['message' => 'Cooperative updated.']);
 })->name('cooperatives.update');
-Route::get('/admin/farmers/data', fn () => DB::table('farmers')->orderBy('last_name')->get()->map(function ($farmer) {
+Route::middleware(['auth', 'workspace'])->get('/admin/farmers/data', fn () => DB::table('farmers')->orderBy('last_name')->get()->map(function ($farmer) {
     $farmer->cooperative_record = $farmer->cooperative_id ? DB::table('cooperatives')->find($farmer->cooperative_id) : null;
     return $farmer;
 }))->name('admin.farmers.data');
-Route::post('/admin/farmers', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.store');
-Route::post('/admin/farmers/bulk', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.bulk');
-Route::post('/admin/farmers/import', [FarmerSpreadsheetController::class, 'import'])->name('admin.farmers.import');
-Route::get('/admin/farmers/template', [FarmerSpreadsheetController::class, 'template'])->name('admin.farmers.template');
-Route::get('/admin/breeding-api/records', fn () => DB::table('mating_records as mr')
+Route::middleware(['auth', 'workspace'])->post('/admin/farmers', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.store');
+Route::middleware(['auth', 'workspace'])->post('/admin/farmers/bulk', fn () => response()->json(['message' => 'Farmer API is not connected yet.'], 501))->name('admin.farmers.bulk');
+Route::middleware(['auth', 'workspace'])->post('/admin/farmers/import', [FarmerSpreadsheetController::class, 'import'])->name('admin.farmers.import');
+Route::middleware(['auth', 'workspace:admin'])->get('/admin/farmers/template', [FarmerSpreadsheetController::class, 'template'])->name('admin.farmers.template');
+Route::middleware(['auth', 'workspace'])->get('/admin/breeding-api/records', fn () => DB::table('mating_records as mr')
     ->leftJoin('carabaos as a', 'a.id', '=', 'mr.carabao_id')
     ->leftJoin('farmers as f', 'f.id', '=', 'a.farmer_id')
     ->leftJoin('cooperatives as c', 'c.id', '=', DB::raw('COALESCE(mr.cooperative_id, a.cooperative_id, f.cooperative_id)'))
@@ -484,10 +493,10 @@ Route::get('/admin/breeding-api/records', fn () => DB::table('mating_records as 
         $records, DB::table('calves')->whereIn('dam_id', $records->pluck('carabao_id')->filter()->unique())->get(['dam_id', 'birth_date']),
         DB::table('carabaos')->whereNotNull('dam_id')->get(['dam_id as mother_id', 'birth_date'])
     ))->pipe(fn($records)=>\App\Support\OverdueCalfNotifications::annotate($records)))->name('admin.breeding-api.records');
-Route::get('/admin/breeding-api/cooperatives', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.breeding-api.cooperatives');
-Route::get('/admin/breeding-api/farmers', fn () => DB::table('farmers')->orderBy('last_name')->get())->name('admin.breeding-api.farmers');
-Route::get('/admin/breeding-api/carabaos', fn () => DB::table('carabaos')->orderBy('animal_name')->get())->name('admin.breeding-api.carabaos');
-Route::get('/admin/breeding-api/semen-bulls', fn () => DB::table('semen_bulls')->orderBy('bull_name')->get())->name('admin.breeding-api.semen-bulls');
+Route::middleware(['auth', 'workspace'])->get('/admin/breeding-api/cooperatives', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.breeding-api.cooperatives');
+Route::middleware(['auth', 'workspace'])->get('/admin/breeding-api/farmers', fn () => DB::table('farmers')->orderBy('last_name')->get())->name('admin.breeding-api.farmers');
+Route::middleware(['auth', 'workspace'])->get('/admin/breeding-api/carabaos', fn () => DB::table('carabaos')->orderBy('animal_name')->get())->name('admin.breeding-api.carabaos');
+Route::middleware(['auth', 'workspace'])->get('/admin/breeding-api/semen-bulls', fn () => DB::table('semen_bulls')->orderBy('bull_name')->get())->name('admin.breeding-api.semen-bulls');
 $matingApiRules = [
     'cooperative_id' => ['required', 'integer', 'exists:cooperatives,id'],
     'farmer_id' => ['required', 'integer', 'exists:farmers,id'],
@@ -544,12 +553,12 @@ $persistMatingRecord = function (array $data, ?int $recordId = null) {
     \App\Support\FhprClassification::syncAnimal((int)$animal->id);
     return $id;
 };
-Route::post('/admin/breeding-api/records', function (Request $request) use ($matingApiRules, $persistMatingRecord) {
+Route::middleware(['auth', 'workspace'])->post('/admin/breeding-api/records', function (Request $request) use ($matingApiRules, $persistMatingRecord) {
     $data = $request->validate($matingApiRules);
     $id = DB::transaction(fn () => $persistMatingRecord($data));
     return response()->json(['message' => 'Mating record saved.', 'id' => $id], 201);
 })->name('admin.breeding-api.store');
-Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($matingApiRules, $persistMatingRecord, $pendingMatingPdValues) {
+Route::middleware(['auth', 'workspace'])->post('/admin/breeding-api/bulk-store', function (Request $request) use ($matingApiRules, $persistMatingRecord, $pendingMatingPdValues) {
     $rules = ['cooperative_id' => $matingApiRules['cooperative_id'], 'records' => ['required', 'array', 'min:1', 'max:1000'], 'check_pending_pd' => ['sometimes', 'boolean']];
     foreach ($matingApiRules as $field => $fieldRules) if ($field !== 'cooperative_id') $rules['records.*.'.$field] = $fieldRules;
     $data = $request->validate($rules);
@@ -575,7 +584,7 @@ Route::post('/admin/breeding-api/bulk-store', function (Request $request) use ($
     });
     return response()->json(['message' => 'Mating records saved.', 'ids' => $ids], 201);
 })->name('admin.breeding-api.bulk');
-Route::patch('/admin/breeding-api/records/{id}/pd', function (Request $request, int $id) use ($pendingMatingPdValues) {
+Route::middleware(['auth', 'workspace'])->patch('/admin/breeding-api/records/{id}/pd', function (Request $request, int $id) use ($pendingMatingPdValues) {
     $data = $request->validate([
         'pd_result' => ['required', 'in:Positive,Negative'],
         'pd_date' => ['required', 'date_format:Y-m-d'],
@@ -611,19 +620,19 @@ Route::patch('/admin/breeding-api/records/{id}/pd', function (Request $request, 
     });
     return response()->json(['message' => 'PD result updated.']);
 })->whereNumber('id')->name('admin.breeding-api.pd');
-Route::put('/admin/breeding-api/records/{id}', function (Request $request, int $id) use ($matingApiRules, $persistMatingRecord) {
+Route::middleware(['auth', 'workspace'])->put('/admin/breeding-api/records/{id}', function (Request $request, int $id) use ($matingApiRules, $persistMatingRecord) {
     $data = $request->validate($matingApiRules);
     DB::transaction(fn()=>$persistMatingRecord($data, $id));
     return response()->json(['message' => 'Mating record updated.', 'id' => $id]);
 })->whereNumber('id')->name('admin.breeding-api.update');
-Route::delete('/admin/breeding-api/records/{id}', function (int $id) {
+Route::middleware(['auth', 'workspace'])->delete('/admin/breeding-api/records/{id}', function (int $id) {
     abort_unless(DB::table('mating_records')->where('id', $id)->exists(), 404, 'Mating record not found.');
     DB::table('mating_records')->where('id', $id)->delete();
     return response()->json(['message' => 'Mating record deleted.']);
 })->whereNumber('id')->name('admin.breeding-api.delete');
 
-// CBED Modules - temporary access without login
-Route::get('/modules/{module}', [ModuleController::class, 'index'])->name('modules.index');
-Route::post('/modules/{module}/import', [ModuleController::class, 'import'])->name('modules.import');
-Route::get('/modules/{module}/template', [ModuleController::class, 'template'])->name('modules.template');
-Route::get('/modules/{module}/export', [ModuleController::class, 'export'])->name('modules.export');
+// CBED Modules
+Route::middleware(['auth', 'workspace'])->get('/modules/{module}', [ModuleController::class, 'index'])->name('modules.index');
+Route::middleware(['auth', 'workspace'])->post('/modules/{module}/import', [ModuleController::class, 'import'])->name('modules.import');
+Route::middleware(['auth', 'workspace:admin'])->get('/modules/{module}/template', [ModuleController::class, 'template'])->name('modules.template');
+Route::middleware(['auth', 'workspace'])->get('/modules/{module}/export', [ModuleController::class, 'export'])->name('modules.export');

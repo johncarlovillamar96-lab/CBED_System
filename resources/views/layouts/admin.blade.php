@@ -186,6 +186,7 @@
         {{-- NAVIGATION --}}
         <nav class="cbed-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-4">
 
+            @if(auth()->user()->role !== \App\Models\User::TECHNICIAN)
             <p class="cbed-section-label">Workspace</p>
 
             <a href="{{ url('/dashboard') }}"
@@ -278,23 +279,30 @@
                 <span>Semen Bull</span>
             </a>
 
-            <p class="cbed-section-label mt-5">System</p>
+            @endif
+            <p class="cbed-section-label mt-5">Monitoring</p>
 
             <a href="{{ route('ui.monitoring') }}"
                class="cbed-nav-link {{ request()->is('monitoring*') ? 'active' : '' }}">
                 <i class="fa-solid fa-notes-medical"></i>
                 <span>Monitoring</span>
             </a>
-            <a href="{{ route('ui.activity-logs') }}" class="cbed-nav-link {{ request()->routeIs('ui.activity-logs') ? 'active' : '' }}">
+            <a href="{{ route('ui.activity-logs') }}" class="cbed-nav-link {{ request()->routeIs('ui.activity-logs', 'ui.activity-logs.*') ? 'active' : '' }}">
                 <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
                 <span>Activity Logs</span>
             </a>
 
+            @if(auth()->user()->isAdmin())
             <a href="{{ route('imports.cooperative-workbook.create') }}"
                class="cbed-nav-link {{ request()->is('imports/cooperative-workbook*') ? 'active' : '' }}">
                 <i class="fa-solid fa-file-import"></i>
                 <span>Import Cooperative Excel</span>
             </a>
+            <a href="{{ route('signup') }}" class="cbed-nav-link {{ request()->routeIs('signup') ? 'active' : '' }}">
+                <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                <span>Accounts</span>
+            </a>
+            @endif
         </nav>
 
         {{-- SIDEBAR FOOTER --}}
@@ -305,10 +313,17 @@
                 </div>
 
                 <div class="min-w-0">
-                    <p class="truncate text-xs font-semibold">Administrator</p>
-                    <p class="mt-1 text-[.68rem] text-slate-400">System Admin</p>
+                    <p class="truncate text-xs font-semibold">{{ auth()->user()->name }}</p>
+                    <p class="mt-1 text-[.68rem] text-slate-400">{{ \App\Models\User::ROLES[auth()->user()->role] }}</p>
                 </div>
             </div>
+            <form method="POST" action="{{ route('logout') }}" class="mt-2">
+                @csrf
+                <button type="submit" class="cbed-nav-link w-full text-left">
+                    <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                    <span>Sign out</span>
+                </button>
+            </form>
 
             <p class="mt-3 text-center text-[.65rem] text-slate-500">
                 CBED Data System &copy; {{ date('Y') }}
@@ -318,11 +333,18 @@
 
     {{-- MAIN APPLICATION --}}
     <div class="cbed-main flex min-h-screen flex-col">
+        <div class="border-b border-slate-200 bg-white px-4 py-3 lg:hidden print:hidden">
+            <button type="button" @click="sidebarOpen = true" :aria-expanded="sidebarOpen.toString()"
+                    aria-controls="cbed-sidebar" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">
+                <i class="fa-solid fa-bars" aria-hidden="true"></i>
+                Menu
+            </button>
+        </div>
 
         {{-- PAGE CONTENT --}}
         <main class="min-w-0 flex-1 px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 {{ request()->routeIs('ui.mating', 'ui.calves') ? 'pt-3' : 'pt-4 sm:pt-6 lg:pt-8' }}">
 
-            @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'admin.semen-bulls', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives', 'ui.monitoring', 'ui.monitoring.*', 'ui.activity-logs', 'imports.*') || View::hasSection('inlineCalfDropNotifications'))
+            @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'admin.semen-bulls', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives', 'ui.monitoring', 'ui.monitoring.*', 'ui.activity-logs', 'ui.activity-logs.*', 'imports.*', 'signup') || View::hasSection('inlineCalfDropNotifications'))
                 @include('partials.calf-drop-notifications')
             @endunless
 
@@ -352,7 +374,9 @@
         </footer>
     </div>
 
-    @include('partials.athena')
+    @if(auth()->user()->isAdmin())
+        @include('partials.athena')
+    @endif
 
     {{-- PAGE SCRIPTS --}}
     @include('partials.table-pagination-assets')

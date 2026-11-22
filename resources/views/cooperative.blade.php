@@ -26,18 +26,18 @@
             <i class="fa-solid fa-file-export"></i> Export
         </a>
 
-        <button type="button" @click="showImportModal = true; importFileName = ''"
+        @if(auth()->user()->isAdmin())<button type="button" @click="showImportModal = true; importFileName = ''"
             class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100">
             <i class="fa-solid fa-file-import"></i> Import
-        </button>
-        <a href="{{ route('admin.cooperatives.template') }}" class="action-secondary">
+        </button>@endif
+        @if(auth()->user()->isAdmin())<a href="{{ route('admin.cooperatives.template') }}" class="action-secondary">
             <i class="fa-solid fa-download" aria-hidden="true"></i> Downloadable Template
-        </a>
+        </a>@endif
 
-        <button type="button" @click="openAddModal()"
+        @if(auth()->user()->isAdmin())<button type="button" @click="openAddModal()"
             class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm">
             <i class="fa-solid fa-plus"></i> Add Cooperative
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
     {{-- Summary Cards --}}
@@ -279,14 +279,14 @@
                                 <div class="flex items-center justify-center gap-2">
                                     <button type="button" @click="viewCooperative(coop)"
                                         title="View details"
-                                        class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
-                                        <i class="fa-solid fa-eye"></i>
+                                        class="cbed-record-action cbed-record-action--view" aria-label="View details">
+                                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="openEditModal(coop)"
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="openEditModal(coop)"
                                         title="Edit cooperative"
-                                        class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700">
-                                        <i class="fa-solid fa-pen"></i>
-                                    </button>
+                                        class="cbed-record-action cbed-record-action--edit" aria-label="Edit cooperative">
+                                        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                    </button>@endif
                                 </div>
                             </td>
                         </tr>

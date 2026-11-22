@@ -120,6 +120,7 @@ same(1, $run('monitoring')['totals']['unique_linked_animals'], 'Unique monitored
 same(0, $run('animals', ['cooperative' => 'No matching cooperative'])['totals']['matched_animals'], 'Empty scope');
 
 same(401, $kernel->handle(Request::create('/athena/records', 'POST', [], [], [], ['HTTP_ACCEPT' => 'application/json']))->getStatusCode(), 'Guest record access denied');
+same(401, $kernel->handle(chatRequest())->getStatusCode(), 'Guest chat access denied');
 $controller = $app->make(AthenaController::class);
 $member = new User(['role' => 'member']);
 
@@ -147,14 +148,14 @@ Http::fake([$url => Http::sequence()
     ->push($reply('One is both lactating and confirmed pregnant.'))
     ->push($reply('{"queries":[{"module":"animals","filters":{"sql":"SELECT * FROM users"}}]}'))
     ->pushStatus(503)]);
-$guestReply = $kernel->handle(chatRequest('What is a carabao?'));
+$guestReply = $controller->chat(chatRequest('What is a carabao?'), $app->make(AthenaData::class));
 same(200, $guestReply->getStatusCode(), 'Guest general chat works');
 same([], $guestReply->getData(true)['data'], 'Guest receives no CBED records');
-$publicReply = $kernel->handle(chatRequest('How many breedable animals?'));
+$publicReply = $controller->chat(chatRequest('How many breedable animals?'), $app->make(AthenaData::class));
 same(200, $publicReply->getStatusCode(), 'Guest dashboard query succeeds');
 same(['breedable' => 5], $publicReply->getData(true)['data'][0]['totals'], 'Guest receives public dashboard totals only');
 same(true, str_contains(Http::recorded()[2][0]->data()['messages'][0]['content'], 'dashboard module with empty filters'), 'Guest router is instructed to use public dashboard for simple counts');
-$guestDetailed = $kernel->handle(chatRequest());
+$guestDetailed = $controller->chat(chatRequest(), $app->make(AthenaData::class));
 same(200, $guestDetailed->getStatusCode(), 'Guest receives a chat answer without a sign-in error');
 same([], $guestDetailed->getData(true)['data'], 'Guest receives no detailed data');
 $memberRequest = chatRequest();

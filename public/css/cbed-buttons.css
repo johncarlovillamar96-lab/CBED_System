@@ -73,3 +73,49 @@ button.cbed-add-button {
 button.cbed-add-button:hover:not(:disabled) {
     background: var(--cbed-add-hover);
 }
+
+.cbed-record-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    padding: .5rem .75rem;
+    vertical-align: middle;
+}
+
+.cbed-record-action--view,
+.cbed-record-action--edit {
+    margin-inline-end: .25rem;
+}
+
+.cbed-record-action--view {
+    border-color: #e2e8f0;
+}
+
+.cbed-record-action--edit {
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+}
+
+.cbed-record-action--delete {
+    color: #dc2626;
+}
+
+.cbed-record-action:is(.cbed-record-action--view, .cbed-record-action--edit):hover:not(:disabled) {
+    background: #eff6ff;
+}
+
+.cbed-record-action--delete:hover:not(:disabled) {
+    background: #fef2f2;
+}
+
+.cbed-record-action:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.cbed-record-action:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}

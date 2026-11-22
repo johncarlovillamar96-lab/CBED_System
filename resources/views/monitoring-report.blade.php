@@ -3,12 +3,15 @@
 @section('dataSource', 'database')
 @section('page-heading', 'Animal Monitoring Report')
 @section('content')
+@php
+    $canEditReport = auth()->user()->canManageMonitoring() && !$report->legacy_only;
+@endphp
 <div class="min-w-0 text-slate-800">
   <div class="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
-    <a href="{{ route('ui.activity-logs') }}" class="rounded-lg border bg-white px-4 py-2 text-sm font-semibold">← Activity Logs</a>
+    <a href="{{ route('ui.activity-logs.monitoring') }}" class="rounded-lg border bg-white px-4 py-2 text-sm font-semibold">← Activity Logs</a>
     <div class="flex gap-2"><a href="{{ route('ui.monitoring.reports.export',$report->id) }}" class="rounded-lg border bg-white px-4 py-2 text-sm font-semibold">Export CSV</a><button onclick="window.print()" class="rounded-lg border bg-white px-4 py-2 text-sm font-semibold">Print / Save PDF</button></div>
   </div>
-  @if(!$report->legacy_only)<form method="POST" action="{{ route('ui.monitoring.reports.update',$report->id) }}" id="saved-monitoring-form">@csrf @method('PUT')@else<div>@endif
+  @if($canEditReport)<form method="POST" action="{{ route('ui.monitoring.reports.update',$report->id) }}" id="saved-monitoring-form">@csrf @method('PUT')@else<fieldset disabled class="min-w-0">@endif
     <section class="overflow-hidden rounded-xl border bg-white shadow-sm">
       <header class="border-b p-5 text-center"><p class="text-xs font-semibold uppercase">Department of Agriculture</p><p class="text-xs font-semibold">Philippine Carabao Center at Central Luzon State University</p><p class="text-xs">Science City of Muñoz, Nueva Ecija</p><h1 class="mt-2 text-xl font-bold">Animal Monitoring</h1></header>
       <div class="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2"><p><b>Cooperative:</b> {{ $report->cooperative_name }}</p><label class="text-sm font-semibold">Monitoring Date<input name="monitoring_date" type="date" required value="{{ old('monitoring_date',$report->report_date) }}" class="mt-1 block rounded border px-2 py-1" @disabled($report->legacy_only)></label><p><b>Province:</b> {{ $report->province ?: '—' }}</p><p><b>Municipality / Barangay:</b> {{ $report->municipality ?: '—' }} / {{ $report->barangay ?: '—' }}</p></div>
@@ -46,9 +49,9 @@
       </tbody></table></div>
       <div class="grid gap-4 border-t p-5 sm:grid-cols-3">@foreach([['monitored_by','Monitored By'],['attested_by','Attested By'],['noted_by','Noted By']] as [$field,$label])<label class="text-sm font-semibold">{{ $label }}<input name="{{ $field }}" value="{{ old($field,$report->$field??'') }}" class="mt-1 block w-full border-b px-1 py-2 font-normal"></label>@endforeach</div>
       <label class="block border-t p-5 text-sm font-semibold">Report remarks<textarea name="remarks" rows="2" class="mt-1 block w-full rounded border p-2 font-normal">{{ old('remarks',$report->remarks??'') }}</textarea></label>
-      @unless($report->legacy_only)<div class="no-print flex justify-end gap-2 border-t p-4"><button type="submit" class="cbed-save-button rounded-lg px-4 py-2 font-semibold">Update Report</button></div>@endunless
+      @if($canEditReport)<div class="no-print flex justify-end gap-2 border-t p-4"><button type="submit" class="cbed-save-button rounded-lg px-4 py-2 font-semibold">Update Report</button></div>@endif
     </section>
-  @if(!$report->legacy_only)</form>@else</div>@endif
+  @if($canEditReport)</form>@else</fieldset>@endif
 </div>
 @endsection
 @push('styles')

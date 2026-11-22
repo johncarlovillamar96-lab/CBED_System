@@ -17,11 +17,12 @@
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
-            @if(!$cooperatives->isEmpty())<button type="button" onclick="openMonitoringModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus"></i>Add Monitoring Record</button>@endif
-            <a href="{{ route('ui.activity-logs') }}" class="action-secondary"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity Logs</a>
+            @if(auth()->user()->canManageMonitoring() && !$cooperatives->isEmpty())<button type="button" onclick="openMonitoringModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus"></i>Add Monitoring Record</button>@endif
+            <a href="{{ route('ui.activity-logs.monitoring') }}" class="action-secondary"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity Logs</a>
         </div>
     </div>
 
+    @if(auth()->user()->canManageMonitoring())
     @if($cooperatives->isEmpty())
         <p class="mb-6 rounded-lg bg-amber-100 p-3 text-sm text-amber-900">Add a cooperative before creating a monitoring report.</p>
     @endif
@@ -119,6 +120,7 @@
         @include('partials.health-activity-modal')
     </dialog>
     @include('partials.animal-exit-dialog', ['monitoringExit' => true])
+    @endif
 
     <details @if(request()->hasAny(['view', 'month', 'date'])) open @endif class="group inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5 [&::-webkit-details-marker]:hidden">
@@ -335,10 +337,12 @@
 </style>
 @endpush
 
-@include('partials.calf-entry-script')
-@include('partials.mating-entry-script')
-@include('partials.health-activity-script')
-@include('partials.animal-exit-script')
+@if(auth()->user()->canManageMonitoring())
+    @include('partials.calf-entry-script')
+    @include('partials.mating-entry-script')
+    @include('partials.health-activity-script')
+    @include('partials.animal-exit-script')
+@endif
 
 @push('scripts')
 <script>
@@ -412,6 +416,7 @@ const monitoringDialog = document.getElementById('monitoring-modal');
     });
 })();
 
+@if(auth()->user()->canManageMonitoring())
 monitoringDialog.addEventListener('cancel', (event) => {
     if (monitoringSubmitting) event.preventDefault();
 });
@@ -664,5 +669,6 @@ document.getElementById('monitoring-animal-rows').addEventListener('input', (eve
     const field = event.target.name.match(/^rows\[(\d+)\]\[(remarks|body_condition_score)\]$/);
     if (field) monitoringAnimals[Number(field[1])][field[2] === 'remarks' ? '_remarks' : '_bcs'] = event.target.value;
 });
+@endif
 </script>
 @endpush

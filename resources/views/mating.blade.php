@@ -22,13 +22,13 @@
                 @change="importXLSX($event)">
         </label>
 
-        <button type="button" @click="downloadTemplate()" class="action-secondary">
+        @if(auth()->user()->isAdmin())<button type="button" @click="downloadTemplate()" class="action-secondary">
             <i class="fa-solid fa-download"></i> Downloadable template
-        </button>
+        </button>@endif
 
-        <button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+        @if(auth()->user()->isAdmin())<button type="button" @click="openBulk()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-plus"></i> Add Mating Records
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
     {{-- SUMMARY CARDS --}}
@@ -190,15 +190,15 @@
                             <td class="td" x-text="r.pd_result==='Positive'?displayDate(r.expected_calving||calculateExpectedCalving(r.breeding_date)):'—'"></td>
                             <td class="td"><div x-text="displayDate(r.actual_calving)"></div><span x-show="isUnreportedCalf(r)" class="mt-1 inline-block rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Calf drop not reported</span><span x-show="r.pregnancy_followup_complete" class="mt-1 inline-block rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">Calf drop reported</span></td>
                             <td class="td whitespace-nowrap">
-                                <button type="button" @click="view(r)" class="mr-1 rounded-lg border px-3 py-2" title="View">
-                                    <i class="fa-solid fa-eye"></i>
+                                <button type="button" @click="view(r)" class="cbed-record-action cbed-record-action--view" title="View" aria-label="View">
+                                    <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" @click="edit(r)" class="mr-1 rounded-lg border px-3 py-2" title="Edit">
-                                    <i class="fa-solid fa-pen"></i>
-                                </button>
-                                <button type="button" @click="confirmDelete(r)" class="rounded-lg px-3 py-2 text-red-600" title="Delete">
-                                    <i class="fa-solid fa-trash"></i>
-                                </button>
+                                @if(auth()->user()->isAdmin())<button type="button" @click="edit(r)" class="cbed-record-action cbed-record-action--edit" title="Edit" aria-label="Edit">
+                                    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                </button>@endif
+                                @if(auth()->user()->isAdmin())<button type="button" @click="confirmDelete(r)" class="cbed-record-action cbed-record-action--delete" title="Delete" aria-label="Delete">
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                </button>@endif
                             </td>
                         </tr>
                     </template>
@@ -258,9 +258,9 @@
                 @include('partials.mating-edit-form')
 
                 <div x-show="!editingId" class="mb-4 flex flex-wrap justify-end gap-2">
-                    <button type="button" x-show="!editingId" @click="addRow()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                    @if(auth()->user()->isAdmin())<button type="button" x-show="!editingId" @click="addRow()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
                         <i class="fa-solid fa-plus"></i> Add Row
-                    </button>
+                    </button>@endif
                 </div>
 
                 <div x-show="!editingId" class="overflow-x-auto rounded-xl border">

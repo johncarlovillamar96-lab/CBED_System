@@ -1,4 +1,4 @@
-﻿{{-- resources/views/carabao.blade.php --}}
+{{-- resources/views/carabao.blade.php --}}
 @extends('layouts.admin')
 
 @section('title', 'Carabao Management | CBED')
@@ -12,13 +12,13 @@
 >
     {{-- HEADER --}}
     <x-admin-page-header title="Carabao Management" description="Manage animal identification, farmer ownership, cooperative, province, classification, and inventory." section="Animal Management" breadcrumb="Carabaos">
-        <button
+        @if(auth()->user()->isAdmin())<button
             type="button"
             @click="downloadImportTemplate()"
             class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
             <i class="fa-solid fa-file-excel"></i>
             Excel Template
-        </button>
+        </button>@endif
         <button type="button" @click="downloadPDFReport()"
             class="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800 hover:bg-rose-100">
             <i class="fa-solid fa-file-pdf"></i> PDF Report
@@ -36,10 +36,10 @@
             <i class="fa-solid fa-file-export"></i> Export CSV
         </button>
 
-        <button type="button" @click="openAddModal()"
+        @if(auth()->user()->isAdmin())<button type="button" @click="openAddModal()"
             class="cbed-add-button inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold">
             <i class="fa-solid fa-plus"></i> Add Carabaos
-        </button>
+        </button>@endif
     </x-admin-page-header>
 
     {{-- LOADING / ERROR --}}
@@ -282,17 +282,17 @@
                             <td class="whitespace-nowrap px-4 py-4">
                                 <div class="flex justify-center gap-2">
                                     <button type="button" @click="viewCarabao(animal)"
-                                        title="View" class="icon-button hover:bg-blue-50">
-                                        <i class="fa-solid fa-eye"></i>
+                                        title="View" class="cbed-record-action cbed-record-action--view" aria-label="View">
+                                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="openEditModal(animal)"
-                                        title="Edit" class="icon-button hover:bg-amber-50">
-                                        <i class="fa-solid fa-pen"></i>
-                                    </button>
-                                    <button type="button" @click="deleteCarabao(animal)"
-                                        title="Delete" class="icon-button hover:bg-red-50">
-                                        <i class="fa-solid fa-trash"></i>
-                                    </button>
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="openEditModal(animal)"
+                                        title="Edit" class="cbed-record-action cbed-record-action--edit" aria-label="Edit">
+                                        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                    </button>@endif
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="deleteCarabao(animal)"
+                                        title="Delete" class="cbed-record-action cbed-record-action--delete" aria-label="Delete">
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                    </button>@endif
                                 </div>
                             </td>
                         </tr>
@@ -391,9 +391,9 @@
                                 <h3 class="font-bold">Animal Records</h3>
                                 <p class="mt-1 text-sm text-slate-500">Choose an Animal ID from Carabao Inventory. Available inventory details will fill automatically. Enter ownership and entrustment separately for every animal.</p>
                             </div>
-                            <button type="button" @click="addRow()" class="cbed-add-button shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold">
+                            @if(auth()->user()->isAdmin())<button type="button" @click="addRow()" class="cbed-add-button shrink-0 rounded-lg px-4 py-2.5 text-sm font-semibold">
                                 <i class="fa-solid fa-plus mr-1"></i> Add Animal
-                            </button>
+                            </button>@endif
                         </div>
 
                         <div x-show="inventoryLoading" class="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
@@ -670,15 +670,6 @@
         cursor:not-allowed;
         background:#f1f5f9;
         color:#94a3b8;
-    }
-    .icon-button {
-        display:inline-flex;
-        width:2.25rem;
-        height:2.25rem;
-        align-items:center;
-        justify-content:center;
-        border:1px solid #e2e8f0;
-        border-radius:.5rem;
     }
 </style>
 @endpush
