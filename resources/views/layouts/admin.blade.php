@@ -172,14 +172,14 @@
         :class="{ 'mobile-open': sidebarOpen }">
 
         {{-- BRAND --}}
-        <div class="flex h-[4.5rem] shrink-0 items-center gap-3 border-b border-white/10 px-4">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500 text-white">
-                <i class="fa-solid fa-cow text-xl"></i>
+        <div class="flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-white/10 bg-gradient-to-r from-[#16375a] to-transparent px-4 py-3">
+            <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[#ffe09a] bg-[#ffd05b] text-[#0b1f3a] shadow-sm">
+                <i class="fa-solid fa-cow text-lg" aria-hidden="true"></i>
             </div>
 
-            <div class="min-w-0">
-                <h1 class="text-sm font-bold tracking-wide">CBED</h1>
-                <p class="mt-0.5 text-[.68rem] text-slate-400">Data System</p>
+            <div>
+                <p class="text-xl font-extrabold leading-none tracking-wide text-white">CBED</p>
+                <p class="mt-1 text-xs font-medium leading-tight text-slate-300">Data System</p>
             </div>
         </div>
 
@@ -280,7 +280,7 @@
             </a>
 
             @endif
-            <p class="cbed-section-label mt-5">Monitoring</p>
+            <p class="cbed-section-label mt-5">System</p>
 
             <a href="{{ route('ui.monitoring') }}"
                class="cbed-nav-link {{ request()->is('monitoring*') ? 'active' : '' }}">
@@ -298,6 +298,7 @@
                 <i class="fa-solid fa-file-import"></i>
                 <span>Import Cooperative Excel</span>
             </a>
+            <p class="cbed-section-label mt-5">Account</p>
             <a href="{{ route('signup') }}" class="cbed-nav-link {{ request()->routeIs('signup') ? 'active' : '' }}">
                 <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
                 <span>Accounts</span>
