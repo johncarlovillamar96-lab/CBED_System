@@ -164,24 +164,24 @@
 
         }
 
-        @media (max-height: 480px) and (max-width: 1023px) {
-            .login-agencies img {
-                width: 1.75rem;
-                height: 1.75rem;
-            }
+        .login-agency-banner {
+            width: 28.5rem;
+            max-width: 100%;
+            height: auto;
+        }
 
+        @media (max-height: 480px) and (max-width: 1023px) {
+            .login-agency-banner {
+                width: 18rem;
+            }
         }
     </style>
 </head>
 <body class="login-page relative isolate flex flex-col">
     <div class="login-decoration" aria-hidden="true"></div>
     <header class="mx-auto w-full max-w-[100rem] px-4 pt-3 sm:px-8 lg:px-12 lg:pt-5">
-        <div class="login-agencies flex items-center justify-center gap-3 text-xs font-bold leading-tight sm:text-sm lg:justify-start">
-            <img src="{{ asset('images/da-pcc-logo.png') }}" alt="Department of Agriculture and Philippine Carabao Center" width="48" height="48" class="h-12 w-12 shrink-0 object-contain">
-            <span>
-                <span class="block">Philippine Carabao Center</span>
-                <span class="block">National Institute for Animal Sciences</span>
-            </span>
+        <div class="flex justify-center lg:justify-start">
+            <img src="{{ asset('images/da-pcc-nias-login.png') }}" alt="Department of Agriculture, Philippine Carabao Center–National Institute for Animal Sciences" width="1920" height="471" class="login-agency-banner block">
         </div>
     </header>
     <main class="login-layout mx-auto grid w-full max-w-[100rem] flex-1 items-center gap-5 px-4 sm:px-8 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-10 lg:px-12">
