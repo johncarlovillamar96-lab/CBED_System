@@ -71,9 +71,9 @@ Route::view('/carabaos', 'carabao')->middleware(['auth', 'workspace'])->name('ui
 Route::view('/mating', 'mating')->middleware(['auth', 'workspace'])->name('ui.mating');
 Route::view('/calves', 'calf-drop')->middleware(['auth', 'workspace'])->name('ui.calves');
 Route::redirect('/calf-drop', '/calves')->middleware(['auth', 'workspace'])->name('ui.calf-drop');
-Route::view('/health-nutrition', 'health-nutrition')->middleware(['auth', 'workspace'])->name('ui.health-nutrition');
-Route::view('/milk-production', 'milk-production')->middleware(['auth', 'workspace'])->name('ui.milk-production');
-Route::view('/mil-test', 'mil-test')->middleware(['auth', 'workspace'])->name('ui.mil-test');
+Route::redirect('/health-nutrition', '/health')->middleware(['auth', 'workspace'])->name('ui.health-nutrition');
+Route::redirect('/milk-production', '/milk')->middleware(['auth', 'workspace'])->name('ui.milk-production');
+Route::redirect('/mil-test', '/mtd')->middleware(['auth', 'workspace'])->name('ui.mil-test');
 Route::middleware(['auth', 'workspace'])->get('/nature-of-exit', [AnimalExitController::class, 'index'])->name('ui.nature-of-exit');
 Route::view('/mapping', 'mapping')->middleware(['auth', 'workspace'])->name('ui.mapping');
 Route::view('/carabao-inventory', 'carabao-inventory')->middleware(['auth', 'workspace'])->name('admin.carabao-inventory');
@@ -115,12 +115,19 @@ Route::middleware(['auth', 'workspace'])->get('/admin/carabaos/options', fn () =
     'cooperatives' => DB::table('cooperatives')->orderBy('cooperative_name')->get(),
     'farmers' => DB::table('farmers')->orderBy('last_name')->get(),
 ]))->name('admin.carabaos.options');
-Route::middleware(['auth', 'workspace'])->get('/admin/carabao-inventory-api', fn () => DB::table('carabaos')
-    ->leftJoin('fhpr_records as fhpr', 'fhpr.carabao_id', '=', 'carabaos.id')
-    ->select('carabaos.*', 'fhpr.days_in_milk')
-    ->orderByDesc('carabaos.id')->get()->each(function ($animal) {
-        $animal->live_breedable_female = \App\Support\InventoryClassification::isLiveBreedableFemale($animal);
-    }));
+Route::middleware(['auth', 'workspace'])->get('/admin/carabao-inventory-api', function () {
+    $cooperatives = DB::table('cooperatives')->get(['id', 'cooperative_code', 'cooperative_name', 'barangay', 'municipality', 'province'])->keyBy('id');
+
+    return DB::table('carabaos')
+        ->leftJoin('fhpr_records as fhpr', 'fhpr.carabao_id', '=', 'carabaos.id')
+        ->select('carabaos.*', 'fhpr.days_in_milk')
+        ->addSelect(['has_milk_production' => DB::table('milk_records')
+            ->selectRaw('1')->whereColumn('milk_records.carabao_id', 'carabaos.id')->where('total_liters', '>', 0)->limit(1)])
+        ->orderByDesc('carabaos.id')->get()->each(function ($animal) use ($cooperatives) {
+            $animal->live_breedable_female = \App\Support\InventoryClassification::isLiveBreedableFemale($animal);
+            \App\Support\CalfInventoryDetails::displayMissingFields($animal, $cooperatives->get($animal->cooperative_id));
+        });
+});
 Route::middleware(['auth', 'workspace'])->get('/admin/calf-drop-api', function () {
     return DB::table('calves as calf')
         ->join('carabaos as dam', 'dam.id', '=', 'calf.dam_id')
@@ -170,7 +177,7 @@ Route::middleware(['auth', 'workspace'])->patch('/admin/calf-drop-api/inventory/
 Route::middleware(['auth', 'workspace'])->put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
     $data = $request->validate([
         'date_of_birth' => ['required', 'date'],
-        'sex' => ['required', 'in:Male,Female'],
+        'sex' => ['required_if:birth_outcome,Live Birth', 'nullable', 'in:Male,Female'],
         'animal_status' => ['required', 'in:Live,Out,Dead,Not Applicable'],
         'birth_outcome' => ['required', 'in:Live Birth,Stillbirth,Abortion'],
         'monitored_date' => ['nullable', 'date'],
@@ -181,7 +188,7 @@ Route::middleware(['auth', 'workspace'])->put('/admin/calf-drop-api/{id}', funct
     abort_unless(DB::table('calves')->where('id', $id)->exists(), 404, 'Calf Drop record was not found.');
     DB::table('calves')->where('id', $id)->update([
         'birth_date' => $data['date_of_birth'],
-        'sex' => $data['sex'],
+        'sex' => $data['sex'] ?? null,
         'birth_outcome' => $data['birth_outcome'],
         'animal_status' => $data['animal_status'],
         'monitoring_date' => $data['monitored_date'] ?? null,
@@ -242,7 +249,9 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
         'cooperative_id' => ['nullable', 'required_with:farmer_id', 'integer', 'exists:cooperatives,id'],
         'farmer_id' => ['nullable', 'required_with:cooperative_id', 'integer', 'exists:farmers,id'],
         'date_of_birth' => ['required', 'date'],
-        'sex' => ['required', 'in:Male,Female'],
+        'birth_outcome' => ['sometimes', 'in:Live Birth,Stillbirth,Abortion'],
+        'monitored_date' => ['nullable', 'date'],
+        'sex' => ['required_unless:birth_outcome,Stillbirth,Abortion', 'nullable', 'in:Male,Female'],
         'animal_status' => ['nullable', 'in:Live,Out,Dead,Not Applicable'],
         'breed' => ['nullable', 'string', 'max:255'],
         'sire_id' => ['nullable', 'string', 'max:255'],
@@ -291,10 +300,38 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
     $animalId = trim((string) ($data['calf_id'] ?? ''));
     [$breed, $sireId] = \App\Support\CalfBreedSeries::resolveParentage($mother->breed, $data['sire_id'] ?? null, $data['breed'] ?? null);
     $cooperativeId ??= $mother->cooperative_id ?? DB::table('farmers')->where('id', $mother->farmer_id)->value('cooperative_id');
+    $outcome = $data['birth_outcome'] ?? 'Live Birth';
+    if ($outcome !== 'Live Birth') {
+        $id = DB::transaction(function () use ($animalId, $data, $mother, $outcome, $sireId) {
+            DB::table('carabaos')->where('id', $mother->id)->lockForUpdate()->first();
+            $date = date('Y-m-d', strtotime($data['date_of_birth']));
+            abort_if(DB::table('calves')->where('dam_id', $mother->id)->where('birth_date', $date)->exists(),
+                422, 'This dam already has a calf drop recorded for that date.');
+            abort_if($animalId !== '' && (DB::table('carabaos')->where('animal_id', $animalId)->orWhere('registry_number', $animalId)->exists()
+                || DB::table('calves')->where('calf_animal_id', $animalId)->exists()), 422, 'Calf ID already exists.');
+
+            return DB::table('calves')->insertGetId([
+                'calf_animal_id' => $animalId ?: null,
+                'dam_id' => $mother->id,
+                'sire_id' => $sireId,
+                'birth_date' => $date,
+                'monitoring_date' => $data['monitored_date'] ?? null,
+                'sex' => $data['sex'] ?? null,
+                'birth_outcome' => $outcome,
+                'animal_status' => $outcome === 'Stillbirth' ? 'Dead' : 'Not Applicable',
+                'remarks' => $data['remarks'] ?? null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }, 3);
+
+        return response()->json(['message' => 'Calf drop recorded.', 'id' => $id], 201);
+    }
+
     $id = DB::transaction(function () use ($animalId, $breed, $cooperativeId, $data, $farmerId, $mother, $sireId) {
         $cooperative = $cooperativeId === null
             ? null
-            : DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first(['cooperative_code']);
+            : DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first();
 
         if ($farmerId !== null) {
             $damIds = array_filter([$mother->id, $mother->animal_id, $mother->registry_number, $mother->bolus_id, $mother->tag_number]);
@@ -310,7 +347,7 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
         abort_if(DB::table('carabaos')->where('animal_id', $animalId)->orWhere('registry_number', $animalId)->exists()
             || DB::table('calves')->where('calf_animal_id', $animalId)->exists(), 422, 'Calf ID already exists.');
 
-        return DB::table('carabaos')->insertGetId([
+        return DB::table('carabaos')->insertGetId(\App\Support\CalfInventoryDetails::forBirth($animalId, $cooperative, $mother, $data) + [
             'animal_id' => $animalId,
             'farmer_id' => $mother->farmer_id,
             'cooperative_id' => $cooperativeId,
@@ -323,9 +360,6 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
             'sire_id' => $sireId,
             'dam_id' => $mother->animal_id,
             'dam_name' => $mother->animal_name,
-            'birth_place' => $data['birth_place'] ?? null,
-            'breeder' => $data['breeder'] ?? null,
-            'association_coop_institution' => $data['association_coop_institution'] ?? null,
             'barangay' => $data['barangay'] ?? $mother->barangay,
             'municipality' => $data['municipality'] ?? $mother->municipality,
             'province' => $data['province'] ?? $mother->province,

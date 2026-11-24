@@ -6,7 +6,7 @@
     <title>Sign in | CBED Data System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script src="{{ asset('js/password-visibility.js') }}" defer></script>
+    <script src="/js/password-visibility.js" defer></script>
     <style>
         .login-page {
             --login-navy: #071f49;
@@ -70,7 +70,7 @@
         .login-photo {
             min-height: clamp(8rem, calc(100svh - 24rem), 27rem);
             background: linear-gradient(#f8fafc, transparent 34%),
-                url("{{ asset('images/login-carabao.jpg') }}") center 64% / cover no-repeat;
+                url("/images/login-carabao.jpg") center 64% / cover no-repeat;
         }
 
         .login-program {
@@ -181,7 +181,7 @@
     <div class="login-decoration" aria-hidden="true"></div>
     <header class="mx-auto w-full max-w-[100rem] px-4 pt-3 sm:px-8 lg:px-12 lg:pt-5">
         <div class="flex justify-center lg:justify-start">
-            <img src="{{ asset('images/da-pcc-nias-login.png') }}" alt="Department of Agriculture, Philippine Carabao Center–National Institute for Animal Sciences" width="1920" height="471" class="login-agency-banner block">
+            <img src="/images/da-pcc-nias-login.png" alt="Department of Agriculture, Philippine Carabao Center–National Institute for Animal Sciences" width="1920" height="471" class="login-agency-banner block">
         </div>
     </header>
     <main class="login-layout mx-auto grid w-full max-w-[100rem] flex-1 items-center gap-5 px-4 sm:px-8 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:gap-10 lg:px-12">
@@ -211,7 +211,7 @@
                     <p class="mb-5 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800" role="alert">{{ $errors->first() }}</p>
                 @endif
 
-                <form method="POST" action="{{ route('login.post') }}" class="login-form space-y-5">
+                <form method="POST" action="{{ route('login.post', absolute: false) }}" class="login-form space-y-5">
                     @csrf
                     <label class="block text-sm font-semibold">Email
                         <span class="relative mt-2 block">

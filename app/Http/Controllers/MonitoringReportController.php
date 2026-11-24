@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 use App\Support\AnimalClassification;
 use App\Support\AnimalExitRecord;
 use App\Support\CalfBreedSeries;
+use App\Support\CalfInventoryDetails;
 use App\Support\CalfRegistryId;
 use App\Support\HealthWorksheetMapping;
 use App\Support\InventoryBolusApplication;
@@ -192,7 +193,7 @@ class MonitoringReportController extends Controller
                 'province' => $animal->province, 'municipality' => $animal->municipality, 'barangay' => $animal->barangay,
                 'entrustment' => $animal->entrustment, 'ownership_status' => $animal->ownership_status,
             ];
-        }));
+        })->values(), 200, ['Cache-Control' => 'no-store, private'], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     private function eligibleAnimals(int $cooperativeId): \Illuminate\Database\Query\Builder
@@ -856,9 +857,11 @@ class MonitoringReportController extends Controller
                 $locations = $automaticCalf ? array_intersect_key($data, array_flip(['province', 'municipality', 'barangay'])) : [];
                 $child = DB::table('carabaos')->where('animal_id', $calfId)->first();
                 if (! $child) {
-                    $inventoryId = DB::table('carabaos')->insertGetId($locations + [
+                    $cooperativeId = $animal->cooperative_id ?: $animal->farmer_cooperative_id;
+                    $cooperative = DB::table('cooperatives')->find($cooperativeId);
+                    $inventoryId = DB::table('carabaos')->insertGetId(CalfInventoryDetails::forBirth($calfId, $cooperative, $animal, $locations) + $locations + [
                         'animal_id' => $calfId, 'farmer_id' => $animal->farmer_id,
-                        'cooperative_id' => $animal->cooperative_id ?: $animal->farmer_cooperative_id,
+                        'cooperative_id' => $cooperativeId,
                         'animal_name' => $data['animal_name'] ?? null, 'sex' => $sex,
                         'breed' => $data['breed'] ?? $animal->breed, 'classification' => $sex === 'Male' ? 'Male Calf' : 'Female Calf',
                         'birth_date' => $birthDate, 'status' => $calfStatus, 'sire_id' => $data['sire_id'] ?? null,

@@ -379,9 +379,12 @@
             ...options,
             headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf, ...(options.headers || {}) }
         });
-        const body = await response.json().catch(() => ({}));
+        const body = await response.json().catch(() => null);
         if (!response.ok) {
-            throw new Error(body.message || `Request failed (${response.status}).`);
+            throw new Error(body?.message || `Request failed (${response.status}).`);
+        }
+        if (!body || typeof body !== 'object') {
+            throw new Error('The server response was incomplete. Check import history for the workbook status.');
         }
         return body;
     }
@@ -604,21 +607,37 @@
         setMessage('Confirming the batch…');
         progressResults.hidden = true;
         progressClose.hidden = true;
+        resultsLink.hidden = true;
+        progressToast.classList.remove('border-rose-200', 'border-emerald-200');
+        progressToast.classList.add('border-blue-200');
+        progressIcon.classList.remove('bg-rose-100', 'text-rose-700', 'bg-emerald-100', 'text-emerald-700');
+        progressIcon.classList.add('bg-blue-100', 'text-blue-700');
+        progressIcon.firstElementChild.className = 'fa-solid fa-spinner motion-safe:animate-spin';
         updateImportProgress(0, ready.length, 'Confirming the batch…');
         progressToast.hidden = false;
+        let confirmed = false;
         try {
             await request(url(endpoints.confirm, batchId), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cooperative_ids: cooperativeIds })
             });
+            confirmed = true;
             await runQueued(batchId, ready.map((file) => ({ id: file.id, filename: file.filename })));
         } catch (error) {
             progressToast.hidden = true;
             setMessage(error.message, true);
+        } finally {
             isConfirming = false;
-            updateConfirmButton();
-            confirmButton.focus();
+            if (confirmed) {
+                batchId = null;
+                stagedFiles = [];
+                stagedUploads = [];
+                render();
+            } else {
+                updateConfirmButton();
+                confirmButton.focus();
+            }
         }
     });
 

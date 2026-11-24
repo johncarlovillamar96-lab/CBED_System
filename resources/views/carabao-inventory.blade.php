@@ -106,7 +106,7 @@
         </div>
         <div class="mt-5 border-t border-slate-100 pt-4">
             <h3 class="text-sm font-bold text-slate-800">Classification summary by sex, age, mating, and milk production</h3>
-            <p class="mt-1 text-xs text-slate-500">Blank live-animal classifications are inferred from age, sex, calf records, pregnancy checks, FHPR days in milk, and milk records stored in this browser, then saved. Existing classifications are included in these counts.</p>
+            <p class="mt-1 text-xs text-slate-500">Blank live-animal classifications are inferred from age, sex, calf records, pregnancy checks, FHPR days in milk, and milk production records. Existing classifications are included in these counts.</p>
             <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                 <template x-for="item in ageSexSummary" :key="item.key">
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-3"><p class="text-xs text-slate-500" x-text="item.label"></p><p class="mt-1 text-2xl font-bold text-slate-800" x-text="item.count"></p></div>
@@ -587,7 +587,6 @@ function carabaoInventoryPage() {
         fields,
         records: [],
         matingRecords: [],
-        milkProductionRecords: [],
         classificationSignalsLoaded: false,
         cooperatives: [],
         farmers: [],
@@ -611,15 +610,12 @@ function carabaoInventoryPage() {
         toast: {show:false,message:'',type:'success'},
 
         async init() {
-            // Inventory animals come from the API; browser storage is only used for milk signals.
-            try { localStorage.removeItem('cbed_carabao_inventory_fields_v2'); } catch (e) {}
             await Promise.all([this.loadRecords(true), this.loadTransferLookups()]);
             if (!this.apiConnected) return;
             try {
                 await this.loadMatingRecords();
-                this.loadMilkProductionRecords();
                 this.classificationSignalsLoaded=true;
-                await this.inferAndSaveMissingClassifications();
+                this.applyInferredClassifications();
             } catch (e) {
                 console.error('Could not infer blank animal classifications:', e);
                 this.notify(`Could not infer blank classifications: ${e.message}`, 'error');
@@ -774,12 +770,8 @@ function carabaoInventoryPage() {
             return this.records.some(calf=>identifiers.has(String(calf.dam_id??'').trim().toLowerCase()));
         },
 
-        hasMilkProduction(animal, identifiers=this.animalIdentifiers(animal)) {
-            if(Number(animal.days_in_milk)>0) return true;
-            return this.milkProductionRecords.some(record=>
-                identifiers.has(String(record.animal_id??'').trim().toLowerCase())
-                && Number(record.milk_volume)>0
-            );
+        hasMilkProduction(animal) {
+            return Number(animal.days_in_milk)>0 || Number(animal.has_milk_production)===1;
         },
 
         hasPositivePregnancyCheck(animal, identifiers=this.animalIdentifiers(animal)) {
@@ -813,7 +805,7 @@ function carabaoInventoryPage() {
 
             const identifiers=this.animalIdentifiers(animal);
             const hasCalf=this.hasCalf(animal,identifiers);
-            const lactating=this.hasMilkProduction(animal,identifiers);
+            const lactating=this.hasMilkProduction(animal);
             const pregnant=this.hasPositivePregnancyCheck(animal,identifiers);
             if(lactating) return pregnant?'Cow Lactating Pregnant':'Cow Lactating';
             if(hasCalf) return pregnant?'Cow Dry Pregnant':'Cow Dry';
@@ -832,45 +824,11 @@ function carabaoInventoryPage() {
             this.matingRecords=rows;
         },
 
-        loadMilkProductionRecords() {
-            const saved=localStorage.getItem('cbed_milk_production_records');
-            if(saved===null){
-                this.milkProductionRecords=[];
-                return;
-            }
-            const rows=JSON.parse(saved);
-            if(!Array.isArray(rows)) throw new Error('Saved milk production data is not a record list.');
-            this.milkProductionRecords=rows;
-        },
-
-        async inferAndSaveMissingClassifications() {
-            const candidates=this.records.filter(animal=>
-                this.isLiveAnimal(animal)&&!String(animal.classification??'').trim()
-            ).map(animal=>({animal,classification:this.inferredClassification(animal)}))
-                .filter(item=>item.classification);
-            if(!candidates.length) return;
-
-            const results=await Promise.all(candidates.map(async item=>{
-                try {
-                    const response=await fetch(`${apiUrl}/${encodeURIComponent(item.animal.id)}/classification`,{
-                        method:'PATCH',
-                        headers:this.requestHeaders(),
-                        body:JSON.stringify({classification:item.classification})
-                    });
-                    if(!response.ok) throw new Error(await this.errorMessage(response));
-                    return {...item,error:null};
-                } catch(error) {
-                    console.error(`Could not save inferred classification for animal ${item.animal.id}:`,error);
-                    return {...item,error};
+        applyInferredClassifications() {
+            for (const animal of this.records) {
+                if (this.isLiveAnimal(animal) && !String(animal.classification ?? '').trim()) {
+                    animal.classification = this.inferredClassification(animal);
                 }
-            }));
-            const saved=results.filter(item=>!item.error);
-            saved.forEach(item=>{item.animal.classification=item.classification;});
-            const failed=results.length-saved.length;
-            if(failed){
-                this.notify(`Saved ${saved.length} inferred classification(s); ${failed} could not be saved. Reload the page to retry.`, 'error');
-            } else {
-                this.notify(`Inferred and saved classifications for ${saved.length} animal(s).`);
             }
         },
 
@@ -988,6 +946,7 @@ function carabaoInventoryPage() {
                     type_of_entrustment:r.type_of_entrustment||r.entrustment||'',
                     reason_of_exit:r.reason_of_exit||r.exit_reason||'',
                     province:normalizeProvince(r.province)}));
+                if (this.classificationSignalsLoaded) this.applyInferredClassifications();
                 this.apiConnected=true;
                 this.page=1;
                 if (announce) this.$dispatch('cbed-data-status');

@@ -5,14 +5,20 @@ require dirname(__DIR__).'/vendor/autoload.php';
 
 use App\Models\User;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
+ob_start();
 $app = require dirname(__DIR__).'/bootstrap/app.php';
 $kernel = $app->make(Kernel::class);
 $kernel->bootstrap();
-$app->instance('env', 'testing');
+if (ob_get_clean() !== '') {
+    fwrite(STDERR, "Application bootstrap emitted bytes before the HTTP response.\n");
+    exit(1);
+}
 set_exception_handler(function (Throwable $error): void {
     fwrite(STDERR, $error->getMessage().PHP_EOL);
     exit(1);
@@ -20,6 +26,8 @@ set_exception_handler(function (Throwable $error): void {
 config([
     'app.key' => 'base64:'.base64_encode(str_repeat('a', 32)),
     'session.driver' => 'array',
+    'session.domain' => null,
+    'session.secure' => null,
     'cache.default' => 'array',
     'database.default' => 'sqlite',
     'database.connections.sqlite.database' => ':memory:',
@@ -28,10 +36,12 @@ config([
 foreach ([
     '0001_01_01_000000_create_users_table',
     '2026_10_30_000001_create_cbed_tables',
+    '2026_11_03_000002_add_semen_bull_tracking_to_mating_records',
     '2026_11_03_000002_extend_cbed_tracking',
     '2026_11_03_000003_create_mtd_records_table',
     '2026_11_03_000003_add_parent_ids_to_carabaos',
     '2026_11_04_000002_scope_archive_records_to_cooperative',
+    '2026_11_04_000006_add_bd_all_details_to_carabaos',
     '2026_11_13_000001_create_bcs_history_and_archive_source_data',
     '2026_11_15_000001_create_monitoring_reports_table',
     '2026_11_16_000001_add_animal_monitoring_details',
@@ -43,22 +53,52 @@ foreach ([
     (require dirname(__DIR__)."/database/migrations/{$migration}.php")->up();
 }
 DB::connection()->getPdo()->sqliteCreateFunction('regexp', fn ($pattern, $value) => preg_match('/'.$pattern.'/', $value), 2);
+// The archive migration contains MySQL ALTER TABLE statements.
+Schema::create('fhpr_records', function (Blueprint $table) {
+    $table->foreignId('carabao_id')->constrained();
+    $table->integer('days_in_milk')->nullable();
+});
+Schema::table('mtd_records', fn (Blueprint $table) => $table->date('dryoff_date')->nullable());
+foreach (['mating_records', 'health_records'] as $table) {
+    Schema::table($table, fn (Blueprint $schema) => $schema->string('registry_number')->nullable());
+}
 
 $cookies = [];
+$forwarded = in_array('--forwarded-https', $argv, true);
+$origin = $forwarded ? 'https://cbed-test.example' : 'http://localhost';
 function visit(string $method, string $path, int $status, array $data = [])
 {
-    global $kernel, $cookies;
+    global $kernel, $cookies, $forwarded, $origin, $app;
 
     Auth::forgetGuards();
-    $request = Request::create($path, $method, $data, $cookies, [], ['HTTP_REFERER' => 'http://localhost'.$path]);
+    if ($method !== 'GET' && $status !== 419) {
+        $data['_token'] = $app['session.store']->token();
+    }
+    $server = ['HTTP_REFERER' => $origin.$path];
+    if ($forwarded) {
+        $server += [
+            'HTTP_X_FORWARDED_HOST' => 'cbed-test.example',
+            'HTTP_X_FORWARDED_PORT' => '443',
+            'HTTP_X_FORWARDED_PROTO' => 'https',
+        ];
+    }
+    $request = Request::create($path, $method, $data, $cookies, [], $server);
     $response = $kernel->handle($request);
     $kernel->terminate($request, $response);
     foreach ($response->headers->getCookies() as $cookie) {
+        if ($cookie->isSecure() !== $forwarded || $cookie->getDomain() !== null) {
+            throw new RuntimeException("Incorrect cookie scope for $method $path.");
+        }
         $cookies[$cookie->getName()] = $cookie->getValue();
     }
 
     if ($response->getStatusCode() !== $status) {
         throw new RuntimeException("$method $path expected HTTP $status, got {$response->getStatusCode()}.");
+    }
+    $location = $response->headers->get('Location');
+    $relative = $location !== null && str_starts_with($location, '/') && ! str_starts_with($location, '//');
+    if ($location !== null && ! $relative && $location !== $origin && ! str_starts_with($location, $origin.'/')) {
+        throw new RuntimeException("Incorrect redirect for $method $path: $location.");
     }
 
     return $response;
@@ -72,7 +112,13 @@ $report = DB::table('monitoring_reports')->insertGetId([
 ]);
 DB::table('monitoring_report_details')->insert(['monitoring_report_id' => $report]);
 
-visit('GET', '/login', 200);
+$login = visit('GET', '/login', 200)->getContent();
+foreach (['/images/login-carabao.jpg', '/images/da-pcc-nias-login.png', '/js/password-visibility.js'] as $asset) {
+    if (! str_contains($login, $asset) || ! is_file(public_path(ltrim($asset, '/')))) {
+        throw new RuntimeException("Login asset is missing: $asset.");
+    }
+}
+visit('POST', '/login', 419);
 visit('GET', '/signup', 302);
 visit('POST', '/signup', 302);
 visit('GET', '/monitoring', 302);
@@ -147,7 +193,10 @@ if (! str_contains(visit('GET', "/monitoring/reports/$report", 200)->getContent(
 visit('GET', "/monitoring/reports/$report/data", 200);
 visit('GET', '/farmers', 403);
 visit('GET', '/admin/farmers/data', 403);
-$cooperative = DB::table('cooperatives')->insertGetId(['cooperative_code' => 'TEST', 'cooperative_name' => 'Test Cooperative']);
+$cooperative = DB::table('cooperatives')->insertGetId([
+    'cooperative_code' => 'TEST', 'cooperative_name' => 'Test Cooperative',
+    'barangay' => 'Test Barangay', 'municipality' => 'Test Municipality', 'province' => 'Test Province',
+]);
 $animal = DB::table('carabaos')->insertGetId(['animal_id' => 'TEST-01', 'cooperative_id' => $cooperative, 'sex' => 'Female']);
 $reportInput = [
     'cooperative_id' => $cooperative, 'monitoring_date' => '2026-11-22',
@@ -197,6 +246,71 @@ $auditPage = visit('GET', '/activity-logs?role=non-admin&action=Download', 200)-
 if (! str_contains($auditPage, 'ui.monitoring.reports.export') || ! str_contains($auditPage, 'Test Non-admin')) {
     throw new RuntimeException('The system activity log should show non-admin report downloads.');
 }
+
+visit('GET', '/calves', 200);
+visit('GET', '/admin/semen-bulls', 200);
+foreach (['/health-nutrition' => '/health', '/milk-production' => '/milk', '/mil-test' => '/mtd'] as $legacy => $current) {
+    if (visit('GET', $legacy, 302)->headers->get('Location') !== $current) {
+        throw new RuntimeException("The legacy path $legacy should open the shared database view.");
+    }
+}
+DB::table('milk_records')->insert(['carabao_id' => $animal, 'record_date' => '2026-11-22', 'total_liters' => 5]);
+$inventoryRow = visit('GET', '/admin/carabao-inventory-api', 200)->getData(true)[0];
+if ((int) $inventoryRow['has_milk_production'] !== 1) {
+    throw new RuntimeException('Inventory should use database milk production.');
+}
+$calfDrop = ['mother_id' => 'TEST-01', 'date_of_birth' => '2026-11-22', 'birth_outcome' => 'Stillbirth'];
+visit('POST', '/admin/calf-drop-api', 201, $calfDrop);
+visit('POST', '/admin/calf-drop-api', 422, $calfDrop);
+$calfRecord = visit('GET', '/admin/calf-drop-api', 200)->getData(true)[0];
+if ($calfRecord['calf_id'] !== null || $calfRecord['animal_status'] !== 'Dead' || DB::table('carabaos')->count() !== 1) {
+    throw new RuntimeException('Stillbirth should be shared without creating an inventory animal.');
+}
+
+$farmer = DB::table('farmers')->insertGetId(['cooperative_id' => $cooperative, 'first_name' => 'Test', 'last_name' => 'Farmer']);
+DB::table('carabaos')->where('id', $animal)->update(['farmer_id' => $farmer]);
+$secondAnimal = DB::table('carabaos')->insertGetId([
+    'animal_id' => 'TEST-02', 'farmer_id' => $farmer, 'sex' => 'F',
+    'birth_date' => '2025-01-01', 'classification' => 'Heifer',
+]);
+DB::table('carabaos')->insert(['animal_id' => 'TEST-03', 'farmer_id' => $farmer, 'sex' => 'Male']);
+$emptyCooperative = DB::table('cooperatives')->insertGetId(['cooperative_code' => 'EMPTY', 'cooperative_name' => 'Empty Cooperative']);
+$rosterUrl = "/monitoring/cooperatives/$cooperative/animals";
+if (! str_contains(visit('GET', '/monitoring', 200)->getContent(), 'data-animals-url="'.$rosterUrl.'"')) {
+    throw new RuntimeException('The cooperative option should contain its same-origin roster URL.');
+}
+$roster = visit('GET', $rosterUrl, 200)->getData(true);
+if (array_column($roster, 'carabao_id') !== [$animal, $secondAnimal]
+    || (int) $roster[1]['farmer_id'] !== $farmer || ! $roster[1]['classification']) {
+    throw new RuntimeException('The roster should include the farmer’s live females and their classifications.');
+}
+if (visit('GET', "/monitoring/cooperatives/$emptyCooperative/animals", 200)->getContent() !== '[]') {
+    throw new RuntimeException('A cooperative with no eligible animals should return an empty JSON array.');
+}
+$reportCount = DB::table('monitoring_reports')->count();
+visit('POST', '/monitoring/reports', 302, [
+    'cooperative_id' => $cooperative, 'monitoring_date' => '2026-11-24',
+    'rows' => [
+        ['carabao_id' => $animal, 'availability_status' => 'available', 'body_condition_score' => 3.5, 'monitoring_services' => [
+            'breeding' => json_encode(['mating_form' => true, 'method' => 'NM', 'breeding_date' => '2026-11-23']),
+            'health_nutrition' => json_encode(['services' => [['selected' => true, 'type' => 'Other Services', 'other_service_name' => 'Fixture service']]]),
+        ]],
+        ['carabao_id' => $secondAnimal, 'availability_status' => 'available', 'remarks' => 'Second animal', 'monitoring_services' => [
+            'calf_monitoring' => json_encode([
+                'date_of_birth' => '2026-11-24', 'birth_outcome' => 'Live Birth', 'sex' => 'Female', 'calf_id' => 'MONITORING-CALF',
+            ]),
+        ]],
+    ],
+]);
+$newReport = DB::table('monitoring_reports')->max('id');
+if (DB::table('monitoring_reports')->count() !== $reportCount + 1
+    || DB::table('monitoring_report_details')->where('monitoring_report_id', $newReport)->count() !== 2
+    || ! DB::table('bcs_records')->where('carabao_id', $animal)->where('body_condition_score', 3.5)->exists()
+    || ! DB::table('mating_records')->where('carabao_id', $animal)->where('mating_date', '2026-11-23')->exists()
+    || ! str_contains((string) DB::table('health_records')->where('carabao_id', $animal)->value('source_data'), 'Fixture service')
+    || ! DB::table('calves')->where('dam_id', $secondAnimal)->where('birth_outcome', 'Live Birth')->exists()) {
+    throw new RuntimeException('A monitoring report should save distinct animals and sync the selected services.');
+}
 foreach ([
     [User::ADMIN, 'Sign in', 'login.post', 302],
     [User::ADMIN, 'Create', 'signup.store', 302],
@@ -207,6 +321,19 @@ foreach ([
 ] as [$role, $action, $route, $status]) {
     if (! DB::table('activity_logs')->where(['actor_role' => $role, 'action' => $action, 'route' => $route, 'status' => $status])->exists()) {
         throw new RuntimeException("Missing activity entry for $role $action $route.");
+    }
+}
+
+visit('POST', '/admin/calf-drop-api', 201, [
+    'mother_id' => 'TEST-01', 'calf_id' => 'DIRECT-CALF', 'date_of_birth' => '2026-11-25', 'sex' => 'Male',
+]);
+foreach (['MONITORING-CALF' => '2026-11-24', 'DIRECT-CALF' => '2026-11-25'] as $calfId => $birthDate) {
+    $calf = DB::table('carabaos')->where('animal_id', $calfId)->first();
+    if ($calf?->registry_number !== $calfId || $calf->birth_date !== $birthDate
+        || (int) $calf->cooperative_id !== $cooperative || $calf->breeder !== 'Test Cooperative'
+        || $calf->association_coop_institution !== 'Test Cooperative'
+        || $calf->birth_place !== 'Test Barangay, Test Municipality, Test Province') {
+        throw new RuntimeException("Inventory calf $calfId should carry its registry and cooperative birth details.");
     }
 }
 

@@ -22,7 +22,7 @@
             <div><dt class="text-sm text-slate-500">Role</dt><dd class="font-semibold">{{ $roleLabel }}</dd></div>
         </dl>
     @elseif ($action === 'edit')
-        <form method="POST" action="{{ route('signup.update', $selectedAccount) }}" class="space-y-4 p-6">
+        <form method="POST" action="{{ route('signup.update', $selectedAccount, absolute: false) }}" class="space-y-4 p-6">
             @csrf
             @method('PUT')
             @if ($errors->accountEdit->any())
@@ -56,7 +56,7 @@
             </div>
         </form>
     @else
-        <form method="POST" action="{{ route('signup.destroy', $selectedAccount) }}" class="space-y-4 p-6">
+        <form method="POST" action="{{ route('signup.destroy', $selectedAccount, absolute: false) }}" class="space-y-4 p-6">
             @csrf
             @method('DELETE')
             <p class="break-words">Delete <strong>{{ $selectedAccount->name }}</strong> ({{ $selectedAccount->email }})? This permanently removes the account.</p>

@@ -25,4 +25,4 @@
         </div>
     </div>
 </template>
-<script defer src="{{ asset('js/table-pagination.js') }}"></script>
+<script defer src="/js/table-pagination.js"></script>

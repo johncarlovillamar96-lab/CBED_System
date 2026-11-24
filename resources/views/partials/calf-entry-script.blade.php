@@ -180,7 +180,12 @@ function calfDropPage(monitoringMode = false) {
         },
         reportedYearFromCalfId(calfId, fallback='') { const id=this.calfIdSeries(calfId); return id ? String(id.year) : String(fallback ?? ''); },
         calfIdSeries(calfId) { const match=String(calfId??'').trim().match(/^\d[A-Za-z0-9]+(\d{2})(\d{3})$/); return match?{year:2000+Number(match[1]),series:Number(match[2])}:null; },
-        get allRecords() { const manual = new Set(this.records.map(r => String(r.calf_id || '').trim().toLowerCase()).filter(Boolean)); return [...this.records, ...this.inventoryCalves.filter(c => !manual.has(String(c.calf_id || '').trim().toLowerCase()))].map(record=>({...record,reported_year:this.reportedYearFromCalfId(record.calf_id,record.reported_year)})); },
+        get allRecords() {
+            const calfId = record => String(record.calf_id || '').trim().toLowerCase();
+            const shared = new Set(this.inventoryCalves.map(calfId).filter(Boolean));
+            return [...this.records.filter(record => !shared.has(calfId(record))), ...this.inventoryCalves]
+                .map(record => ({...record, reported_year: this.reportedYearFromCalfId(record.calf_id, record.reported_year)}));
+        },
         // An inventory animal is a calf when it has a Dam ID (mother). Placeholder values do not count.
         hasDam(a) { const v = String(a?.dam_id ?? '').trim().toLowerCase(); return v !== '' && !['-','--','n/a','na','none','unknown','0'].includes(v); },
         normalizeProvince(value) { const text = String(value ?? '').replace(/\s+/g,' ').trim(); if (!text) return ''; const aliases = {nuevaecija:'Nueva Ecija', nuevaecjia:'Nueva Ecija', nuevaecijaprovince:'Nueva Ecija'}; return aliases[text.toLowerCase().replace(/[^a-z]/g,'')] || text; },
@@ -246,7 +251,8 @@ function calfDropPage(monitoringMode = false) {
                 this.inventoryCalves=calfRows
                     .filter(calf=>{
                         const id=String(calf.calf_id||'').trim().toLowerCase();
-                        if(!id||seenCalfIds.has(id))return false;
+                        if(!id)return Boolean(calf.database_id);
+                        if(seenCalfIds.has(id))return false;
                         seenCalfIds.add(id);
                         return true;
                     })
@@ -673,22 +679,6 @@ function calfDropPage(monitoringMode = false) {
             const savedLiveRows=new Set();
             const failures=[];
             for(const row of valid){
-                if(row.birth_outcome!=='Live Birth'){
-                    const record={...row};
-                    const parentage=this.cb50Parentage(row);
-                    if(parentage){
-                        record.breed=String(row.breed ?? '').trim() || parentage.breed;
-                        record.sire_id=parentage.sireId;
-                    }
-                    delete record._key;
-                    record.calf_id=String(record.calf_id||'').trim();
-                    record.mother_id=String(record.mother_id).trim();
-                    record.id='calf-'+Date.now()+'-'+Math.random().toString(36).slice(2,9);
-                    localRecords.push(record);
-                    savedRows.add(row._key);
-                    continue;
-                }
-
                 try{
                     const csrf=document.querySelector('meta[name="csrf-token"]')?.content;
                     const response=await fetch('/admin/calf-drop-api',{
@@ -700,7 +690,9 @@ function calfDropPage(monitoringMode = false) {
                             cooperative_id:row.cooperative_id||null,
                             farmer_id:row.farmer_id||null,
                             date_of_birth:row.date_of_birth||row.monitored_date,
-                            sex:row.sex,
+                            sex:row.sex||null,
+                            birth_outcome:row.birth_outcome,
+                            monitored_date:row.monitored_date||null,
                             animal_status:row.animal_status||'Live',
                             breed:row.breed||null,
                             sire_id:row.sire_id||null,
@@ -718,20 +710,10 @@ function calfDropPage(monitoringMode = false) {
                     savedLiveRows.add(row._key);
                 }catch(error){
                     failures.push(`${row.calf_id||row.mother_id}: ${error.message}`);
-                    console.error('Could not add live calf to inventory:',error);
+                    console.error('Could not save calf drop:',error);
                 }
             }
 
-            if(localRecords.length){
-                const previous=this.records;
-                this.records=[...localRecords,...this.records];
-                if(!this.persist()){
-                    this.records=previous;
-                    if(savedLiveRows.size)await this.loadInventoryCalves();
-                    this.msg(savedLiveRows.size ? 'Live births were saved to inventory. Other outcomes could not be saved in this browser.' : 'Could not save the calf record in this browser.');
-                    return;
-                }
-            }
             if(savedRows.size){
                 await this.loadInventoryCalves();
                 this.page=1;

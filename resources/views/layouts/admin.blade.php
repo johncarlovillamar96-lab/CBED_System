@@ -33,9 +33,9 @@
 
     {{-- Alpine.js --}}
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link rel="stylesheet" href="{{ asset('css/table-drag-scroll.css') }}">
-    <link rel="stylesheet" href="{{ asset('css/cbed-buttons.css') }}">
-    <script defer src="{{ asset('js/table-drag-scroll.js') }}"></script>
+    <link rel="stylesheet" href="/css/table-drag-scroll.css">
+    <link rel="stylesheet" href="/css/cbed-buttons.css">
+    <script defer src="/js/table-drag-scroll.js"></script>
 
     <style>
         :root {
@@ -50,7 +50,7 @@
         }
 
         html {
-            font-size: 70%;
+            font-size: 90%;
             scroll-behavior: smooth;
         }
 
@@ -318,7 +318,7 @@
                     <p class="mt-1 text-[.68rem] text-slate-400">{{ \App\Models\User::ROLES[auth()->user()->role] }}</p>
                 </div>
             </div>
-            <form method="POST" action="{{ route('logout') }}" class="mt-2">
+            <form method="POST" action="{{ route('logout', absolute: false) }}" class="mt-2">
                 @csrf
                 <button type="submit" class="cbed-nav-link w-full text-left">
                     <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>

@@ -69,7 +69,7 @@
             <h2 id="account-signup-title" class="text-xl font-bold text-[#12345a]">Create Account</h2>
             <button type="button" data-close-account-signup class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button>
         </header>
-        <form method="POST" action="{{ route('signup.store') }}" class="space-y-4 p-6">
+        <form method="POST" action="{{ route('signup.store', absolute: false) }}" class="space-y-4 p-6">
             @csrf
             @if ($errors->signup->any())
                 <ul class="list-inside list-disc rounded-lg bg-red-50 p-3 text-sm text-red-800" role="alert">
@@ -112,7 +112,7 @@
 @endsection
 
 @push('scripts')
-    <script src="{{ asset('js/password-visibility.js') }}" defer></script>
+    <script src="/js/password-visibility.js" defer></script>
     <script>
         {
             const signupDialog = document.getElementById('account-signup');

@@ -10,9 +10,9 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link rel="stylesheet" href="{{ asset('css/table-drag-scroll.css') }}">
-    <link rel="stylesheet" href="{{ asset('css/cbed-buttons.css') }}">
-    <script defer src="{{ asset('js/table-drag-scroll.js') }}"></script>
+    <link rel="stylesheet" href="/css/table-drag-scroll.css">
+    <link rel="stylesheet" href="/css/cbed-buttons.css">
+    <script defer src="/js/table-drag-scroll.js"></script>
 
     <style>
         [x-cloak] { display: none !important; }
@@ -71,7 +71,7 @@
 
             </nav>
 
-            <form method="POST" action="{{ route('logout') }}" class="mt-8">
+            <form method="POST" action="{{ route('logout', absolute: false) }}" class="mt-8">
                 @csrf
                 <button type="submit">Sign out</button>
             </form>

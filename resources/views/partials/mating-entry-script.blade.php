@@ -157,18 +157,6 @@ function breedingPage(monitoringMode = false){return {
             if (!Array.isArray(data)) throw new Error('The server did not return a list of mating records.');
 
             this.records=data.map(r=>this.normalizeRecord(r));
-            const localCalves=this.localCalfReports();
-            this.records.forEach(r=>{
-                const start=r.breeding_date||r.pd_date;
-                const next=this.records.filter(other=>other.pd_result==='Positive'&&other.carabao_id===r.carabao_id)
-                    .map(other=>other.breeding_date||other.pd_date).filter(date=>date>start).sort()[0];
-                if(r.pd_result==='Positive'&&this.pregnancyDays(r)>300&&localCalves.some(calf=>
-                    String(calf.mother_id).trim().toLowerCase()===String(r.animal_id??'').trim().toLowerCase()
-                    &&calf.date_of_birth>start&&(!next||calf.date_of_birth<next))){
-                    r.calf_drop_reported=true;
-                    r.pregnancy_followup_complete=true;
-                }
-            });
             this.page=Math.min(this.page,this.totalPages());
         }finally{
             this.loading=false;
@@ -809,21 +797,6 @@ function breedingPage(monitoringMode = false){return {
         }catch(e){
             this.msg('Mating record deleted. Refresh the page to update the list.','error');
         }
-    },
-
-    localCalfReports(){
-        try{
-            const saved=JSON.parse(localStorage.getItem('cbed_calfdrop_records')||'[]');
-            if(!Array.isArray(saved))return [];
-            return saved.filter(r=>{
-                const calf=String(r?.calf_id??'').trim(),mother=String(r?.mother_id??'').trim();
-                return mother&&!['-','--','n/a','na','none','unknown','0'].includes(mother.toLowerCase())
-                    &&!/^CALF-2026-00[1-5]$|^CALF-2025-005$|^6-(?:SB|AB)-26-CB-2024-00[34]$/i.test(calf)
-                    &&!/^CB-2024-00[1-5]$/i.test(mother)
-                    &&!/^Sample Cooperative(?:\s|$)/i.test(String(r?.cooperative??'').trim())
-                    &&!/Sample record/i.test(String(r?.remarks??''));
-            });
-        }catch(e){return [];}
     },
 
     isUnreportedCalf(r){

@@ -28,7 +28,7 @@
     @endif
 
     <dialog id="monitoring-modal" aria-labelledby="monitoring-modal-title" class="m-auto max-h-[94vh] w-[98vw] max-w-none overflow-auto rounded-2xl bg-white p-0 shadow-2xl backdrop:bg-slate-950/60">
-        <form method="POST" action="{{ route('ui.monitoring.reports.store') }}" id="monitoring-form">
+        <form method="POST" action="{{ route('ui.monitoring.reports.store', absolute: false) }}" id="monitoring-form">
             @csrf
             <header class="flex items-center justify-between gap-3 border-b p-5">
                 <h2 id="monitoring-modal-title" class="text-xl font-bold text-[#12345a]">Add Monitoring Record</h2>
@@ -38,7 +38,7 @@
                 <x-monitoring-picker id="monitoring-cooperative" label="Cooperative" name="cooperative_id">
                     <option value="">Select a cooperative</option>
                     @foreach ($cooperatives as $cooperative)
-                        <option value="{{ $cooperative->id }}">{{ $cooperative->cooperative_name }}</option>
+                        <option value="{{ $cooperative->id }}" data-animals-url="{{ route('ui.monitoring.animals', $cooperative->id, absolute: false) }}">{{ $cooperative->cooperative_name }}</option>
                     @endforeach
                 </x-monitoring-picker>
                 <x-monitoring-picker id="monitoring-farmer-filter" label="Farmer">
@@ -56,7 +56,10 @@
                     </button>
                 </div>
                 <p id="monitoring-loading" role="status" class="hidden rounded-lg bg-slate-50 p-3 text-sm text-slate-600"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading cooperative animals?</p>
-                <p id="monitoring-error" role="alert" class="hidden rounded-lg bg-rose-50 p-3 text-sm text-rose-800"></p>
+                <p id="monitoring-error" role="alert" class="hidden rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+                    <span id="monitoring-error-message"></span>
+                    <button type="button" id="monitoring-retry" class="ml-2 hidden font-semibold underline">Retry</button>
+                </p>
 
                 <div class="overflow-x-auto rounded-lg border border-slate-200" role="region" aria-label="Monitoring entry rows" tabindex="0">
                     <table class="inventory-data-table w-full min-w-[90rem] table-fixed text-left text-sm">
@@ -346,10 +349,10 @@
 
 @push('scripts')
 <script>
-const monitoringBaseUrl = @json(url('/monitoring/cooperatives'));
 let monitoringAnimals = [], monitoringRoster = [], bcsOptions = [];
 let monitoringSubmitting = false;
 let monitoringAnimalsRequest = null;
+let monitoringRosterLoaded = false;
 const monitoringDialog = document.getElementById('monitoring-modal');
 
 (() => {
@@ -433,7 +436,7 @@ async function openMonitoringModal() {
     renderMonitoringRows();
     if (!bcsOptions.length) {
         try {
-            const response = await fetch('/monitoring/bcs-scores', {headers: {Accept: 'application/json'}});
+            const response = await fetch(@json(route('ui.monitoring.bcs-scores', absolute: false)), {headers: {Accept: 'application/json'}});
             if (response.ok) bcsOptions = await response.json();
         } catch (error) {
             console.warn('BCS values unavailable', error);
@@ -487,9 +490,11 @@ function renderMonitoringRows() {
         ? `${farmerAnimals.length} live female animal(s) for ${farmer.selectedOptions[0].textContent}.`
         : (monitoringRoster.some(animal => animal.farmer_id)
             ? 'Select a farmer to view their live female animals.'
-            : (document.getElementById('monitoring-cooperative').value && !monitoringAnimalsRequest
+            : (monitoringRosterLoaded
                 ? 'No live female animals are linked to a farmer in this cooperative.'
-                : 'Select a cooperative and farmer to view live animals.'));
+                : (document.getElementById('monitoring-cooperative').value
+                    ? ''
+                    : 'Select a cooperative and farmer to view live animals.')));
     document.getElementById('monitoring-add-row').disabled = monitoringSubmitting || !available || pendingRow;
     document.getElementById('monitoring-submit-button').disabled = monitoringSubmitting || !rows.length || rows.some(({row}) => !row.carabao_id);
     document.getElementById('monitoring-empty').classList.toggle('hidden', rows.length > 0);
@@ -603,37 +608,60 @@ for (const [eventName, service] of Object.entries({
     });
 }
 
-document.getElementById('monitoring-cooperative').addEventListener('change', async (event) => {
+async function loadMonitoringRoster() {
     monitoringAnimalsRequest?.abort();
-    const id = event.target.value;
-    const request = id ? new AbortController() : null;
+    const cooperative = document.getElementById('monitoring-cooperative');
+    const url = cooperative.selectedOptions[0]?.dataset.animalsUrl;
+    const request = url ? new AbortController() : null;
     monitoringAnimalsRequest = request;
 
     const loading = document.getElementById('monitoring-loading');
     const error = document.getElementById('monitoring-error');
+    const retry = document.getElementById('monitoring-retry');
     const farmer = document.getElementById('monitoring-farmer-filter');
     loading.classList.toggle('hidden', !request);
     error.classList.add('hidden');
+    retry.classList.add('hidden');
     monitoringAnimals = [];
     monitoringRoster = [];
+    monitoringRosterLoaded = false;
     farmer.value = '';
     populateMonitoringFarmers();
     renderMonitoringRows();
     if (!request) return;
 
     try {
-        const response = await fetch(monitoringBaseUrl + '/' + encodeURIComponent(id) + '/animals', {
+        const response = await fetch(url, {
             headers: {Accept: 'application/json'},
+            cache: 'no-store',
             signal: request.signal,
         });
-        if (!response.ok) throw new Error('Could not load animals for this cooperative.');
-        const data = await response.json();
+        if (monitoringAnimalsRequest !== request) return;
+        if (response.status === 401 || response.status === 419 || response.redirected) {
+            throw new Error('Your session may have expired. Reload the page and sign in again.');
+        }
+        if (response.status === 403) {
+            throw new Error('Your account does not have permission to view these animals.');
+        }
+        if (response.status === 404) {
+            throw new Error('This cooperative is no longer available. Reload the page and select a cooperative again.');
+        }
+        retry.classList.remove('hidden');
+        if (!response.ok) throw new Error(`Could not load cooperative animals (HTTP ${response.status}).`);
+        const data = await response.json().catch(() => null);
+        if (!Array.isArray(data) || data.some(animal => !Number.isSafeInteger(animal?.carabao_id))) {
+            throw new Error('The server returned an incomplete or invalid animal list.');
+        }
         if (monitoringAnimalsRequest !== request) return;
         monitoringRoster = data;
+        monitoringRosterLoaded = true;
         populateMonitoringFarmers();
     } catch (exception) {
         if (monitoringAnimalsRequest !== request) return;
-        error.textContent = exception.message;
+        if (exception instanceof TypeError) retry.classList.remove('hidden');
+        document.getElementById('monitoring-error-message').textContent = exception instanceof TypeError
+            ? 'Could not connect to the server. Check your connection and try again.'
+            : exception.message;
         error.classList.remove('hidden');
     } finally {
         if (monitoringAnimalsRequest === request) {
@@ -642,7 +670,9 @@ document.getElementById('monitoring-cooperative').addEventListener('change', asy
             renderMonitoringRows();
         }
     }
-});
+}
+document.getElementById('monitoring-cooperative').addEventListener('change', loadMonitoringRoster);
+document.getElementById('monitoring-retry').addEventListener('click', loadMonitoringRoster);
 document.getElementById('monitoring-farmer-filter').addEventListener('input', renderMonitoringRows);
 document.getElementById('monitoring-form').addEventListener('submit', (event) => {
     if (monitoringSubmitting) {
@@ -653,7 +683,8 @@ document.getElementById('monitoring-form').addEventListener('submit', (event) =>
     const error = document.getElementById('monitoring-error');
     if (!monitoringAnimals.some(row => row?.carabao_id) || monitoringAnimals.some(row => row && !row.carabao_id)) {
         event.preventDefault();
-        error.textContent = 'Select a live animal for each report row.';
+        document.getElementById('monitoring-error-message').textContent = 'Select a live animal for each report row.';
+        document.getElementById('monitoring-retry').classList.add('hidden');
         error.classList.remove('hidden');
         error.scrollIntoView({block: 'nearest'});
         return;
