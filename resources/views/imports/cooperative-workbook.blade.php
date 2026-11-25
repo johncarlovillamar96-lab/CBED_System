@@ -217,7 +217,7 @@
         @endif
 
         <div class="mt-5 rounded-xl bg-blue-50 p-4">
-            <p class="text-xs text-blue-800">Only these 12 worksheets are imported: BD_ALL, BD_Out, BCS, FHPR_Breeding, Mating, Mating (2), Health Nutrition, MILK, MILK (2), Meat, MANURE BASED-PRODUCTS, and MTD. COMMENTS_JAN2026, Pedigree, Summary, and Semen are ignored. Imports are cumulative and do not delete existing animals or historical data.</p>
+            <p class="text-xs text-blue-800">Supported worksheets include BD_ALL, BD_Out, BCS, FHPR_Breeding, Mating, Health Nutrition, MILK, Meat, MANURE BASED-PRODUCTS, and MTD. Mating (2) and MILK (2) are optional and imported when present. Imports are cumulative.</p>
         </div>
     </section>
 
@@ -400,24 +400,27 @@
         });
         stagedFiles.forEach((file) => {
             const card = document.createElement('article');
-            card.className = 'rounded-xl border border-slate-200 p-4';
+            card.className = 'rounded-lg border border-slate-200 px-3 py-2';
             const top = document.createElement('div');
-            top.className = 'flex flex-wrap items-start justify-between gap-3';
+            top.className = 'flex flex-wrap items-center gap-2 lg:flex-nowrap';
             const fileInfo = document.createElement('div');
+            fileInfo.className = 'min-w-0 flex-1 basis-full lg:basis-0';
             const title = document.createElement('p');
-            title.className = 'font-semibold text-slate-800';
+            title.className = 'truncate text-sm font-semibold text-slate-800';
             title.textContent = `${escapeText(file.filename)} · ${(file.size / 1048576).toFixed(2)} MB`;
             const state = document.createElement('p');
-            state.className = `mt-1 text-xs ${file.status === 'ready' ? 'text-emerald-700' : 'text-rose-700'}`;
+            state.className = `truncate text-xs ${file.status === 'ready' ? 'text-emerald-700' : 'text-rose-700'}`;
             state.textContent = file.status === 'ready'
-                ? (file.match_status === 'matched' ? 'Exact workbook match found; verify it below.' : `Cooperative match: ${file.match_status}. Select the correct cooperative.`)
+                ? (file.match_status === 'matched' ? 'Exact cooperative match' : `Cooperative match: ${file.match_status}. Select a cooperative.`)
                 : `Not importable: ${file.error || file.status}`;
             fileInfo.append(title, state);
+            title.title = title.textContent;
+            state.title = state.textContent;
             top.append(fileInfo);
 
             if (file.status === 'ready') {
                 const select = document.createElement('select');
-                select.className = 'min-w-64 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm';
+                select.className = 'min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm lg:max-w-md';
                 select.setAttribute('aria-label', `Cooperative for ${file.filename}`);
                 const placeholder = document.createElement('option');
                 placeholder.value = '';
@@ -436,10 +439,26 @@
                 });
                 top.append(select);
             }
+            const previewPanel = document.createElement('div');
+            previewPanel.id = `staged-workbook-preview-${file.id}`;
+            previewPanel.hidden = true;
+            if (file.sheets?.length || file.missing_sheets?.length || file.evidence?.workbook_codes?.length || file.evidence?.workbook_names?.length) {
+                const toggle = document.createElement('button');
+                toggle.type = 'button';
+                toggle.className = 'shrink-0 rounded border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-700';
+                toggle.textContent = file.sheets?.length ? `Preview ${file.sheets.length} sheets` : 'Details';
+                toggle.setAttribute('aria-expanded', 'false');
+                toggle.setAttribute('aria-controls', previewPanel.id);
+                toggle.addEventListener('click', () => {
+                    previewPanel.hidden = !previewPanel.hidden;
+                    toggle.setAttribute('aria-expanded', String(!previewPanel.hidden));
+                });
+                top.append(toggle);
+            }
             if (file.id && batchId) {
                 const remove = document.createElement('button');
                 remove.type = 'button';
-                remove.className = 'rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700';
+                remove.className = 'shrink-0 rounded border border-rose-300 px-2 py-1.5 text-xs font-semibold text-rose-700';
                 remove.textContent = 'Remove file';
                 remove.addEventListener('click', async () => {
                     if (isConfirming) return;
@@ -456,20 +475,15 @@
                 const evidence = document.createElement('p');
                 evidence.className = 'mt-2 text-xs text-slate-500';
                 evidence.textContent = `Workbook codes: ${(file.evidence.workbook_codes || []).join(', ') || 'none'} · Names: ${(file.evidence.workbook_names || []).join(', ') || 'none'}`;
-                card.append(evidence);
+                previewPanel.append(evidence);
             }
             if (file.missing_sheets?.length) {
                 const missing = document.createElement('p');
                 missing.className = 'mt-2 text-xs text-amber-800';
                 missing.textContent = `Missing approved sheets (${file.missing_sheets.length}): ${file.missing_sheets.join(', ')}`;
-                card.append(missing);
+                previewPanel.append(missing);
             }
             if (file.sheets?.length) {
-                const details = document.createElement('details');
-                details.className = 'mt-3';
-                const summary = document.createElement('summary');
-                summary.className = 'cursor-pointer text-xs font-semibold text-slate-700';
-                summary.textContent = `Preview ${file.sheets.length} worksheet(s)`;
                 const table = document.createElement('div');
                 table.className = 'mt-2 overflow-x-auto';
                 const tableElement = document.createElement('table');
@@ -498,9 +512,9 @@
                 });
                 tableElement.append(thead, tbody);
                 table.append(tableElement);
-                details.append(summary, table);
-                card.append(details);
+                previewPanel.append(table);
             }
+            card.append(previewPanel);
             preview.append(card);
         });
         cancelButton.hidden = !batchId;
@@ -584,13 +598,14 @@
             : (completed === 1 ? 'Workbook imported successfully.' : `${completed} workbooks imported successfully.`);
         setMessage(summary, withErrors > 0);
         if (isConfirming) {
-            updateImportProgress(completed, files.length, summary);
+            updateImportProgress(completed, files.length, `${summary} Refreshing results…`);
             progressResults.hidden = false;
             progressClose.hidden = false;
             progressToast.classList.replace('border-blue-200', withErrors ? 'border-rose-200' : 'border-emerald-200');
             progressIcon.classList.replace('bg-blue-100', withErrors ? 'bg-rose-100' : 'bg-emerald-100');
             progressIcon.classList.replace('text-blue-700', withErrors ? 'text-rose-700' : 'text-emerald-700');
             progressIcon.firstElementChild.className = withErrors ? 'fa-solid fa-exclamation' : 'fa-solid fa-check';
+            window.setTimeout(() => window.location.reload(), 1000);
         } else {
             window.location.reload();
         }

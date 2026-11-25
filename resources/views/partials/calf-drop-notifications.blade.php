@@ -14,7 +14,10 @@
                     <p class="mt-1 text-xs font-semibold text-amber-900">{{ $notification['count'] }} animal(s) awaiting a calf-drop report</p>
                     <ul class="mt-2 space-y-1 text-xs text-slate-700">
                         @foreach($notification['animals'] as $animal)
-                            <li><a class="text-blue-800 hover:underline" href="{{ url('/mating').'?'.http_build_query(['overdue_calves'=>1,'cooperative_id'=>$notification['cooperative_id'],'animal_id'=>$animal['animal_id']]) }}">{{ $animal['animal_id'] }}</a> · {{ $animal['days'] }} days</li>
+                            <li>
+                                <a class="text-blue-800 hover:underline" href="{{ url('/mating').'?'.http_build_query(['overdue_calves'=>1,'cooperative_id'=>$notification['cooperative_id'],'animal_id'=>$animal['animal_id']]) }}">{{ $animal['animal_id'] }}</a>
+                                · {{ $animal['farmer_name'] ?: 'Farmer unavailable' }} · {{ $animal['days'] }} days
+                            </li>
                         @endforeach
                     </ul>
                 </div>

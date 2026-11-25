@@ -111,6 +111,7 @@ class CooperativeSpreadsheetController extends Controller
 
         $book->disconnectWorksheets();
 
+        $request->attributes->set('activity_import_totals', ['successful' => $imported]);
         return back()->with('success', "Imported or updated {$imported} cooperative record(s).");
     }
 

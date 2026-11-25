@@ -107,14 +107,25 @@ class MonitoringReportController extends Controller
             ->orderBy('animal.registry_number')
             ->orderBy('animal.bolus_id')
             ->orderBy('animal.id')
-            ->get([
+            ->select([
                 'animal.id as carabao_id', 'animal.animal_id', 'animal.bolus_id', 'animal.registry_number',
                 'animal.tag_number', 'animal.animal_name', 'animal.sex', 'animal.birth_date', 'animal.breed',
                 'animal.classification', 'animal.reproductive_status', 'animal.lactation_status',
                 'animal.status as inventory_status', 'animal.cooperative_id', 'animal.farmer_id',
                 'animal.province', 'animal.municipality', 'animal.barangay', 'animal.entrustment', 'animal.ownership_status',
                 'farmer.cooperative_id as farmer_cooperative_id', 'farmer.first_name', 'farmer.middle_name', 'farmer.last_name',
-            ]);
+            ])
+            ->addSelect(['existing_mating_record' => DB::table('mating_records')
+                ->select('mating_records.id')
+                ->where(fn ($query) => $query->whereColumn('mating_records.carabao_id', 'animal.id')
+                    ->orWhere(fn ($legacy) => $legacy->whereNull('mating_records.carabao_id')
+                        ->where('mating_records.cooperative_id', $cooperative)
+                        ->where('mating_records.registry_number', '<>', '')
+                        ->where(fn ($registry) => $registry
+                            ->whereColumn('mating_records.registry_number', 'animal.registry_number')
+                            ->orWhereColumn('mating_records.registry_number', 'animal.animal_id'))))
+                ->limit(1)])
+            ->get();
 
         $ids = $animals->pluck('carabao_id')->map(fn ($id) => (int) $id)->all();
         $asOf = now()->toDateString();
@@ -171,6 +182,7 @@ class MonitoringReportController extends Controller
             return [
                 'carabao_id' => (int) $animal->carabao_id,
                 'animal_id' => $animal->animal_id,
+                'has_mating_record' => $animal->existing_mating_record !== null,
                 'bolus_id' => $animal->bolus_id,
                 'registry_number' => $animal->registry_number,
                 'tag_number' => $animal->tag_number,
@@ -194,6 +206,26 @@ class MonitoringReportController extends Controller
                 'entrustment' => $animal->entrustment, 'ownership_status' => $animal->ownership_status,
             ];
         })->values(), 200, ['Cache-Control' => 'no-store, private'], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    public function animalMatings(int $cooperative, int $animal)
+    {
+        $dam = $this->eligibleAnimals($cooperative)->where('animal.id', $animal)
+            ->first(['animal.animal_id', 'animal.registry_number']);
+        abort_unless($dam, 404);
+
+        $identifiers = array_filter([$dam->animal_id, $dam->registry_number]);
+        $records = DB::table('mating_records as mating')
+            ->leftJoin('semen_bulls as bull', 'bull.id', '=', 'mating.semen_bull_id')
+            ->where(fn ($query) => $query->where('mating.carabao_id', $animal)
+                ->orWhere(fn ($legacy) => $legacy->whereNull('mating.carabao_id')
+                    ->where('mating.cooperative_id', $cooperative)
+                    ->whereIn('mating.registry_number', $identifiers)))
+            ->select('mating.id', 'mating.mating_date', 'mating.mating_type', 'mating.actual_calving_date', 'mating.pregnancy_result')
+            ->selectRaw("COALESCE(NULLIF(mating.bull_id, ''), bull.bull_id) as bull_id")
+            ->orderByDesc('mating.mating_date')->orderByDesc('mating.id')->get();
+
+        return response()->json($records, 200, ['Cache-Control' => 'no-store, private']);
     }
 
     private function eligibleAnimals(int $cooperativeId): \Illuminate\Database\Query\Builder
@@ -546,6 +578,7 @@ class MonitoringReportController extends Controller
             $calf = $row['monitoring_services']['calf_monitoring']
                 ?? (($row['monitoring_specification'] ?? null) === 'calf_monitoring' ? ($row['monitoring_data'] ?? []) : []);
             if (($calf['automatic_calf'] ?? false) && ($calf['birth_outcome'] ?? null) === 'Live Birth') {
+                CalfRegistryId::lockSequence();
                 DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first(['id']);
                 break;
             }

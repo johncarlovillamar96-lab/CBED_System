@@ -42,6 +42,7 @@ class OverdueCalfNotifications
             ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
             ->leftJoin('cooperatives as cooperative', 'cooperative.id', '=', DB::raw('COALESCE(mating.cooperative_id, animal.cooperative_id, farmer.cooperative_id)'))
             ->select('mating.*', 'animal.animal_id as animal_registry_id', 'animal.status as inventory_status', 'animal.nature_of_exit as inventory_exit', 'cooperative.cooperative_name')
+            ->addSelect('farmer.first_name', 'farmer.middle_name', 'farmer.last_name')
             ->selectRaw('COALESCE(mating.cooperative_id, animal.cooperative_id, farmer.cooperative_id) as cooperative_id')->get();
         $records = MatingCalfReports::annotate($records,
             DB::table('calves')->whereIn('dam_id', $records->pluck('carabao_id'))->get(['dam_id', 'birth_date']),
@@ -53,6 +54,10 @@ class OverdueCalfNotifications
                 'count' => $animals->count(),
                 'animals' => $animals->sortByDesc('pregnancy_days')->map(fn ($r) => [
                     'animal_id' => $r->animal_registry_id ?: $r->registry_number,
+                    'farmer_name' => implode(' ', array_filter(array_map(
+                        fn ($name) => trim((string) $name),
+                        [$r->first_name, $r->middle_name, $r->last_name]
+                    ))),
                     'days' => $r->pregnancy_days,
                 ])->values()->all(),
             ])->sortBy('cooperative_name')->values();

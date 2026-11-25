@@ -54,6 +54,12 @@ class CooperativeImportController extends Controller
 
         $result = $this->importInventoryRecords($this->readInventory($path), (int) $batch['cooperative_id']);
 
+        $request->attributes->set('activity_import_totals', [
+            'successful' => $result['animals'],
+            'skipped' => $result['skipped'],
+            'cooperative_id' => (int) $batch['cooperative_id'],
+        ]);
+
         @unlink($path);
         $request->session()->forget('cooperative_import');
 

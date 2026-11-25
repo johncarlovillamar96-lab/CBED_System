@@ -33,10 +33,10 @@ class CooperativeWorkbookImportController extends Controller
         ['key' => 'bcs', 'label' => 'BCS', 'module' => 'Body Condition Score', 'table' => 'bcs_records', 'aliases' => ['bcs']],
         ['key' => 'fhpr_breeding', 'label' => 'FHPR_Breeding', 'module' => 'Breeding Summary', 'table' => 'fhpr_records', 'aliases' => ['fhprbreeding']],
         ['key' => 'mating', 'label' => 'Mating', 'module' => 'Mating Attempts', 'table' => 'mating_records', 'aliases' => ['mating', 'matingattempts']],
-        ['key' => 'mating_2', 'label' => 'Mating (2)', 'module' => 'Mating Attempts', 'table' => 'mating_records', 'aliases' => ['mating2']],
+        ['key' => 'mating_2', 'label' => 'Mating (2)', 'module' => 'Mating Attempts', 'table' => 'mating_records', 'aliases' => ['mating2'], 'optional' => true],
         ['key' => 'health_nutrition', 'label' => 'Health Nutrition', 'module' => 'Health & Nutrition', 'table' => 'health_records', 'aliases' => ['healthnutrition']],
         ['key' => 'milk', 'label' => 'Milk', 'module' => 'Milk Production', 'table' => 'milk_records', 'aliases' => ['milk', 'milkproduction']],
-        ['key' => 'milk_2', 'label' => 'MILK (2)', 'module' => 'Milk Production', 'table' => 'milk_records', 'aliases' => ['milk2']],
+        ['key' => 'milk_2', 'label' => 'MILK (2)', 'module' => 'Milk Production', 'table' => 'milk_records', 'aliases' => ['milk2'], 'optional' => true],
         ['key' => 'meat', 'label' => 'Meat', 'module' => 'Meat Production', 'table' => 'cooperative_product_records', 'aliases' => ['meat', 'meatproduction']],
         ['key' => 'manure', 'label' => 'MANURE BASED-PRODUCTS', 'module' => 'Manure-Based Products', 'table' => 'cooperative_product_records', 'aliases' => ['manurebasedproducts']],
         ['key' => 'mtd', 'label' => 'MTD', 'module' => 'Milk Test Day MTD', 'table' => 'mtd_records', 'aliases' => ['mtd', 'milktestdaymtd']],
@@ -136,10 +136,12 @@ class CooperativeWorkbookImportController extends Controller
                 }
             });
 
+        $statusSheets = array_filter(self::SHEETS, fn ($sheet) => empty($sheet['optional']));
+
         return view('imports.cooperative-workbook', [
             'cooperatives' => $cooperatives,
             'imports' => $imports,
-            'sheets' => self::SHEETS,
+            'sheets' => $statusSheets,
             'latestByCooperative' => $latestByCooperative,
             'batches' => $batches,
             'pendingIdentifiers' => $pendingIdentifiers,
@@ -251,7 +253,7 @@ class CooperativeWorkbookImportController extends Controller
                 'match_status' => 'unknown',
                 'cooperative_id' => null,
                 'evidence' => [],
-                'missing_sheets' => array_column(self::SHEETS, 'label'),
+                'missing_sheets' => $this->missingRequiredSheets(),
                 'sheets' => [],
                 'error' => 'The workbook could not be previewed. Verify that it is a valid, readable Excel file.',
             ];
@@ -496,7 +498,7 @@ class CooperativeWorkbookImportController extends Controller
                 'match_status' => 'unknown',
                 'cooperative_id' => null,
                 'evidence' => [],
-                'missing_sheets' => array_column(self::SHEETS, 'label'),
+                'missing_sheets' => $this->missingRequiredSheets(),
                 'sheets' => [],
                 'error' => 'No approved import worksheets were found.',
             ];
@@ -571,10 +573,7 @@ class CooperativeWorkbookImportController extends Controller
         }
         $matchStatus = count($matched) === 1 ? 'matched' : (count($matched) > 1 ? 'ambiguous' : 'unknown');
         $cooperativeId = count($matched) === 1 ? (int) array_key_first($matched) : null;
-        $missing = array_values(array_map(
-            fn ($definition) => $definition['label'],
-            array_filter(self::SHEETS, fn ($definition) => ! isset($foundSheets[$definition['key']]))
-        ));
+        $missing = $this->missingRequiredSheets($foundSheets);
 
         return [
             'valid' => true,
@@ -874,7 +873,9 @@ class CooperativeWorkbookImportController extends Controller
             }
 
             if (! $worksheet) {
-                $this->recordSheet($importId, $definition['label'], $definition['module'], 'missing', 0, 0, 'This worksheet was not found in the workbook.');
+                if ($selectedSheet !== null || empty($definition['optional'])) {
+                    $this->recordSheet($importId, $definition['label'], $definition['module'], 'missing', 0, 0, 'This worksheet was not found in the workbook.');
+                }
                 continue;
             }
 
@@ -2090,6 +2091,13 @@ class CooperativeWorkbookImportController extends Controller
         }
 
         return null;
+    }
+
+    private function missingRequiredSheets(array $foundSheets = []): array
+    {
+        return array_column(array_filter(self::SHEETS, fn ($sheet) =>
+            empty($sheet['optional']) && ! isset($foundSheets[$sheet['key']])
+        ), 'label');
     }
 
     private function normalizeSheetName(string $name): string

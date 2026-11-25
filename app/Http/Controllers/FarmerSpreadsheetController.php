@@ -154,6 +154,11 @@ class FarmerSpreadsheetController extends Controller
 
         $book->disconnectWorksheets();
 
+        $request->attributes->set('activity_import_totals', [
+            'successful' => $created + $updated,
+            'skipped' => $skipped,
+            'cooperative_id' => $cooperativeId,
+        ]);
         $message = "Imported {$created} farmer(s) in A–Z order; {$skipped} duplicate(s) skipped.";
         if ($firstCode) $message .= " New Farmer IDs: {$firstCode}".($lastCode !== $firstCode ? " to {$lastCode}." : '.');
 

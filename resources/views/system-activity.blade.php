@@ -3,69 +3,71 @@
 @section('title', 'Activity Logs')
 
 @section('content')
-    <x-admin-page-header title="Activity Logs" description="Review activity across admin, technician, and non-admin accounts.">
+    <x-admin-page-header title="Activity Logs" description="Review saved transactions and accomplishments.">
         <a href="{{ route('ui.activity-logs.monitoring') }}"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Monitoring Visits</a>
     </x-admin-page-header>
 
+    @include('partials.activity-metrics')
+
     <section aria-label="System activity" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <form method="get" action="{{ route('ui.activity-logs') }}" class="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-4">
-            <label class="text-sm font-semibold">Search name or route
-                <input type="search" name="search" value="{{ $filters['search'] ?? '' }}" maxlength="100" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
-            </label>
-            <label class="text-sm font-semibold">Role
-                <select name="role" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
-                    <option value="">All roles</option>
-                    @foreach ($roles as $value => $label)
-                        <option value="{{ $value }}" @selected(($filters['role'] ?? '') === $value)>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <label class="text-sm font-semibold">Action
-                <select name="action" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
-                    <option value="">All actions</option>
-                    @foreach ($actions as $action)
-                        <option @selected(($filters['action'] ?? '') === $action)>{{ $action }}</option>
-                    @endforeach
-                </select>
-            </label>
-            <div class="flex items-end gap-2">
+        <form method="get" action="{{ route('ui.activity-logs') }}" class="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
+            @foreach (['from' => ['From date', 'date'], 'to' => ['To date', 'date'], 'year' => ['Year', 'number'], 'month' => ['Month (1-12)', 'number'], 'animal' => ['Animal ID', 'search'], 'search' => ['Search activity descriptions', 'search']] as $field => [$label, $type])
+                <label class="text-sm font-semibold">{{ $label }}
+                    <input type="{{ $type }}" name="{{ $field }}" value="{{ $filters[$field] ?? '' }}" @if($field === 'month') min="1" max="12" @elseif($field === 'year') min="1900" max="9998" @endif class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
+                </label>
+            @endforeach
+            @foreach (['user' => 'User', 'cooperative' => 'Cooperative', 'module' => 'Module', 'action' => 'Action', 'role' => 'Role', 'period' => 'Accomplishment period'] as $field => $label)
+                <label class="text-sm font-semibold">{{ $label }}
+                    <select name="{{ $field }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
+                        @if ($field !== 'period')
+                            <option value="">All</option>
+                        @endif
+                        @foreach ($options[$field] as $value => $text)
+                            <option value="{{ $value }}" @selected((string) ($filters[$field] ?? '') === (string) $value)>{{ $text }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            @endforeach
+            <div class="flex flex-wrap items-center gap-3 lg:col-span-4">
                 <button type="submit" class="cbed-save-button">Apply Filters</button>
                 <x-reset-filters :href="route('ui.activity-logs')" />
+                <button class="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" name="format" value="excel">Export Excel</button>
+                <button class="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" name="format" value="print" formtarget="_blank">Printable Report</button>
             </div>
         </form>
 
+        @include('partials.activity-periods')
+
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[48rem] text-left text-sm">
+            <table class="w-full min-w-[54rem] text-left text-sm">
                 <thead class="bg-[#103c60] text-xs uppercase text-white">
                     <tr>
-                        <th scope="col" class="px-5 py-3">Date and time (SGT)</th>
-                        <th scope="col" class="px-5 py-3">Account</th>
-                        <th scope="col" class="px-5 py-3">Role</th>
-                        <th scope="col" class="px-5 py-3">Action</th>
-                        <th scope="col" class="px-5 py-3">Route</th>
-                        <th scope="col" class="px-5 py-3">Result</th>
+                        @foreach (['No.', 'Date and time (Asia/Manila)', 'User', 'First Name', 'Last Name', 'Module', 'Action', 'Cooperative', 'Activity Description'] as $heading)
+                            <th scope="col" class="px-4 py-3">{{ $heading }}</th>
+                        @endforeach
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse ($entries as $entry)
-                        @php
-                            $result = match (true) {
-                                (bool) $entry->validation_failed => 'Validation failed',
-                                (int) $entry->status === 403 => 'Access denied',
-                                (int) $entry->status >= 400 => 'HTTP '.$entry->status,
-                                default => 'Completed',
-                            };
-                        @endphp
+                        @php($details = $entry->details ?? [])
                         <tr class="hover:bg-slate-50">
-                            <td class="whitespace-nowrap px-5 py-3">{{ \Illuminate\Support\Carbon::parse($entry->occurred_at, config('app.timezone'))->setTimezone('Asia/Singapore')->format('M j, Y g:i:s A') }}</td>
-                            <td class="px-5 py-3"><span class="font-semibold">{{ $entry->actor_name }}</span> <span class="whitespace-nowrap text-xs text-slate-500">#{{ $entry->actor_id }}</span></td>
-                            <td class="whitespace-nowrap px-5 py-3">{{ $roles[$entry->actor_role] ?? $entry->actor_role }}</td>
-                            <td class="whitespace-nowrap px-5 py-3">{{ $entry->action }}</td>
-                            <td class="px-5 py-3">{{ $entry->route }} @if ($entry->target)<span class="block text-xs text-slate-500">{{ $entry->target }}</span>@endif</td>
-                            <td class="whitespace-nowrap px-5 py-3">{{ $result }}</td>
+                            <td class="px-4 py-3">{{ $entries->firstItem() + $loop->index }}</td>
+                            <td class="whitespace-nowrap px-4 py-3">{{ $entry->localTime()->format('M j, Y g:i:s A') }}</td>
+                            <td class="px-4 py-3">{{ $entry->actor_name }} <span class="text-xs text-slate-500">#{{ $entry->actor_id }}</span></td>
+                            <td class="px-4 py-3">{{ $entry->actor_first_name ?: '—' }}</td>
+                            <td class="px-4 py-3">{{ $entry->actor_last_name ?: '—' }}</td>
+                            <td class="px-4 py-3">{{ $entry->module ?? 'System' }}</td>
+                            <td class="px-4 py-3">{{ $entry->action }}</td>
+                            <td class="px-4 py-3">{{ implode(', ', $details['cooperatives'] ?? []) ?: '—' }}</td>
+                            <td class="px-4 py-3">
+                                <div class="whitespace-pre-line">{{ $entry->activityDescription() }}</div>
+                                <button type="button" class="mt-1 block text-sm font-semibold text-blue-800 underline" aria-haspopup="dialog"
+                                    onclick="document.getElementById('activity-{{ $entry->id }}').showModal()">View Details</button>
+                                @include('partials.activity-details')
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="6" class="px-5 py-10 text-center text-slate-500">No activity matches these filters.</td></tr>
+                        <tr><td colspan="9" class="px-5 py-10 text-center text-slate-500">No activity matches these filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>

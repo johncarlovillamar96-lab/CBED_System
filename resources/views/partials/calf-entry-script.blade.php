@@ -7,7 +7,9 @@ function calfDropPage(monitoringMode = false) {
         filterReportedYear: '',
         showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 15,
         monitoringCalf: null,
-        showMatingPicker: false, dueMatings: [], matingDamKeys: new Set(), loadingDueMatings: false, dueMatingsError: '',
+        matingRecords: [],
+        matingLookup: 0,
+        showMatingPicker: false, dueMatings: [], loadingDueMatings: false, dueMatingsError: '',
         calfCooperatives: [], calfFarmers: [], calfInventory: [],
         checkingSeries: false, verifiedSeries: null,
         sirePickerOpen: false, sireQuery: '', sireTyped: false,
@@ -79,19 +81,35 @@ function calfDropPage(monitoringMode = false) {
             return this.calfInventory.find(animal => String(animal.animal_id) === String(row.mother_id) || String(animal.id) === String(row.mother_id));
         },
         damBreed(row) { return String(this.damFor(row)?.breed ?? '').trim(); },
-        matingDamKeysFor(id, ...animalIds) {
-            const keys = id ? [`id:${id}`] : [];
-            for (const animalId of animalIds) {
-                const value = String(animalId ?? '').trim().toUpperCase();
-                if (value) keys.push(`animal:${value}`);
-            }
-            return keys;
+        latestAi(records) {
+            return records.filter(record => ['ai', 'artificialinsemination'].includes(
+                String(record.mating_type || '').toLowerCase().replace(/[^a-z]/g, '')
+            )).sort((a, b) => String(b.mating_date || '').localeCompare(String(a.mating_date || '')) || Number(b.id) - Number(a.id))[0];
+        },
+        isPregnantMating(record) {
+            return ['+', 'p', 'positive', 'pregnant', 'yes'].includes(String(record?.pregnancy_result || '').trim().toLowerCase());
         },
         get manualDamHasMating() {
-            if (this.showMatingPicker || !this.addForm.mother_id) return false;
+            return !this.showMatingPicker && this.selectedDamMatings.length > 0;
+        },
+        get selectedDamMatings() {
+            if (this.monitoringCalf) {
+                const latest = this.latestAi(this.matingRecords);
+                return this.isPregnantMating(latest) ? [latest] : [];
+            }
+            if (!this.addForm.mother_id) return [];
             const dam = this.damFor(this.addForm);
-            return this.matingDamKeysFor(dam?.id, this.addForm.mother_id, dam?.registry_number)
-                .some(key => this.matingDamKeys.has(key));
+            const ids = [this.addForm.mother_id, dam?.registry_number].filter(Boolean).map(id => String(id).trim().toUpperCase());
+            const latest = this.latestAi(this.matingRecords.filter(record => record.carabao_id
+                ? String(record.carabao_id) === String(dam?.id)
+                : String(record.cooperative_id) === String(this.addForm.cooperative_id)
+                    && ids.includes(String(record.registry_number || '').trim().toUpperCase())));
+            return this.isPregnantMating(latest) ? [latest] : [];
+        },
+        useDamMating(mating) {
+            this.sireTyped = false;
+            this.addForm.sire_id = mating.bull_id || this.addForm.sire_id;
+            if (mating.actual_calving_date) this.addForm.date_of_birth = mating.actual_calving_date;
         },
         cb50Parentage(row) {
             const damBreed = this.damBreed(row).toUpperCase();
@@ -302,7 +320,18 @@ function calfDropPage(monitoringMode = false) {
                 .filter(year => /^\d{4}$/.test(year))
                 .sort((a, b) => Number(b) - Number(a));
         },
-        get filteredRecords() { return this.matchingCalfRecords.filter(record => !this.filterReportedYear || this.recordReportedYear(record) === this.filterReportedYear).sort((a,b)=>{const as=this.calfIdSeries(a.calf_id),bs=this.calfIdSeries(b.calf_id);if(as&&bs)return bs.year-as.year||as.series-bs.series;if(as)return -1;if(bs)return 1;return String(a.calf_id??'').localeCompare(String(b.calf_id??''),undefined,{numeric:true,sensitivity:'base'});}); },
+        get filteredRecords() {
+            return this.matchingCalfRecords
+                .filter(record => !this.filterReportedYear || this.recordReportedYear(record) === this.filterReportedYear)
+                .sort((a, b) => {
+                    const first = this.calfIdSeries(a.calf_id);
+                    const second = this.calfIdSeries(b.calf_id);
+                    if (first && second) return second.year - first.year || second.series - first.series;
+                    if (first) return -1;
+                    if (second) return 1;
+                    return String(a.calf_id ?? '').localeCompare(String(b.calf_id ?? ''), undefined, {numeric: true, sensitivity: 'base'});
+                });
+        },
         get summaryCards() {
             const records=this.filteredRecords;
             const status=record=>String(record.animal_status ?? '').trim().toLowerCase();
@@ -350,12 +379,16 @@ function calfDropPage(monitoringMode = false) {
             this.loadDueMatings();
         },
         openMonitoringCalf(context) {
+            this.matingLookup++;
             this.monitoringCalf = context;
             this.verifiedSeries = null;
             this.notice = '';
             this.sirePickerOpen = false;
             this.sireTyped = false;
-            this.showMatingPicker = true;
+            this.showMatingPicker = Boolean(context.dam.has_mating_record);
+            this.matingRecords = [];
+            this.loadingDueMatings = false;
+            this.dueMatingsError = '';
             const data = context.data;
             this.addForm = {
                 ...this.emptyRow(),
@@ -377,6 +410,22 @@ function calfDropPage(monitoringMode = false) {
             };
             this.showAdd = true;
             this.$root.showModal();
+            if (this.showMatingPicker) this.loadMonitoringMatings(context);
+        },
+        async loadMonitoringMatings(context = this.monitoringCalf) {
+            const lookup = ++this.matingLookup;
+            this.loadingDueMatings = true;
+            this.dueMatingsError = '';
+            try {
+                const response = await fetch(context.matingRecordsUrl, {headers: {Accept: 'application/json'}, cache: 'no-store'});
+                if (!response.ok) throw new Error();
+                const records = await response.json();
+                if (this.matingLookup === lookup) this.matingRecords = records;
+            } catch {
+                if (this.matingLookup === lookup) this.dueMatingsError = 'Could not load mating records.';
+            } finally {
+                if (this.matingLookup === lookup) this.loadingDueMatings = false;
+            }
         },
         closeCalfForm() {
             this.showAdd = false;
@@ -542,6 +591,11 @@ function calfDropPage(monitoringMode = false) {
             this.msg(message);
         },
         setEntryMode(useMating) {
+            if (this.monitoringCalf) {
+                this.showMatingPicker = useMating;
+                if (useMating) this.loadMonitoringMatings();
+                return;
+            }
             if(this.showMatingPicker!==useMating){
                 this.showMatingPicker=useMating;
                 this.cooperativePickerOpen=false;
@@ -577,9 +631,15 @@ function calfDropPage(monitoringMode = false) {
                 const response=await fetch('/admin/breeding-api/records',{headers:{Accept:'application/json'}});
                 if(!response.ok)throw new Error();
                 const records=await response.json();
-                this.matingDamKeys = new Set(records.flatMap(record =>
-                    this.matingDamKeysFor(record.carabao_id, record.animal_id, record.registry_number)));
-                this.dueMatings=records.filter(record=>record.calf_drop_due)
+                this.matingRecords = records;
+                const byDam = new Map();
+                for (const record of records) {
+                    if (!record.carabao_id) continue;
+                    if (!byDam.has(record.carabao_id)) byDam.set(record.carabao_id, []);
+                    byDam.get(record.carabao_id).push(record);
+                }
+                this.dueMatings=[...byDam.values()].map(group => this.latestAi(group))
+                    .filter(record => record?.calf_drop_due && this.isPregnantMating(record))
                     .sort((a,b)=>b.pregnancy_days-a.pregnancy_days);
             } catch {
                 this.dueMatingsError='Could not load mating records.';
@@ -598,6 +658,7 @@ function calfDropPage(monitoringMode = false) {
                 barangay:mating.farmer_barangay || '',
                 sire_id:mating.bull_id || ''
             });
+            this.useDamMating(mating);
         },
         persist() { try { localStorage.setItem(this.storageKey,JSON.stringify(this.records)); return true; } catch(e) { this.msg('Unable to save browser data. Check browser storage settings.'); return false; } },
         async saveCalf() {
@@ -738,6 +799,7 @@ function calfDropPage(monitoringMode = false) {
                     if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Save failed (${response.status}).`)}
                     await this.loadInventoryCalves();
                 }else if(form.source==='Calf Drop'||form.database_id){
+                    if (form.dam_unlinked && form.resolve_dam?.trim()) payload.resolve_dam = form.resolve_dam.trim();
                     const response=await fetch(`/admin/calf-drop-api/${form.database_id}`,{method:'PUT',headers:{Accept:'application/json','Content-Type':'application/json','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]')?.content||''},body:JSON.stringify(payload)});
                     if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.message||`Save failed (${response.status}).`)}
                     await this.loadInventoryCalves();

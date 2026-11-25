@@ -462,12 +462,7 @@ function farmerMonitoringAnimals(farmerId) {
 }
 
 function monitoringAnimalLabel(animal) {
-    const ids = [
-        animal.registry_number && `Registry: ${animal.registry_number}`,
-        animal.tag_number && `Tag: ${animal.tag_number}`,
-        animal.bolus_id && `Bolus: ${animal.bolus_id}`,
-    ].filter(Boolean);
-    return [animal.animal_id || animal.registry_number || `Animal #${animal.carabao_id}`, animal.animal_name, ...ids].filter(Boolean).join(' · ');
+    return String(animal.registry_number ?? '').trim() || 'No registry ID';
 }
 
 function monitoringRows() {
@@ -520,6 +515,7 @@ function renderMonitoringRow(row, index, position, selected) {
                 <option value="">Select Animal ID</option>${options}
             </select>
             <p class="mt-1 text-xs text-slate-600">${escapeMonitoring(row._farmerName)}</p>
+            ${row.has_mating_record ? '<p class="mt-1 text-xs font-semibold text-amber-800">This animal already has a mating record.</p>' : ''}
         </td>
         <td class="p-2"><span class="flex min-h-11 items-center break-words text-slate-700">${escapeMonitoring(row.classification || (row.carabao_id ? 'Unclassified' : '—'))}</span></td>
         <td class="p-2"><input type="number" min="0" max="10" step="0.01" name="rows[${index}][body_condition_score]" aria-label="Body condition score" value="${escapeMonitoring(row._bcs ?? '')}" class="h-11 w-full rounded-lg border border-slate-300 bg-white px-2 disabled:bg-slate-50" ${disabled}></td>
@@ -567,6 +563,8 @@ function openMonitoringService(index, service) {
     const context = {
         index,
         dam: {...row, id: row.carabao_id},
+        matingRecordsUrl: @json(route('ui.monitoring.animal-matings', ['cooperative' => '__cooperative__', 'animal' => '__animal__']))
+            .replace('__cooperative__', cooperative.value).replace('__animal__', String(row.carabao_id)),
         carabaoId: row.carabao_id,
         animalId: row.animal_id || row.registry_number || String(row.carabao_id),
         registryId: row.registry_number || row.animal_id || String(row.carabao_id),

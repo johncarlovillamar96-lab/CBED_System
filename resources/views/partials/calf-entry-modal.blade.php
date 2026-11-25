@@ -5,12 +5,12 @@
                 <button type="button" @click="closeCalfForm()" :disabled="savingCalf" aria-label="Close add calf form" class="cbed-close-button"><span aria-hidden="true">&times;</span></button>
             </header>
             <div class="min-h-0 overflow-y-auto p-4 sm:p-5">
-                <div x-show="!monitoringCalf" class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Calf entry method">
+                <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Calf entry method">
                     <button type="button" @click="setEntryMode(true)" :aria-pressed="showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Use a mating record</button>
                     <button type="button" @click="setEntryMode(false)" :aria-pressed="!showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="!showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Manual Entry</button>
                 </div>
                 <section x-show="showMatingPicker && !monitoringCalf" class="mb-4 rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="calf-drop-due-title">
-                    <h4 id="calf-drop-due-title" class="font-semibold text-slate-900">Mating records at 280+ pregnancy days</h4>
+                    <h4 id="calf-drop-due-title" class="font-semibold text-slate-900">Latest AI records with positive pregnancy results at 280+ days</h4>
                     <p class="mt-1 text-sm text-slate-500">Select a mother awaiting a calf-drop report to prefill the form.</p>
                     <p x-show="loadingDueMatings" role="status" class="mt-3 text-sm text-slate-500">Loading mating records…</p>
                     <div x-show="dueMatingsError" class="mt-3 flex items-center gap-3 text-sm text-rose-700">
@@ -29,6 +29,20 @@
                                     <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="mating.calf_drop_overdue ? 'bg-amber-100 text-amber-900' : 'bg-blue-50 text-blue-800'" x-text="mating.pregnancy_days + ' days'"></span>
                                     <button type="button" @click="addFromMating(mating)" :disabled="savingCalf" class="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-50">Use mating record</button>
                                 </div>
+                            </li>
+                        </template>
+                    </ul>
+                </section>
+                <section x-show="monitoringCalf ? showMatingPicker : (!showMatingPicker && selectedDamMatings.length)" class="mb-4 rounded-xl border border-slate-200 p-4">
+                    <h4 class="font-semibold text-slate-900">Latest AI record for the selected animal</h4>
+                    <p x-show="loadingDueMatings" role="status" class="mt-2 text-sm text-slate-500">Loading mating records…</p>
+                    <p x-show="dueMatingsError" role="alert" class="mt-2 text-sm text-rose-700" x-text="dueMatingsError"></p>
+                    <p x-show="!loadingDueMatings && !dueMatingsError && !selectedDamMatings.length" class="mt-2 text-sm text-slate-600">No latest AI record with a positive pregnancy result. You can use Manual Entry.</p>
+                    <ul x-show="selectedDamMatings.length" class="mt-2 max-h-48 divide-y divide-slate-100 overflow-y-auto">
+                        <template x-for="record in selectedDamMatings" :key="record.id">
+                            <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                                <span x-text="[record.mating_date || 'Undated', record.mating_type, record.bull_id ? 'Sire ' + record.bull_id : 'Sire unavailable'].filter(Boolean).join(' · ')"></span>
+                                <button type="button" @click="useDamMating(record)" :disabled="savingCalf" class="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-800">Use mating record</button>
                             </li>
                         </template>
                     </ul>
@@ -77,9 +91,9 @@
                         </div>
                     </template>
                     <div>
-                        <label id="calf-mother-label" :for="showMatingPicker ? 'calf-mating-mother-id' : 'calf-manual-mother-id'" class="text-sm font-semibold">Mother ID <span class="text-rose-600">*</span></label>
-                        <input id="calf-mating-mother-id" x-show="showMatingPicker" :value="addForm.mother_id" readonly class="form-input mt-1">
-                        <template x-if="!showMatingPicker">
+                        <label id="calf-mother-label" :for="(showMatingPicker || monitoringCalf) ? 'calf-mating-mother-id' : 'calf-manual-mother-id'" class="text-sm font-semibold">Mother ID <span class="text-rose-600">*</span></label>
+                        <input id="calf-mating-mother-id" x-show="showMatingPicker || monitoringCalf" :value="addForm.mother_id" readonly class="form-input mt-1">
+                        <template x-if="!showMatingPicker && !monitoringCalf">
                             <div class="relative" @click.outside="motherPickerOpen = false" @keydown.escape.stop="if (motherPickerOpen) { motherPickerOpen = false; $refs.motherTrigger.focus(); }">
                                 <div class="relative mt-1">
                                     <input id="calf-manual-mother-id" :value="motherInput" @input="updateManualMother($event.target.value)" required aria-describedby="manual-dam-mating-warning manual-dam-eligibility-warning" placeholder="Enter Mother ID" class="form-input !pr-12">
@@ -96,7 +110,7 @@
                                     </ul>
                                     <p x-show="!matchingManualMothers.length" class="px-2 py-2 text-sm text-slate-500">No matching dams.</p>
                                 </div>
-                                <p id="manual-dam-mating-warning" x-show="manualDamHasMating" role="alert" class="mt-1 text-xs font-medium text-amber-800">Mating record found. Choose <strong>Use a mating record</strong> if it matches this birth.</p>
+                                <p id="manual-dam-mating-warning" x-show="manualDamHasMating" role="alert" class="mt-1 text-xs font-medium text-amber-800">Mating record found. Select the matching record to fill in saved details.</p>
                                 <p id="manual-dam-eligibility-warning" x-show="manualMotherIneligibility" x-text="manualMotherIneligibility" role="alert" class="mt-1 text-xs font-medium text-amber-800"></p>
                             </div>
                         </template>
@@ -112,7 +126,7 @@
                             <input :value="canResolveCalfFromSire ? (monitoringCalf?.data?.calf_id || currentSeries?.next_id || generatedId(addForm)) : ''" placeholder="Assigned on save" readonly class="form-input mt-1">
                         </label>
                         <button x-show="addForm.birth_outcome === 'Live Birth'" type="button" @click="verifyCalfSeries()" :disabled="!seriesQuery || checkingSeries" class="mt-2 text-sm font-semibold text-sky-800 underline disabled:opacity-50" x-text="checkingSeries ? 'Checking series…' : 'Verify Series'"></button>
-                        <p x-show="currentSeries" role="status" class="mt-1 text-xs text-slate-600" x-text="currentSeries?.message || (currentSeries?.last_series ? 'Last used: ' + currentSeries.last_series : 'No previous series') + (currentSeries?.next_id ? ' · Next ID: ' + currentSeries.next_id : ' · Series 999 reached')"></p>
+                        <p x-show="currentSeries" role="status" class="mt-1 text-xs text-slate-600" x-text="currentSeries?.message || (currentSeries?.last_id ? 'Last used this year: ' + currentSeries.last_id : 'No previous series this year') + (currentSeries?.next_id ? ' · Next ID: ' + currentSeries.next_id : ' · Series 999 reached')"></p>
                     </div>
                     <label class="text-sm font-semibold">Sex <span x-show="addForm.birth_outcome === 'Live Birth'" class="text-rose-600">*</span>
                         <select x-model="addForm.sex" :required="addForm.birth_outcome === 'Live Birth'" class="form-input mt-1"><option value="">Select sex</option><option>Male</option><option>Female</option></select>
@@ -147,10 +161,10 @@
                         </p>
                         <span x-show="canResolveCalfFromSire && cb50Parentage(addForm)" class="mt-1 block text-xs font-normal text-slate-500" x-text="'Sire on record: ' + cb50Parentage(addForm)?.sireId"></span>
                     </div>
-                    <label x-show="showMatingPicker" class="text-sm font-semibold">Farmer
+                    <label x-show="showMatingPicker && !monitoringCalf" class="text-sm font-semibold">Farmer
                         <input :value="addForm.farmer" readonly class="form-input mt-1">
                     </label>
-                    <label x-show="showMatingPicker" class="text-sm font-semibold">Cooperative
+                    <label x-show="showMatingPicker && !monitoringCalf" class="text-sm font-semibold">Cooperative
                         <input :value="addForm.cooperative" readonly class="form-input mt-1">
                     </label>
                     <label class="text-sm font-semibold">Province

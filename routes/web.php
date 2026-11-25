@@ -93,6 +93,7 @@ Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring', [ModuleC
 Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs', [ActivityLogController::class, 'index'])->name('ui.activity-logs');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs/monitoring', [MonitoringReportController::class, 'activityLogs'])->name('ui.activity-logs.monitoring');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/cooperatives/{cooperative}/animals', [MonitoringReportController::class, 'animals'])->whereNumber('cooperative')->name('ui.monitoring.animals');
+Route::middleware(['auth', 'workspace:monitoring-entry'])->get('/monitoring/cooperatives/{cooperative}/animals/{animal}/mating-records', [MonitoringReportController::class, 'animalMatings'])->whereNumber(['cooperative', 'animal'])->name('ui.monitoring.animal-matings');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/bcs-scores', [MonitoringReportController::class, 'bcsScores'])->name('ui.monitoring.bcs-scores');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/semen-bulls', fn () => DB::table('semen_bulls')->whereRaw('LOWER(status) = ?', ['active'])->orderBy('bull_name')->get(['id','bull_id','bull_name','breed','status']))->name('ui.monitoring.semen-bulls');
 Route::middleware(['auth', 'workspace:monitoring'])->post('/monitoring/reports', [MonitoringReportController::class, 'store'])->name('ui.monitoring.reports.store');
@@ -130,29 +131,34 @@ Route::middleware(['auth', 'workspace'])->get('/admin/carabao-inventory-api', fu
 });
 Route::middleware(['auth', 'workspace'])->get('/admin/calf-drop-api', function () {
     return DB::table('calves as calf')
-        ->join('carabaos as dam', 'dam.id', '=', 'calf.dam_id')
+        ->leftJoin('carabaos as dam', 'dam.id', '=', 'calf.dam_id')
         ->leftJoin('carabaos as child', 'child.animal_id', '=', 'calf.calf_animal_id')
         ->leftJoin('farmers as farmer', 'farmer.id', '=', 'dam.farmer_id')
         ->leftJoin('cooperatives as cooperative', 'cooperative.id', '=', DB::raw('COALESCE(dam.cooperative_id, farmer.cooperative_id)'))
         ->orderByDesc('calf.birth_date')->orderByDesc('calf.id')
         ->get([
             'calf.id', 'calf.calf_animal_id', 'calf.sire_id', 'calf.birth_date', 'calf.sex', 'calf.birth_weight',
-            'calf.monitoring_date', 'calf.birth_outcome', 'calf.animal_status', 'calf.calf_findings', 'calf.remarks',
+            'calf.monitoring_date', 'calf.birth_outcome', 'calf.animal_status', 'calf.calf_findings', 'calf.remarks', 'calf.dam_id', 'calf.workbook_details',
             'dam.animal_id as dam_animal_id', 'dam.animal_name as dam_name', 'dam.breed as dam_breed', 'child.breed as calf_breed',
             'cooperative.cooperative_name', 'cooperative.province', 'cooperative.municipality', 'cooperative.barangay',
             'farmer.first_name', 'farmer.middle_name', 'farmer.last_name',
         ])
-        ->map(fn ($row) => [
-            'id' => $row->id, 'calf_id' => $row->calf_animal_id, 'mother_id' => $row->dam_animal_id,
-            'farmer' => trim(implode(' ', array_filter([$row->first_name, $row->middle_name, $row->last_name]))),
-            'province' => $row->province, 'cooperative' => $row->cooperative_name, 'date_of_birth' => $row->birth_date,
+        ->map(function ($row) {
+            $workbook = json_decode($row->workbook_details ?? '{}', true);
+            return [
+            'id' => $row->id, 'calf_id' => $row->calf_animal_id, 'mother_id' => $row->dam_animal_id ?: ($workbook['dam'] ?? null),
+            'needs_review' => $row->workbook_details !== null && (! $row->dam_id || ! $row->birth_date || ! $row->sex),
+            'dam_unlinked' => $row->workbook_details !== null && ! $row->dam_id,
+            'farmer' => trim(implode(' ', array_filter([$row->first_name, $row->middle_name, $row->last_name]))) ?: ($workbook['farmer'] ?? ''),
+            'province' => $row->province ?: ($workbook['province'] ?? null), 'cooperative' => $row->cooperative_name ?: ($workbook['cooperative'] ?? null), 'date_of_birth' => $row->birth_date,
             'municipality' => $row->municipality, 'barangay' => $row->barangay,
-            'sex' => $row->sex, 'breed' => $row->calf_breed ?? $row->dam_breed, 'sire_id' => $row->sire_id,
-            'monitored_date' => $row->monitoring_date, 'reported_year' => $row->birth_date ? substr($row->birth_date, 0, 4) : '',
+            'sex' => $row->sex, 'breed' => $row->calf_breed ?? $workbook['breed'] ?? $row->dam_breed, 'sire_id' => $row->sire_id,
+            'monitored_date' => $row->monitoring_date, 'reported_year' => $row->birth_date ? substr($row->birth_date, 0, 4) : ($workbook['year'] ?? ''),
             'birth_outcome' => $row->birth_outcome, 'animal_status' => $row->animal_status,
             'birth_weight' => $row->birth_weight,
             'remarks' => trim(implode(' · ', array_filter([$row->calf_findings, $row->remarks]))),
-        ]);
+            ];
+        });
 })->name('admin.calf-drop.records');
 Route::middleware(['auth', 'workspace'])->patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, int $id) {
     $data = $request->validate([
@@ -175,9 +181,13 @@ Route::middleware(['auth', 'workspace'])->patch('/admin/calf-drop-api/inventory/
     return response()->json(['message' => 'Calf inventory record updated.']);
 })->whereNumber('id')->name('admin.calf-drop.inventory.update');
 Route::middleware(['auth', 'workspace'])->put('/admin/calf-drop-api/{id}', function (Request $request, int $id) {
+    $record = DB::table('calves')->find($id);
+    abort_unless($record, 404, 'Calf Drop record was not found.');
+    $workbookEntry = $record->workbook_details !== null;
     $data = $request->validate([
-        'date_of_birth' => ['required', 'date'],
-        'sex' => ['required_if:birth_outcome,Live Birth', 'nullable', 'in:Male,Female'],
+        'date_of_birth' => [$workbookEntry ? 'nullable' : 'required', 'date'],
+        'sex' => [$workbookEntry ? 'nullable' : 'required_if:birth_outcome,Live Birth', 'nullable', 'in:Male,Female'],
+        'resolve_dam' => ['nullable', 'string', 'max:255'],
         'animal_status' => ['required', 'in:Live,Out,Dead,Not Applicable'],
         'birth_outcome' => ['required', 'in:Live Birth,Stillbirth,Abortion'],
         'monitored_date' => ['nullable', 'date'],
@@ -185,9 +195,18 @@ Route::middleware(['auth', 'workspace'])->put('/admin/calf-drop-api/{id}', funct
         'sire_id' => ['nullable', 'string', 'max:255'],
         'remarks' => ['nullable', 'string'],
     ]);
-    abort_unless(DB::table('calves')->where('id', $id)->exists(), 404, 'Calf Drop record was not found.');
+    $damId = $record->dam_id;
+    if ($workbookEntry && ! $damId && filled($data['resolve_dam'] ?? null)) {
+        $identifier = trim($data['resolve_dam']);
+        $matches = DB::table('carabaos')->whereRaw("LOWER(TRIM(sex)) IN ('f', 'female')")
+            ->where(fn ($query) => $query->where('animal_id', $identifier)->orWhere('registry_number', $identifier))
+            ->limit(2)->pluck('id');
+        abort_unless($matches->count() === 1, 422, 'Enter a Mother ID that uniquely matches a female animal in inventory.');
+        $damId = $matches->first();
+    }
     DB::table('calves')->where('id', $id)->update([
-        'birth_date' => $data['date_of_birth'],
+        'dam_id' => $damId,
+        'birth_date' => $data['date_of_birth'] ?? null,
         'sex' => $data['sex'] ?? null,
         'birth_outcome' => $data['birth_outcome'],
         'animal_status' => $data['animal_status'],
@@ -329,6 +348,9 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
     }
 
     $id = DB::transaction(function () use ($animalId, $breed, $cooperativeId, $data, $farmerId, $mother, $sireId) {
+        if ($animalId === '') {
+            \App\Support\CalfRegistryId::lockSequence();
+        }
         $cooperative = $cooperativeId === null
             ? null
             : DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first();
