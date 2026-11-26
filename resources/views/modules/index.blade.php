@@ -289,7 +289,7 @@
 
         {{-- SEARCH --}}
         <form method="GET" action="{{ url()->current() }}" data-auto-filters
-              class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ $detailedSearch ? 'xl:grid-cols-8' : 'xl:grid-cols-6' }}">
+              class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ match (true) { $module === 'fhpr' => 'xl:grid-cols-9 xl:items-end', $detailedSearch => 'xl:grid-cols-8', default => 'xl:grid-cols-6' } }}">
             @if(in_array($module, ['health', 'fhpr'], true))
                 <input type="hidden" name="per_page" value="{{ $rows->perPage() }}">
             @endif
@@ -351,6 +351,14 @@
                         @foreach ($fhprOptions['classification'] as $value)
                             <option value="{{ $value }}" @selected(($fhprFilters['classification'] ?? null) === $value)>{{ $value }}</option>
                         @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="fhpr-parity-filter" class="filter-label">Parity</label>
+                    <select id="fhpr-parity-filter" name="parity" class="filter-input">
+                        <option value="">All parity records</option>
+                        <option value="with" @selected(($fhprFilters['parity'] ?? null) === 'with')>With parity (1 or more)</option>
+                        <option value="without" @selected(($fhprFilters['parity'] ?? null) === 'without')>No parity (zero or blank)</option>
                     </select>
                 </div>
             @elseif($module === 'bcs')
@@ -434,7 +442,7 @@
                 </div>
             @endif
             @if($module === 'fhpr')
-                <div class="flex flex-wrap items-center gap-4 sm:col-span-2 xl:col-span-6">
+                <div class="col-span-full flex flex-wrap items-center gap-4">
                     <label class="flex items-center gap-2 text-sm text-slate-700">
                         <input type="checkbox" name="unreported_calves" value="1" @checked($fhprFilters['unreported_calves'] ?? false) class="rounded border-slate-300">
                         Positive PD with no calf-drop report
@@ -556,13 +564,86 @@
                                             <div x-text="days===null||days===''?'—':days">{{ $value !== null && $value !== '' ? $value : '—' }}</div>
                                             <div x-show="startDate" x-text="displayDate" title="Lactation start date" class="mt-1 text-xs text-slate-500">{{ $row->_lactation_start_display }}</div>
                                         </div>
+                                    @elseif($module === 'fhpr' && $columnKey === 'parity')
+                                        <div x-data="fhprCalfViewer(@js(route('fhpr.calves', $row->id)))">
+                                            <button type="button" class="inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 font-bold tabular-nums text-blue-700 hover:bg-blue-50 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" @click="open()" title="View calves" aria-haspopup="dialog" aria-label="Parity {{ filled($value) ? $value : 'unrecorded' }}. View calves for {{ $row->animal_identifier }}">
+                                                {{ filled($value) ? $value : '—' }}
+                                            </button>
+                                            <template x-teleport="body">
+                                                <dialog x-ref="dialog" aria-labelledby="fhpr-calves-title-{{ $row->id }}" class="m-auto max-h-[75vh] w-[calc(100%_-_2rem)] max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-900/50">
+                                                    <div class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-3 py-2.5">
+                                                        <div class="min-w-0">
+                                                            <h2 id="fhpr-calves-title-{{ $row->id }}" class="text-base font-bold">Calf details</h2>
+                                                            <p class="mt-1 break-words text-sm text-slate-600">Mother {{ $row->animal_identifier }}</p>
+                                                            <p class="mt-1 text-xs text-slate-600"
+                                                                x-data="{ classification: @js($row->status_updated) }"
+                                                                @fhpr-dry-off-updated.window="if (Number($event.detail.id) === {{ (int) $row->id }}) classification = $event.detail.classification">
+                                                                Mother classification <strong x-text="classification || '—'">{{ $row->status_updated ?: '—' }}</strong>
+                                                            </p>
+                                                            @if(filled($value))
+                                                                <p class="mt-1 text-xs text-slate-600">
+                                                                    FHPR recorded parity {{ $value }}
+                                                                    @if(filled($row->present_calving_date ?? null) && $row->present_calving_date !== '—')
+                                                                        <span class="text-slate-400" aria-hidden="true">·</span> FHPR calving date {{ $row->present_calving_date }}
+                                                                    @endif
+                                                                </p>
+                                                            @endif
+                                                        </div>
+                                                        <form method="dialog">
+                                                            <button type="submit" autofocus class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" aria-label="Close calf details">
+                                                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                    <p x-show="loading" role="status" class="px-5 py-8 text-center text-sm text-slate-500">Loading calves…</p>
+                                                    <p x-show="error" x-text="error" role="alert" class="m-5 rounded-lg bg-rose-50 p-3 text-sm text-rose-700"></p>
+                                                    <p x-show="!loading && !error && !calves.length" class="px-5 py-8 text-center text-sm text-slate-500">No calves are linked to this animal.</p>
+                                                    <div x-show="calves.length" class="p-4">
+                                                        <p class="mb-3 text-sm font-medium text-slate-700" x-text="calves.length + (calves.length === 1 ? ' linked calf' : ' linked calves') + ' across all birth dates'"></p>
+                                                        <div class="overflow-x-auto rounded-xl border border-slate-200" role="region" aria-label="Linked calf records" tabindex="0">
+                                                            <table class="min-w-full text-left text-sm">
+                                                                <thead class="bg-slate-50 text-xs uppercase text-slate-600">
+                                                                    <tr>
+                                                                        <th scope="col" class="whitespace-nowrap px-3 py-2.5">Animal ID</th>
+                                                                        <th scope="col" class="px-3 py-2.5">Sex</th>
+                                                                        <th scope="col" class="px-3 py-2.5">Classification</th>
+                                                                        <th scope="col" class="px-3 py-2.5">Status</th>
+                                                                        <th scope="col" class="whitespace-nowrap px-3 py-2.5">Birth date</th>
+                                                                        <th scope="col" class="px-3 py-2.5 text-right">Parity</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody class="divide-y divide-slate-100">
+                                                                    <template x-for="(calf, index) in calves" :key="index">
+                                                                        <tr class="hover:bg-slate-50">
+                                                                            <th scope="row" class="whitespace-nowrap px-3 py-2.5 font-semibold" x-text="calf.animal_id || '—'"></th>
+                                                                            <td class="px-3 py-2.5" x-text="calf.sex || '—'"></td>
+                                                                            <td class="px-3 py-2.5" x-text="calf.classification || '—'"></td>
+                                                                            <td class="px-3 py-2.5">
+                                                                                <span class="inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold"
+                                                                                    :class="statusClass(calf.status)" x-text="calf.status || 'Unknown'"></span>
+                                                                            </td>
+                                                                            <td class="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-600" x-text="calf.birth_date_display || '—'"></td>
+                                                                            <td class="px-3 py-2.5 text-right tabular-nums" x-text="calf.parity ?? '—'"></td>
+                                                                        </tr>
+                                                                    </template>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </dialog>
+                                            </template>
+                                        </div>
                                     @elseif($module === 'fhpr' && $columnKey === 'status_updated')
                                         <span x-data="{id:@js($row->id), classification:@js($value)}" @fhpr-dry-off-updated.window="if(Number($event.detail.id)===Number(id))classification=$event.detail.classification" x-text="classification||'—'">{{ $value ?: '—' }}</span>
                                     @elseif($module === 'fhpr' && $columnKey === 'dry_off_date')
                                         <div x-data="fhprDryOffEditor(@js(route('fhpr.dry-off.update', $row->id)), @js($row->_dry_off_date), @js($value), @js($row->id))">
-                                            <div x-show="!editing" class="flex items-center gap-3">
-                                                <span x-text="displayDate"></span>
-                                                @if(auth()->user()->isAdmin())<button type="button" @click="open()" class="cbed-record-action cbed-record-action--edit" title="Update Dry Off Date" aria-label="Update Dry Off Date for {{ $row->animal_identifier }}"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>@endif
+                                            <div x-show="!editing">
+                                                @if(auth()->user()->isAdmin())
+                                                    <button type="button" @click="open()" class="inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 font-semibold tabular-nums text-blue-700 hover:bg-blue-50 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                                                        title="Update Dry Off Date" :aria-label="'Dry Off Date ' + (date ? displayDate : 'unrecorded') + '. Edit for ' + @js($row->animal_identifier)" x-text="date ? displayDate : '—'"></button>
+                                                @else
+                                                    <span x-text="date ? displayDate : '—'"></span>
+                                                @endif
                                             </div>
                                             <form x-show="editing" x-cloak @submit.prevent="save()" class="space-y-2">
                                                 <input x-ref="input" type="date" x-model="draftDate" :disabled="saving" aria-label="Dry Off Date for {{ $row->animal_identifier }}" class="rounded-lg border border-slate-300 px-2 py-1 text-sm">
@@ -603,7 +684,7 @@
                                         @foreach($serviceRemarks as $remark)<div class="mb-1 last:mb-0">{{ $remark }}</div>@endforeach
                                         @if($row->remarks !== null && $row->remarks !== '')<div class="whitespace-pre-wrap text-slate-600">{{ $row->remarks }}</div>@elseif(!$serviceRemarks)<span class="text-slate-400">—</span>@endif
                                     @elseif($module === 'milk' && $columnKey === 'record_date')
-                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('F j, Y') : '—' }}
+                                        {{ $value ? \Illuminate\Support\Carbon::parse($value)->format('j-M-y') : '—' }}
                                     @elseif($module === 'milk' && in_array($columnKey, ['price_per_kg','value_total'], true))
                                         {{ $value !== null ? '₱'.number_format((float)$value, 2) : '—' }}
                                     @elseif($module === 'milk' && in_array($columnKey, ['total_liters','milk_traded'], true))
@@ -1025,6 +1106,34 @@ if(recordsPanel){
 @if($module === 'fhpr')
 @push('scripts')
 <script>
+function fhprCalfViewer(url) {
+    return {
+        calves: [], loading: false, error: '',
+        statusClass(status) {
+            return {
+                Live: 'bg-emerald-50 text-emerald-800',
+                Dead: 'bg-rose-50 text-rose-800',
+                Transferred: 'bg-indigo-50 text-indigo-800',
+            }[status] || 'bg-slate-100 text-slate-700';
+        },
+        async open() {
+            this.$refs.dialog.showModal();
+            if (this.loading) return;
+            this.loading = true;
+            this.error = '';
+            this.calves = [];
+            try {
+                const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('Could not load linked calves.');
+                this.calves = await response.json();
+            } catch {
+                this.error = 'Could not load linked calves. Close and reopen to retry.';
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
 function fhprMilkDate(id, days, startDate, displayDate) {
     return {
         id, days, startDate:startDate||'', displayDate:displayDate||'',

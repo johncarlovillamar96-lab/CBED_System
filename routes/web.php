@@ -75,11 +75,13 @@ Route::redirect('/health-nutrition', '/health')->middleware(['auth', 'workspace'
 Route::redirect('/milk-production', '/milk')->middleware(['auth', 'workspace'])->name('ui.milk-production');
 Route::redirect('/mil-test', '/mtd')->middleware(['auth', 'workspace'])->name('ui.mil-test');
 Route::middleware(['auth', 'workspace'])->get('/nature-of-exit', [AnimalExitController::class, 'index'])->name('ui.nature-of-exit');
+Route::middleware(['auth', 'workspace'])->get('/admin/calf-transfer-api', [AnimalExitController::class, 'transferredAnimals']);
 Route::view('/mapping', 'mapping')->middleware(['auth', 'workspace'])->name('ui.mapping');
 Route::view('/carabao-inventory', 'carabao-inventory')->middleware(['auth', 'workspace'])->name('admin.carabao-inventory');
 Route::permanentRedirect('/admin/carabao-inventory', '/carabao-inventory')->middleware(['auth', 'workspace']);
 Route::view('/admin/semen-bulls', 'semen-bull')->middleware(['auth', 'workspace'])->name('admin.semen-bulls');
 Route::middleware(['auth', 'workspace'])->get('/fhpr', [ModuleController::class, 'index'])->defaults('module', 'fhpr')->name('ui.fhpr');
+Route::middleware(['auth', 'workspace'])->get('/fhpr/{id}/calves', [ModuleController::class, 'fhprCalves'])->whereNumber('id')->name('fhpr.calves');
 Route::middleware(['auth', 'workspace'])->patch('/fhpr/{id}/dry-off-date', [ModuleController::class, 'updateFhprDryOffDate'])->whereNumber('id')->name('fhpr.dry-off.update');
 Route::middleware(['auth', 'workspace'])->get('/bcs', [ModuleController::class, 'index'])->defaults('module', 'bcs')->name('ui.bcs');
 Route::middleware(['auth', 'workspace'])->get('/milk', [ModuleController::class, 'index'])->defaults('module', 'milk')->name('ui.milk');
@@ -125,6 +127,9 @@ Route::middleware(['auth', 'workspace'])->get('/admin/carabao-inventory-api', fu
         ->addSelect(['has_milk_production' => DB::table('milk_records')
             ->selectRaw('1')->whereColumn('milk_records.carabao_id', 'carabaos.id')->where('total_liters', '>', 0)->limit(1)])
         ->orderByDesc('carabaos.id')->get()->each(function ($animal) use ($cooperatives) {
+            $animal->classification = \App\Support\InventoryClassification::ageAdjustedLabel(
+                $animal->classification, $animal->sex, $animal->birth_date, $animal->status, $animal->nature_of_exit
+            );
             $animal->live_breedable_female = \App\Support\InventoryClassification::isLiveBreedableFemale($animal);
             \App\Support\CalfInventoryDetails::displayMissingFields($animal, $cooperatives->get($animal->cooperative_id));
         });
@@ -160,6 +165,52 @@ Route::middleware(['auth', 'workspace'])->get('/admin/calf-drop-api', function (
             ];
         });
 })->name('admin.calf-drop.records');
+
+Route::middleware(['auth', 'workspace:admin'])->put('/admin/carabao-inventory-api/{id}', function (Request $request, int $id) {
+    $fields = [
+        'farmer_recipient' => 'farmer_id', 'bolus_id' => 'bolus_id', 'registry_number' => 'registry_number',
+        'tag_no' => 'tag_number', 'sex' => 'sex', 'birthday' => 'birth_date', 'breed' => 'breed',
+        'sire_id' => 'sire_id', 'sire_name' => 'sire_name', 'dam_id' => 'dam_id', 'dam_name' => 'dam_name',
+        'birthday_place' => 'birth_place', 'breeder' => 'breeder', 'association_coop_institution' => 'association_coop_institution',
+        'brgy' => 'barangay', 'municipality' => 'municipality', 'province' => 'province', 'district' => 'district', 'region' => 'region',
+        'date_of_acquisition' => 'acquisition_date', 'acquisition_cost' => 'acquisition_cost',
+        'nature_of_exit' => 'nature_of_exit', 'reason_of_exit' => 'exit_reason', 'type_of_entrustment' => 'entrustment',
+        'ownership_status' => 'ownership_status', 'disposed_to' => 'disposed_to', 'place_of_disposal' => 'place_of_disposal',
+        'date_of_disposal_death' => 'death_date', 'value_of_disposed_animals' => 'value_of_disposed_animals', 'remarks' => 'remarks',
+    ];
+    $rules = array_fill_keys(array_keys($fields), ['nullable', 'string', 'max:255']);
+    $rules['farmer_recipient'] = ['nullable', 'integer', 'exists:farmers,id'];
+    $rules['sex'] = ['nullable', 'in:Female,Male'];
+    foreach (['birthday', 'date_of_acquisition', 'date_of_disposal_death'] as $field) {
+        $rules[$field] = ['nullable', 'date_format:Y-m-d'];
+    }
+    foreach (['acquisition_cost', 'value_of_disposed_animals'] as $field) {
+        $rules[$field] = ['nullable', 'numeric', 'min:0', 'max:9999999999.99'];
+    }
+    $rules['remarks'] = ['nullable', 'string', 'max:16000'];
+    $data = $request->validate($rules);
+
+    return DB::transaction(function () use ($id, $fields, $data) {
+        $animal = DB::table('carabaos')->where('id', $id)->lockForUpdate()->first();
+        abort_unless($animal, 404, 'Carabao record not found.');
+        $updates = [];
+        foreach ($data as $field => $value) {
+            $updates[$fields[$field]] = $value;
+        }
+        if (isset($updates['farmer_id'])) {
+            $cooperative = DB::table('farmers')->where('id', $updates['farmer_id'])->value('cooperative_id');
+            if ($cooperative !== null) $updates['cooperative_id'] = $cooperative;
+        }
+        if (array_key_exists('nature_of_exit', $updates)) {
+            $updates['status'] = match (strtolower(trim((string) $updates['nature_of_exit']))) {
+                '' => 'Live', 'dead', 'death', 'deceased' => 'Dead', default => 'Out',
+            };
+        }
+        if ($updates) DB::table('carabaos')->where('id', $id)->update($updates + ['updated_at' => now()]);
+
+        return response()->json(['message' => 'Animal record updated.']);
+    });
+})->whereNumber('id')->name('admin.carabaos.inventory.update');
 Route::middleware(['auth', 'workspace'])->patch('/admin/calf-drop-api/inventory/{id}', function (Request $request, int $id) {
     $data = $request->validate([
         'date_of_birth' => ['required', 'date'],

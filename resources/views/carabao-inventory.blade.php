@@ -106,7 +106,7 @@
         </div>
         <div class="mt-5 border-t border-slate-100 pt-4">
             <h3 class="text-sm font-bold text-slate-800">Classification summary by sex, age, mating, and milk production</h3>
-            <p class="mt-1 text-xs text-slate-500">Blank live-animal classifications are inferred from age, sex, calf records, pregnancy checks, FHPR days in milk, and milk production records. Existing classifications are included in these counts.</p>
+            <p class="mt-1 text-xs text-slate-500">Age classifications use the recorded birthday. Blank classifications also use sex, calf records, pregnancy checks, FHPR days in milk, and milk production records.</p>
             <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                 <template x-for="item in ageSexSummary" :key="item.key">
                     <div class="rounded-lg border border-slate-200 bg-slate-50 p-3"><p class="text-xs text-slate-500" x-text="item.label"></p><p class="mt-1 text-2xl font-bold text-slate-800" x-text="item.count"></p></div>
@@ -237,7 +237,7 @@
                             <td class="inventory-sticky-4 px-4 py-3" x-text="animal.registry_number || '—'"></td>
                             <td class="inventory-sticky-5 px-4 py-3" x-text="animal.tag_no || '—'"></td>
                             <td class="inventory-sticky-6 px-4 py-3" x-text="animal.sex || '—'"></td>
-                            <td class="px-4 py-3" x-text="formatBirthday(animal)"></td>
+                            <td class="whitespace-nowrap px-4 py-3" x-text="formatBirthday(animal)"></td>
                             <td class="whitespace-nowrap px-4 py-3" x-text="ageText(animal)"></td>
                             <td class="px-4 py-3" x-text="animal.breed || '—'"></td>
                             <td class="px-4 py-3" x-text="hasNoClassification(animal)?'':(animal.classification||'')"></td>
@@ -253,7 +253,7 @@
                             <td class="px-4 py-3" x-text="animal.province || '—'"></td>
                             <td class="px-4 py-3" x-text="animal.district || '—'"></td>
                             <td class="px-4 py-3" x-text="formatRegion(animal.region)"></td>
-                            <td class="px-4 py-3" x-text="formatDateValue(animal.acquisition_date || animal.date_of_acquisition)"></td>
+                            <td class="whitespace-nowrap px-4 py-3" x-text="formatDateValue(animal.acquisition_date || animal.date_of_acquisition)"></td>
                             <td class="whitespace-nowrap px-4 py-3 text-right" x-text="animal.acquisition_cost !== null && animal.acquisition_cost !== '' && animal.acquisition_cost !== undefined ? Number(animal.acquisition_cost).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'"></td>
                             <td class="whitespace-nowrap px-4 py-3">
                                 <span class="rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -613,6 +613,7 @@ function carabaoInventoryPage() {
         showBulk: false,
         showView: false,
         formMode: 'add',
+        originalEditForm: {},
         form: emptyRecord(),
         selectedAnimal: null,
         bulkRows: [],
@@ -809,7 +810,6 @@ function carabaoInventoryPage() {
             if(['m','male'].includes(sex)){
                 if(age<1) return 'Male Calf';
                 if(age<2) return 'Yearling Bull';
-                if(age<4) return 'Junior Bull';
                 return 'Senior Bull';
             }
             if(!['f','female'].includes(sex)) return '';
@@ -934,10 +934,11 @@ function carabaoInventoryPage() {
         formatDateValue(value) {
             if(!value) return '—';
             const match=String(value).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-            if(match) return `${new Date(Number(match[1]),Number(match[2])-1,Number(match[3])).toLocaleString('en-US',{month:'long'})} ${Number(match[3])},${match[1]}`;
-            const parsed=new Date(value);
+            const parsed=match ? new Date(Number(match[1]),Number(match[2])-1,Number(match[3])) : new Date(value);
             if(Number.isNaN(parsed.getTime())) return '—';
-            return `${parsed.toLocaleString('en-US',{month:'long'})} ${parsed.getDate()},${parsed.getFullYear()}`;
+            const month=parsed.toLocaleString('en-US',{month:'short'});
+            const year=String(parsed.getFullYear()).slice(-2);
+            return `${parsed.getDate()}-${month}-${year}`;
         },
 
         detailValue(field, animal) {
@@ -1156,7 +1157,10 @@ function carabaoInventoryPage() {
 
         editAnimal(animal) {
             if (!animal) return;
-            const recipient = this.farmers.find(f => this.normalizeLookup(this.farmerName(f)) === this.normalizeLookup(animal.disposed_to));
+            const recipient = animal.disposed_to ? this.farmers.find(f =>
+                String(f.id) === String(animal.disposed_to)
+                || this.normalizeLookup(this.farmerName(f)) === this.normalizeLookup(animal.disposed_to)
+            ) : null;
             let recipientCooperative = '';
             if (recipient) {
                 const farmerCoopName = this.farmerCooperative(recipient);
@@ -1168,13 +1172,23 @@ function carabaoInventoryPage() {
                 recipientCooperative = matchedCoop?.value || farmerCoopName;
             }
             this.formMode='edit';
-            this.form={...emptyRecord(),...animal,transfer_cooperative:animal.transfer_cooperative || recipientCooperative};
+            this.form={
+                ...emptyRecord(), ...animal,
+                farmer_recipient: String(animal.farmer_id ?? ''),
+                sex: { f: 'Female', female: 'Female', m: 'Male', male: 'Male' }[String(animal.sex ?? '').trim().toLowerCase()] || animal.sex || '',
+                tag_no: animal.tag_number ?? animal.tag_no ?? '',
+                birthday: animal.birth_date ?? animal.birthday ?? '',
+                birthday_place: animal.birth_place ?? animal.birthday_place ?? '',
+                brgy: animal.barangay ?? animal.brgy ?? '',
+                date_of_acquisition: animal.acquisition_date ?? animal.date_of_acquisition ?? '',
+                date_of_disposal_death: animal.death_date ?? animal.date_of_disposal_death ?? '',
+                disposed_to: recipient ? String(recipient.id) : (animal.disposed_to ?? ''),
+                transfer_cooperative: animal.transfer_cooperative || recipientCooperative,
+            };
             this.showView=false;
             this.showForm=true;
-            if (['Transferred','Sold','Disposed'].includes(this.form.nature_of_exit)) {
-                this.form.value_of_disposed_animals=this.form.acquisition_cost ?? this.form.value_of_disposed_animals ?? '';
-            }
             if (recipient && !this.form.place_of_disposal) this.form.place_of_disposal=this.farmerAddress(recipient);
+            this.originalEditForm={...this.form};
         },
 
         viewAnimal(animal) {
@@ -1207,20 +1221,26 @@ function carabaoInventoryPage() {
             try {
                 if (!this.apiConnected) throw new Error('Inventory API is not connected. Refresh the page and check Laravel routes.');
                 const data={...this.form};
-                data.province=normalizeProvince(data.province);
-                if (['Transferred','Sold','Disposed'].includes(data.nature_of_exit)) {
+                const editing=this.formMode==='edit';
+                const changed=key => !editing || String(data[key] ?? '') !== String(this.originalEditForm[key] ?? '');
+                if (['Transferred','Sold','Disposed'].includes(data.nature_of_exit)
+                    && ['nature_of_exit','transfer_cooperative','disposed_to'].some(changed)) {
                     data.value_of_disposed_animals = data.acquisition_cost ?? '';
                     if (!data.disposed_to) throw new Error('Select the cooperative and recipient farmer for a transfer, sale, or disposal.');
                     if (!data.place_of_disposal) throw new Error('The selected recipient has no address available. Check the farmer address fields.');
                 }
-                // transfer_cooperative is a UI lookup field, not a database column.
-                delete data.transfer_cooperative;
-                const editing=this.formMode==='edit';
+                if (['Transferred','Sold','Disposed'].includes(data.nature_of_exit) && changed('acquisition_cost')) {
+                    data.value_of_disposed_animals=data.acquisition_cost ?? '';
+                }
+                if (changed('province')) data.province=normalizeProvince(data.province);
+                const payload=editing
+                    ? Object.fromEntries(fields.filter(({key})=>key!=='classification' && changed(key)).map(({key})=>[key,data[key]]))
+                    : Object.fromEntries(Object.entries(data).filter(([key])=>key!=='transfer_cooperative'));
                 const url=editing?`${apiUrl}/${encodeURIComponent(data.id)}`:apiUrl;
                 const response=await fetch(url,{
                     method:editing?'PUT':'POST',
                     headers:this.requestHeaders(),
-                    body:JSON.stringify(data)
+                    body:JSON.stringify(payload)
                 });
                 if(!response.ok) throw new Error(await this.errorMessage(response));
                 await this.loadRecords();

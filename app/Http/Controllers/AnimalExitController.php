@@ -53,6 +53,18 @@ class AnimalExitController extends Controller
         return view('modules.index', compact('columns', 'rows', 'filters', 'exitTypes', 'exitSummary', 'exitCooperatives', 'exitFarmers', 'exitAnimals') + ['module' => 'exits', 'moduleTitle' => 'Animal Exits']);
     }
 
+    public function transferredAnimals()
+    {
+        return response()->json($this->transferRecords()
+            ->distinct()
+            ->get(['carabao_id', 'animal_identifier']));
+    }
+
+    public function transferRecords(): Builder
+    {
+        return $this->records()->whereRaw("LOWER(TRIM(nature_of_exit)) LIKE 'transfer%'");
+    }
+
     private function records(): Builder
     {
         $farmerName = "NULLIF(TRIM(CONCAT_WS(' ', farmer.first_name, NULLIF(farmer.middle_name, ''), farmer.last_name)), '')";

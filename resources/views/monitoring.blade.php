@@ -474,8 +474,10 @@ function monitoringAnimalLabel(animal) {
 }
 
 function monitoringServiceAllowed(animal, service) {
-    return !['calf_monitoring', 'breeding'].includes(service)
-        || ['f', 'female'].includes(String(animal.sex ?? '').trim().toLowerCase());
+    if (!['calf_monitoring', 'breeding'].includes(service)) return true;
+    const classification = String(animal.classification ?? '').toLowerCase().replace(/[\s_-]+/g, '');
+    return ['f', 'female'].includes(String(animal.sex ?? '').trim().toLowerCase())
+        && !['femalecalf', 'yearlingheifer'].includes(classification);
 }
 
 function monitoringRows() {
@@ -515,10 +517,10 @@ function renderMonitoringRow(row, index, position, selected) {
     }).join('');
     const disabled = row.carabao_id ? '' : 'disabled';
     const services = Object.entries(monitoringSpecs).map(([key, service]) => {
-        if (row.carabao_id && !monitoringServiceAllowed(row, key)) return '';
-        const data = row._services?.[key];
-        return `<button type="button" id="monitoring-service-${index}-${key}" onclick="openMonitoringService(${index}, '${key}')" ${disabled}
-            class="flex h-11 items-center justify-center rounded-lg border px-2 text-center text-xs font-semibold leading-tight disabled:opacity-50 ${data ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}">${data ? 'View ' : ''}${service.label}</button>
+        const allowed = monitoringServiceAllowed(row, key);
+        const data = allowed ? row._services?.[key] : null;
+        return `<button type="button" id="monitoring-service-${index}-${key}" onclick="openMonitoringService(${index}, '${key}')" ${allowed ? disabled : 'disabled'}
+            class="flex h-11 items-center justify-center rounded-lg border px-2 text-center text-xs font-semibold leading-tight disabled:cursor-default disabled:opacity-50 ${data ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}">${data ? 'View ' : ''}${service.label}</button>
             ${data ? `<input type="hidden" name="rows[${index}][monitoring_services][${key}]" value="${escapeMonitoring(JSON.stringify(data))}">` : ''}`;
     }).join('');
 
@@ -694,7 +696,15 @@ async function loadMonitoringRoster() {
 }
 document.getElementById('monitoring-cooperative').addEventListener('change', loadMonitoringRoster);
 document.getElementById('monitoring-retry').addEventListener('click', loadMonitoringRoster);
-document.getElementById('monitoring-farmer-filter').addEventListener('input', renderMonitoringRows);
+document.getElementById('monitoring-farmer-filter').addEventListener('input', (event) => {
+    const farmer = event.currentTarget;
+    for (const {row} of monitoringRows()) {
+        if (row.carabao_id) continue;
+        row._farmerId = farmer.value;
+        row._farmerName = farmer.value ? farmer.selectedOptions[0].textContent : '';
+    }
+    renderMonitoringRows();
+});
 document.getElementById('monitoring-form').addEventListener('submit', (event) => {
     if (monitoringSubmitting) {
         event.preventDefault();

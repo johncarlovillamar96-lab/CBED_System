@@ -2,12 +2,38 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class InventoryClassification
 {
+    public static function ageAdjustedLabel(?string $label, ?string $sex, ?string $birthDate, ?string $status, ?string $exit): ?string
+    {
+        $status = strtolower(trim((string) $status));
+        $exit = strtolower(trim((string) $exit));
+        if (!$birthDate || $status === 'dead' || ($exit ?: ($status ?: 'live')) !== 'live') return $label;
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $birthDate, $parts)
+            || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) return $label;
+
+        $today = Carbon::today('Asia/Singapore');
+        $birthday = Carbon::parse($birthDate, 'Asia/Singapore')->startOfDay();
+        if ($birthday->greaterThan($today)) return $label;
+
+        $age = $today->year - $birthday->year - (int) ($today->format('md') < $birthday->format('md'));
+        $key = preg_replace('/[\s_-]+/', '', strtolower(trim((string) $label)));
+        $sex = strtolower(trim((string) $sex));
+        if (in_array($sex, ['f', 'female'], true) && $age < 3 && in_array($key, ['femalecalf', 'yearlingheifer', 'heifer'], true)) {
+            return $age < 1 ? 'Female Calf' : ($age < 2 ? 'Yearling Heifer' : 'Heifer');
+        }
+        if (in_array($sex, ['m', 'male'], true) && in_array($key, ['malecalf', 'yearlingbull', 'juniorbull', 'seniorbull', 'youngbull', 'bull'], true)) {
+            return $age < 1 ? 'Male Calf' : ($age < 2 ? 'Yearling Bull' : 'Senior Bull');
+        }
+
+        return $label;
+    }
+
     public static function breedingInventoryQuery(): Builder
     {
         $animals = DB::table('carabaos as animal')

@@ -485,7 +485,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      }elseif(in_array($module, ['meat', 'manure'], true)){
          return $this->productIndex($request, $module, $search);
      }elseif($module==='fhpr'){
-         $columns=$this->fhprDisplayColumns();
+         $columns=array_values(array_diff($this->fhprDisplayColumns(), ['record_source']));
          $records=$this->fhprRecords();
          $fhprFilters=$request->validate([
              'cooperative_id' => ['nullable', 'integer', 'min:1'],
@@ -494,6 +494,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              'mating_type' => ['nullable', 'string', 'max:100'],
              'mating_year' => ['nullable', 'digits:4'],
              'mating_date' => ['nullable', 'date_format:Y-m-d'],
+             'parity' => ['nullable', 'in:with,without'],
              'unreported_calves' => ['nullable', 'boolean'],
              'overdue_calves' => ['nullable', 'boolean'],
          ]);
@@ -519,6 +520,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              }
              if ((filled($fhprFilters['mating_year'] ?? null) && $row->_mating_year !== (string) $fhprFilters['mating_year'])
                  || (filled($fhprFilters['mating_date'] ?? null) && $row->_mating_date !== $fhprFilters['mating_date'])
+                 || (isset($fhprFilters['parity']) && ((int) ($row->parity ?? 0) > 0) !== ($fhprFilters['parity'] === 'with'))
                  || (!empty($fhprFilters['unreported_calves']) && $row->pregnancy_status !== 'Positive')
                  || (!empty($fhprFilters['overdue_calves']) && ($row->days_pregnant ?? 0) < 280)) {
                  return false;
@@ -812,6 +814,74 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      if(!$birthDate)return '—';try{$age=Carbon::parse($birthDate)->diff(Carbon::now());return $age->y.'yrs '.$age->m.'mo';}catch(\Throwable){return '—';}
  }
 
+ public function fhprCalves(int $id, AnimalExitController $exits)
+ {
+     $record = DB::table('fhpr_records')->where('id', $id)->first(['carabao_id', 'registry_number']);
+     abort_unless($record, 404, 'FHPR record not found.');
+
+     $dam = DB::table('carabaos')->where('id', $record->carabao_id)
+         ->first(['id', 'animal_id', 'registry_number', 'bolus_id', 'tag_number']);
+     if (!$dam) return response()->json([]);
+
+     $damIdentifiers = collect([$dam->animal_id, $dam->registry_number, $dam->bolus_id, $dam->tag_number, $record->registry_number])
+         ->map(fn ($value) => trim((string) $value))->filter()->unique()->values();
+     $calves = DB::table('calves')->where('dam_id', $dam->id)
+         ->get(['id', 'calf_animal_id', 'sex', 'animal_status', 'birth_date']);
+     $calfIdentifiers = $calves->pluck('calf_animal_id')->filter()->values();
+     $inventory = DB::table('carabaos')
+         ->where(function ($query) use ($damIdentifiers, $calfIdentifiers) {
+             $query->whereIn('dam_id', $damIdentifiers)
+                 ->orWhereIn('animal_id', $calfIdentifiers)
+                 ->orWhereIn('registry_number', $calfIdentifiers);
+         })
+         ->get(['id', 'animal_id', 'registry_number', 'bolus_id', 'tag_number', 'sex', 'classification', 'parity', 'status', 'nature_of_exit', 'death_date', 'birth_date']);
+
+     $normalize = fn ($value) => mb_strtolower(trim((string) $value));
+     $aliases = fn ($animal) => collect([$animal->animal_id, $animal->registry_number, $animal->bolus_id, $animal->tag_number])
+         ->map($normalize)->filter()->unique();
+     $inventoryByIdentifier = $inventory->flatMap(fn ($animal) => $aliases($animal)->mapWithKeys(fn ($alias) => ['id:'.$alias => $animal]));
+     $transfers = $exits->transferRecords()->where(function ($query) use ($inventory, $calfIdentifiers) {
+         $query->whereIn('carabao_id', $inventory->pluck('id'))->orWhereIn('animal_identifier', $calfIdentifiers);
+     })->get(['carabao_id', 'animal_identifier']);
+     $transferredIds = $transfers->pluck('carabao_id')->filter()->flip();
+     $transferredIdentifiers = $transfers->pluck('animal_identifier')->map($normalize)->filter()->flip();
+
+     $format = function ($calf, $animal) use ($normalize, $transferredIds, $transferredIdentifiers) {
+         $identifier = $calf?->calf_animal_id ?: ($animal?->animal_id ?: ($animal?->registry_number ?: ($animal?->bolus_id ?: $animal?->tag_number)));
+         $sex = match ($normalize($animal?->sex ?: $calf?->sex)) {
+             'female', 'f' => 'Female', 'male', 'm' => 'Male', default => null,
+         };
+         $status = $normalize($animal?->status ?: $calf?->animal_status);
+         $exit = $normalize($animal?->nature_of_exit);
+         $status = match (true) {
+             $transferredIds->has($animal?->id) || $transferredIdentifiers->has($normalize($identifier)) => 'Transferred',
+             filled($animal?->death_date) || preg_match('/dead|death|died|deceased/', "$exit $status") === 1 => 'Dead',
+             $exit !== '' || $status === 'out' => 'Out',
+             in_array($status, ['live', 'alive', 'active'], true) => 'Live',
+             default => $calf?->animal_status ?: ($animal?->status ?: null),
+         };
+
+         $birthDate = $calf?->birth_date ?: $animal?->birth_date;
+         $classification = \App\Support\InventoryClassification::ageAdjustedLabel(
+             $animal?->classification, $sex, $animal?->birth_date, $status, $animal?->nature_of_exit
+         );
+         return ['animal_id' => $identifier, 'sex' => $sex, 'status' => $status, 'classification' => $classification,
+             'parity' => $sex === 'Female' ? $animal?->parity : null,
+             'birth_date' => $birthDate, 'birth_date_display' => $birthDate ? $this->formatFhprDate($birthDate) : null];
+     };
+
+     $linkedInventory = [];
+     $results = $calves->map(function ($calf) use ($inventoryByIdentifier, $normalize, $format, &$linkedInventory) {
+         $animal = $inventoryByIdentifier->get('id:'.$normalize($calf->calf_animal_id));
+         if ($animal) $linkedInventory[$animal->id] = true;
+
+         return $format($calf, $animal);
+     });
+
+     return response()->json($results->concat($inventory->reject(fn ($animal) => isset($linkedInventory[$animal->id]))
+         ->map(fn ($animal) => $format(null, $animal)))->sortByDesc('birth_date')->values());
+ }
+
  public function updateFhprDryOffDate(Request $request,int $id)
  {
      $data=$request->validate(['dry_off_date'=>['nullable','date_format:Y-m-d']]);
@@ -839,8 +909,10 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          DB::table('fhpr_records')->where('id',$id)->update($updates);
          return response()->json(['dry_off_date'=>$date,'display_date'=>$this->formatFhprDate($date),
              'days_in_milk'=>$updates['days_in_milk']??$row->days_in_milk,
-             'lactation_start_date'=>$start?->toDateString(),'lactation_start_display'=>$start?->format('F j,Y'),
-             'classification'=>$classification]);
+             'lactation_start_date'=>$start?->toDateString(),'lactation_start_display'=>$start ? $this->formatFhprDate($start) : null,
+             'classification'=>$animal ? \App\Support\InventoryClassification::ageAdjustedLabel(
+                 $classification,$animal->sex,$animal->birth_date,$animal->status,$animal->nature_of_exit
+             ) : $classification]);
      });
  }
 
@@ -890,6 +962,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
              $join->on('cooperative.id','=',DB::raw('COALESCE(inventory_animal.cooperative_id, inventory_farmer.cooperative_id, fhpr_records.cooperative_id)'));
          })
          ->select('fhpr_records.*','inventory_animal.sex as sex','inventory_animal.classification as status_updated',
+             'inventory_animal.birth_date as _inventory_birth_date','inventory_animal.status as _inventory_status','inventory_animal.nature_of_exit as _inventory_exit',
              'cooperative.id as _filter_cooperative_id','inventory_animal.animal_id as _inventory_animal_id',
              'inventory_animal.registry_number as _inventory_registry_number')
          ->addSelect('latest_ai.last_ai_date as last_ai_date')
@@ -921,7 +994,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
      $records->each(function($row)use($dateColumns,$reportedPregnancies,$bullNames){
          $lactationStart=\App\Support\FhprLactation::start($row);
          $row->_lactation_start_date=$lactationStart?->toDateString();
-         $row->_lactation_start_display=$lactationStart?->format('F j,Y');
+         $row->_lactation_start_display=$lactationStart ? $this->formatFhprDate($lactationStart) : null;
          $lactationSource=json_decode((string)($row->source_data??''),true)?:[];
          if($lactationStart&&!empty($lactationSource['fhpr_lactation_start_date'])){
              $row->days_in_milk=max(0,\App\Support\FhprLactation::days($lactationStart,$row->dry_off_date??null));
@@ -953,7 +1026,9 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
          if($row->pregnancy_status==='Positive' && $reportedPregnancies->has($row->_pregnancy_record_id)){
              $row->pregnancy_status=null;
          }
-         $row->status_updated=\App\Support\FhprClassification::resolve($row->status_updated,$row->days_in_milk??null,$row->dry_off_date??null,$row->pregnancy_status);
+         $row->status_updated=\App\Support\InventoryClassification::ageAdjustedLabel(
+             $row->status_updated,$row->sex,$row->_inventory_birth_date,$row->_inventory_status,$row->_inventory_exit
+         );
          $row->days_pregnant=$row->pregnancy_status==='Positive'
              ?($row->_pregnancy_mating_date
                  ?max(0,(int)Carbon::parse($row->_pregnancy_mating_date,'Asia/Singapore')->startOfDay()->diffInDays(Carbon::today('Asia/Singapore'),false))
@@ -1005,7 +1080,7 @@ if($tableDateStart!==''||$tableDateEnd!=='')$consolidatedRows=$consolidatedRows-
  private function formatFhprDate($date): string
  {
      if($date===null||trim((string)$date)==='')return '-';
-     try{return Carbon::parse($date)->format('F j,Y');}catch(\Throwable){return '-';}
+     try{return Carbon::parse($date)->format('j-M-y');}catch(\Throwable){return '-';}
  }
 
  private function displayFhprTagNumber($tagNumber): string

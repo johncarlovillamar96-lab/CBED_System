@@ -20,6 +20,65 @@
         <template x-for="card in summaryCards" :key="card.title"><div class="cbed-card dashboard-stat-card management-summary-card p-5"><div class="flex items-center justify-between"><div><p class="text-sm font-medium text-slate-500" x-text="card.title"></p><h3 class="mt-3 text-3xl font-bold text-slate-800" x-text="card.value"></h3><p class="mt-2 text-xs text-slate-400" x-text="card.description"></p></div><div class="dashboard-stat-icon flex h-12 w-12 items-center justify-center rounded-xl text-xl"><i :class="card.icon"></i></div></div></div></template>
     </div>
 
+    <section class="dashboard-status-section mb-7" aria-labelledby="calves-by-cooperative-title" x-data="{ showTable: false }">
+        <div class="mb-3">
+            <h2 id="calves-by-cooperative-title" class="text-lg font-bold text-[#0b1f3a]">Calf summary by cooperative and birth year</h2>
+            <p class="text-sm text-slate-500">Live, dead, and transferred female and male calves by cooperative and birth year</p>
+        </div>
+
+        <button type="button" class="mb-3 text-sm font-semibold text-slate-700" x-show="cooperativeBirthYearSummaries.length"
+            aria-controls="calves-by-cooperative-table" :aria-expanded="showTable" @click="showTable = !showTable"
+            x-text="showTable ? 'Hide table' : 'Show table'"></button>
+        <div id="calves-by-cooperative-table" class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm" role="region" aria-label="Calf counts by cooperative and birth year" tabindex="0" x-show="showTable && cooperativeBirthYearSummaries.length">
+            <table class="min-w-full text-left text-sm">
+                <thead class="bg-slate-50 text-slate-800">
+                    <tr>
+                        <th scope="col" class="px-4 py-3">Cooperative</th>
+                        <template x-for="item in birthYearSummary" :key="item.year">
+                            <th scope="col" class="border-l border-slate-100 px-4 py-3 text-center" x-text="item.year"></th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 border-t border-slate-100">
+                    <template x-for="group in cooperativeBirthYearSummaries" :key="group.name">
+                        <tr>
+                            <th scope="row" class="px-4 py-3 align-top font-semibold text-slate-800" x-text="group.name || 'Unspecified cooperative'"></th>
+                            <template x-for="year in birthYearSummary" :key="year.year">
+                                <td class="min-w-[12rem] border-l border-slate-100 px-4 py-3 align-top" x-data="{ get item() { return group.years[year.year]; } }">
+                                    <template x-if="item">
+                                        <div>
+                                            <dl class="grid grid-cols-[repeat(2,minmax(max-content,1fr))] gap-2 text-sm text-slate-700">
+                                                <div>
+                                                    <dt class="font-medium">Female</dt>
+                                                    <dd class="mt-1 grid gap-y-1 text-xs">
+                                                        <span class="font-semibold text-emerald-700" x-text="'Live - ' + item.female.live"></span>
+                                                        <span class="font-semibold text-rose-700" x-text="'Dead - ' + item.female.dead"></span>
+                                                        <span class="whitespace-nowrap font-semibold text-indigo-700" x-text="'Transferred - ' + item.female.transferred"></span>
+                                                    </dd>
+                                                </div>
+                                                <div>
+                                                    <dt class="font-medium">Male</dt>
+                                                    <dd class="mt-1 grid gap-y-1 text-xs">
+                                                        <span class="font-semibold text-emerald-700" x-text="'Live - ' + item.male.live"></span>
+                                                        <span class="font-semibold text-rose-700" x-text="'Dead - ' + item.male.dead"></span>
+                                                        <span class="whitespace-nowrap font-semibold text-indigo-700" x-text="'Transferred - ' + item.male.transferred"></span>
+                                                    </dd>
+                                                </div>
+                                            </dl>
+                                            <p class="mt-2 text-xs text-slate-500" x-text="'Total records ' + item.count"></p>
+                                        </div>
+                                    </template>
+                                    <span x-show="!item" class="block text-center text-slate-500" aria-label="No records">—</span>
+                                </td>
+                            </template>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p x-show="!cooperativeBirthYearSummaries.length" class="text-sm text-slate-500">No matching records have a birth or event date.</p>
+    </section>
+
     {{-- Distribution panels --}}
     <section class="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <article class="cbed-card dashboard-panel min-w-0 overflow-hidden rounded-xl border" aria-labelledby="calves-by-province-title">
@@ -56,10 +115,12 @@
             <div class="max-h-72 overflow-y-auto p-5">
                 <ol class="space-y-3">
                     <template x-for="item in birthYearSummary" :key="item.year">
-                        <li class="grid grid-cols-[3rem_minmax(0,1fr)_2.5rem] items-center gap-3 text-sm">
-                            <span class="font-medium tabular-nums text-slate-700" x-text="item.year"></span>
-                            <div class="h-2.5 rounded-full bg-slate-100" aria-hidden="true"><div class="h-full rounded-full bg-emerald-600" :style="`width:${item.percent}%`"></div></div>
-                            <span class="text-right font-semibold tabular-nums text-slate-900" x-text="item.count"></span>
+                        <li class="rounded-lg border border-slate-200 p-3">
+                            <div class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 text-sm">
+                                <span class="font-medium tabular-nums text-slate-700" x-text="item.year"></span>
+                                <div class="h-2.5 rounded-full bg-slate-100" aria-hidden="true"><div class="h-full rounded-full bg-emerald-600" :style="`width:${item.percent}%`"></div></div>
+                                <span class="font-semibold tabular-nums text-slate-900" x-text="item.count + ' total'"></span>
+                            </div>
                         </li>
                     </template>
                 </ol>

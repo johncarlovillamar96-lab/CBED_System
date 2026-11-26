@@ -11,6 +11,7 @@ function calfDropPage(monitoringMode = false) {
         matingLookup: 0,
         showMatingPicker: false, dueMatings: [], loadingDueMatings: false, dueMatingsError: '',
         calfCooperatives: [], calfFarmers: [], calfInventory: [],
+        transferredCalfIds: new Set(),
         workbookHerds: @js(\App\Support\CooperativeReportingCounts::workbookHerds()),
         calfFarmerHerds: @js(\App\Support\CooperativeReportingCounts::CALF_FARMER_HERDS),
         calfFarmerHerdDefaults: @js(\App\Support\CooperativeReportingCounts::CALF_FARMER_HERD_DEFAULTS),
@@ -273,6 +274,19 @@ function calfDropPage(monitoringMode = false) {
             return [...this.records.filter(record => !shared.has(calfId(record))), ...this.inventoryCalves]
                 .map(record => ({...record, reported_year: this.reportedYearFromCalfId(record.calf_id, record.reported_year)}));
         },
+        transferCalfIds(exits, animals) {
+            const normalize = value => String(value ?? '').trim().toLowerCase();
+            const identifiers = new Set(exits.map(exit => normalize(exit.animal_identifier)).filter(Boolean));
+            const inventoryIds = new Set(exits.map(exit => normalize(exit.carabao_id)).filter(Boolean));
+            for (const animal of animals) {
+                if (!inventoryIds.has(normalize(animal.id))) continue;
+                for (const alias of [animal.registry_number, animal.animal_id, animal.bolus_id, animal.tag_number, animal.tag_no]) {
+                    const id = normalize(alias);
+                    if (id) identifiers.add(id);
+                }
+            }
+            return identifiers;
+        },
         // An inventory animal is a calf when it has a Dam ID (mother). Placeholder values do not count.
         hasDam(a) { const v = String(a?.dam_id ?? '').trim().toLowerCase(); return v !== '' && !['-','--','n/a','na','none','unknown','0'].includes(v); },
         normalizeProvince(value) { const text = String(value ?? '').replace(/\s+/g,' ').trim(); if (!text) return ''; const aliases = {nuevaecija:'Nueva Ecija', nuevaecjia:'Nueva Ecija', nuevaecijaprovince:'Nueva Ecija'}; return aliases[text.toLowerCase().replace(/[^a-z]/g,'')] || text; },
@@ -333,6 +347,16 @@ function calfDropPage(monitoringMode = false) {
                 this.calfCooperatives=coops;
                 this.calfFarmers=farmers;
                 this.calfInventory=animals;
+                try {
+                    this.transferredCalfIds = this.transferCalfIds(await readList('/admin/calf-transfer-api'), animals);
+                } catch (error) {
+                    console.warn('Calf transfer history unavailable:', error);
+                    this.$dispatch('cbed-data-status', {
+                        title: 'Calf transfer counts may be incomplete',
+                        description: 'Use Refresh to retry Nature of Exit history.',
+                        type: 'error'
+                    });
+                }
                 const seenCalfIds=new Set();
                 const calfRows=(databaseCalves ?? []).map(c=>({...c,id:'db-calf-'+c.id,database_id:c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
                 this.inventoryCalves=calfRows
@@ -424,18 +448,47 @@ function calfDropPage(monitoringMode = false) {
             ];
         },
         get birthYearSummary() {
+            return this.summarizeBirthYears(this.matchingCalfRecords);
+        },
+        get cooperativeBirthYearSummaries() {
+            const groups=new Map();
+            for(const record of this.matchingCalfRecords){
+                const name=String(record.cooperative??'').trim();
+                if(!groups.has(name))groups.set(name,[]);
+                groups.get(name).push(record);
+            }
+            return [...groups.entries()]
+                .sort(([a],[b])=>a.localeCompare(b))
+                .map(([name,records])=>({name,years:this.summarizeBirthYears(records)}))
+                .filter(group=>group.years.length)
+                .map(({name,years})=>({name,years:Object.fromEntries(years.map(item=>[item.year,item]))}));
+        },
+        summarizeBirthYears(records) {
             const counts=new Map();
-            this.matchingCalfRecords.forEach(record=>{
+            records.forEach(record=>{
                 const date=String(record.date_of_birth??'').slice(0,10);
                 if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
                 const parsed=new Date(`${date}T00:00:00`);
                 if(Number.isNaN(parsed.getTime())||parsed.getFullYear()!==Number(date.slice(0,4))
                     ||parsed.getMonth()+1!==Number(date.slice(5,7))||parsed.getDate()!==Number(date.slice(8,10)))return;
                 const year=date.slice(0,4);
-                if(!counts.has(year))counts.set(year,new Set());
-                counts.get(year).add(String(record.calf_id||record.id));
+                if(!counts.has(year))counts.set(year,new Map());
+                const yearRecords=counts.get(year);
+                const id=String(record.calf_id||record.id);
+                if(!yearRecords.has(id))yearRecords.set(id,record);
             });
-            const years=[...counts.entries()].map(([year,ids])=>({year,count:ids.size}));
+            const years=[...counts.entries()].map(([year,records])=>{
+                const breakdown={male:{live:0,dead:0,transferred:0},female:{live:0,dead:0,transferred:0}};
+                for(const record of records.values()){
+                    const sex=String(record.sex??'').trim().toLowerCase();
+                    const calfId=String(record.calf_id??'').trim().toLowerCase();
+                    const status=this.transferredCalfIds.has(calfId) ? 'transferred' : String(record.animal_status??'').trim().toLowerCase();
+                    if((sex==='male'||sex==='female')&&['live','dead','transferred'].includes(status)){
+                        breakdown[sex][status]++;
+                    }
+                }
+                return {year,count:records.size,...breakdown};
+            });
             const max=Math.max(1,...years.map(item=>item.count));
             return years.map(item=>({...item,percent:item.count/max*100})).sort((a,b)=>Number(b.year)-Number(a.year));
         },
