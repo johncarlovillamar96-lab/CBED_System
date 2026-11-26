@@ -349,7 +349,7 @@
                 @include('partials.calf-drop-notifications')
             @endunless
 
-            @if (session('success') && !in_array($module ?? null, ['mtd', 'exits'], true))
+            @if (session('success') && !request()->routeIs('signup') && !in_array($module ?? null, ['mtd', 'exits'], true))
                 <div class="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                     <i class="fa-solid fa-circle-check text-lg"></i>
                     <span>{{ session('success') }}</span>
@@ -381,6 +381,7 @@
 
     {{-- PAGE SCRIPTS --}}
     @include('partials.table-pagination-assets')
+    <script src="{{ asset('js/auto-filters.js') }}" defer></script>
     @stack('scripts')
 </body>
 </html>

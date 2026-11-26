@@ -82,8 +82,9 @@
                 <label class="filter-label">Mating Type</label>
                 <select x-model="filterMatingType" @change="page=1" class="filter-input">
                     <option value="">All types</option>
-                    <option value="AI">Artificial Insemination (AI)</option>
-                    <option value="NM">Natural Mating (NM)</option>
+                    <option value="NM">NM</option>
+                    <option value="AI">AI</option>
+                    <option value="FTAI">FTAI</option>
                 </select>
             </div>
             <div>
@@ -103,7 +104,7 @@
                 </select>
             </div>
             <div>
-                <label class="filter-label">Mating Date</label>
+                <label class="filter-label">Mating or Monitoring Date</label>
                 <input type="date" x-model="filterDate" @change="page=1" class="filter-input">
             </div>
         </div>
@@ -134,7 +135,7 @@
                 <colgroup>
                     <col class="mating-width-no"><col class="mating-width-cooperative"><col class="mating-width-farmer">
                     <col class="mating-width-animal"><col class="mating-width-date"><col class="mating-width-type">
-                    <col span="16">
+                    <col span="16"><col class="mating-width-actions">
                 </colgroup>
                 <thead class="bg-slate-100 text-xs uppercase text-slate-600">
                     <tr>
@@ -158,8 +159,9 @@
                         <th class="th">PD Technician</th>
                         <th class="th">Pregnancy Days</th>
                         <th class="th">Expected Calving</th>
+                        <th scope="col" class="th">Monitoring Date</th>
                         <th class="th">Actual Calving</th>
-                        <th class="th">Actions</th>
+                        <th scope="col" class="th mating-actions-cell">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -170,7 +172,10 @@
                             <td class="td mating-frozen mating-frozen-farmer" x-text="r.farmer||'—'"></td>
                             <td class="td mating-frozen mating-frozen-animal font-bold" x-text="r.animal_id||'—'"></td>
                             <td class="td mating-frozen mating-frozen-date" x-text="displayDate(r.breeding_date)"></td>
-                            <td class="td mating-frozen mating-frozen-type"><span class="pcc-type-pill" :class="r.mating_type==='NM'?'pcc-type-nm':'pcc-type-ai'" x-text="r.mating_type==='NM'?'NM · Natural':'AI · Artificial Insemination'"></span></td>
+                            <td class="td mating-frozen mating-frozen-type">
+                                <span x-show="r.mating_type" class="pcc-type-pill" :class="r.mating_type==='NM'?'pcc-type-nm':'pcc-type-ai'" x-text="matingType(r)"></span>
+                                <span x-show="r.pd_only && !r.mating_type">PD only</span>
+                            </td>
                             <td class="td" x-text="r.bull_id||'—'"></td>
                             <td class="td" x-text="r.bull_name||'—'"></td>
                             <td class="td" x-text="r.mating_type==='AI'?(r.straws||'—'):'—'"></td>
@@ -186,24 +191,31 @@
                                     :class="pdClass(r.pd_result)" x-text="r.pd_result||'Pending'"></span>
                             </td>
                             <td class="td" x-text="r.pd_technician||'—'"></td>
-                            <td class="td" x-text="r.pd_result==='Positive'?pregnancyDays(r)+' days':'—'"></td>
+                            <td class="td">
+                                <span x-text="pregnancyDaysLabel(r)"></span>
+                                <small x-show="r.pd_result==='Positive' && !r.breeding_date && estimatedPregnancyStart(r)"
+                                    class="block text-slate-500" x-text="'Est. start: '+displayDate(estimatedPregnancyStart(r))"></small>
+                            </td>
                             <td class="td" x-text="r.pd_result==='Positive'?displayDate(r.expected_calving||calculateExpectedCalving(r.breeding_date)):'—'"></td>
+                            <td class="td" x-text="displayDate(r.monitoring_date || r.record_date)"></td>
                             <td class="td"><div x-text="displayDate(r.actual_calving)"></div><span x-show="isUnreportedCalf(r)" class="mt-1 inline-block rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Calf drop not reported</span><span x-show="r.pregnancy_followup_complete" class="mt-1 inline-block rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">Calf drop reported</span></td>
-                            <td class="td whitespace-nowrap">
-                                <button type="button" @click="view(r)" class="cbed-record-action cbed-record-action--view" title="View" aria-label="View">
-                                    <i class="fa-solid fa-eye" aria-hidden="true"></i>
-                                </button>
-                                @if(auth()->user()->isAdmin())<button type="button" @click="edit(r)" class="cbed-record-action cbed-record-action--edit" title="Edit" aria-label="Edit">
-                                    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-                                </button>@endif
-                                @if(auth()->user()->isAdmin())<button type="button" @click="confirmDelete(r)" class="cbed-record-action cbed-record-action--delete" title="Delete" aria-label="Delete">
-                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
-                                </button>@endif
+                            <td class="td mating-actions-cell">
+                                <div x-show="!r.pd_only" class="mating-actions">
+                                    <button type="button" @click="view(r)" class="cbed-record-action cbed-record-action--view" title="View" aria-label="View">
+                                        <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                                    </button>
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="edit(r)" class="cbed-record-action cbed-record-action--edit" title="Edit" aria-label="Edit">
+                                        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                    </button>@endif
+                                    @if(auth()->user()->isAdmin())<button type="button" @click="confirmDelete(r)" class="cbed-record-action cbed-record-action--delete" title="Delete" aria-label="Delete">
+                                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                    </button>@endif
+                                </div>
                             </td>
                         </tr>
                     </template>
                     <tr x-show="filteredRecords().length===0">
-                        <td colspan="22" class="px-5 py-12 text-center text-slate-500" x-text="hiddenReportedCount()>0?'No active mating records match your filters. Use Show reported records to view the imported history.':(filterYear?'No mating records for '+filterYear+' yet.':'No mating records found.')"></td>
+                        <td colspan="23" class="px-5 py-12 text-center text-slate-500" x-text="hiddenReportedCount()>0?'No active mating records match your filters. Use Show reported records to view the imported history.':(filterYear?'No mating records for '+filterYear+' yet.':'No mating records found.')"></td>
                     </tr>
                 </tbody>
             </table>
@@ -316,9 +328,10 @@
                                     </td>
 
                                     <td class="min-w-48 p-2">
-                                        <select x-model="r.mating_type" @change="typeChanged(r)" class="form-input">
-                                            <option value="AI">Artificial Insemination (AI)</option>
-                                            <option value="NM">Natural Mating (NM)</option>
+                                        <select :value="matingType(r)" @change="selectMatingType(r, $event.target.value)" class="form-input">
+                                            <option value="NM">NM</option>
+                                            <option value="AI">AI</option>
+                                            <option value="FTAI">FTAI</option>
                                         </select>
                                     </td>
 
@@ -526,7 +539,9 @@
                 </div>
                 <div class="rounded-lg border p-3">
                     <p class="text-xs text-slate-500">Pregnancy Duration</p>
-                    <p class="mt-1 font-semibold" x-text="selected&&selected.pd_result==='Positive'?pregnancyDays(selected)+' days':'—'"></p>
+                    <p class="mt-1 font-semibold" x-text="pregnancyDaysLabel(selected)"></p>
+                    <small x-show="selected?.pd_result==='Positive' && !selected?.breeding_date && estimatedPregnancyStart(selected)"
+                        class="block text-slate-500" x-text="'Est. start: '+displayDate(estimatedPregnancyStart(selected))"></small>
                 </div>
             </div>
             <div class="flex justify-end border-t p-4">
@@ -594,6 +609,10 @@
 .mating-width-animal{width:var(--mating-animal)}
 .mating-width-date{width:var(--mating-date)}
 .mating-width-type{width:var(--mating-type)}
+.mating-width-actions{width:8.75rem}
+.mating-records-table .mating-actions-cell{padding-inline:.625rem;text-align:center}
+.mating-actions{display:flex;justify-content:center;gap:.25rem}
+.mating-actions .cbed-record-action{flex:0 0 2.25rem;height:2.25rem;margin:0;padding:0}
 .mating-records-table :is(th,td){overflow-wrap:anywhere}
 .mating-records-table .mating-frozen{position:sticky;padding-inline:.625rem;box-shadow:1px 0 0 #e2e8f0}
 .mating-records-table tbody td{border-bottom:1px solid #f1f5f9}

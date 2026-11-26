@@ -150,16 +150,15 @@
                 <h2 class="font-bold text-slate-800">Milk Production</h2>
                 <p class="mt-1 text-xs text-slate-500">Annual milk yield by cooperative</p>
             </div>
-            <form method="get" action="{{ url()->current() }}#dashboard-milk-production">
+            <form method="get" action="{{ url()->current() }}#dashboard-milk-production" data-auto-filters>
                 <label class="flex items-center gap-2 text-sm font-medium text-slate-600">
                     Year
-                    <select name="milk_year" onchange="this.form.submit()" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    <select name="milk_year" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
                         @foreach ($milkYears as $year)
                             <option value="{{ $year }}" @selected($year === $milkYear)>{{ $year }}</option>
                         @endforeach
                     </select>
                 </label>
-                <noscript><button type="submit" class="cbed-page-button">Apply</button></noscript>
             </form>
         </div>
 

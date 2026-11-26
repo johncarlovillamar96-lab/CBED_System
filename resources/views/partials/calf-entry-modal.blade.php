@@ -92,7 +92,7 @@
                     </template>
                     <div>
                         <label id="calf-mother-label" :for="(showMatingPicker || monitoringCalf) ? 'calf-mating-mother-id' : 'calf-manual-mother-id'" class="text-sm font-semibold">Mother ID <span class="text-rose-600">*</span></label>
-                        <input id="calf-mating-mother-id" x-show="showMatingPicker || monitoringCalf" :value="addForm.mother_id" readonly class="form-input mt-1">
+                        <input id="calf-mating-mother-id" x-show="showMatingPicker || monitoringCalf" :value="motherIdDisplay" readonly class="form-input mt-1">
                         <template x-if="!showMatingPicker && !monitoringCalf">
                             <div class="relative" @click.outside="motherPickerOpen = false" @keydown.escape.stop="if (motherPickerOpen) { motherPickerOpen = false; $refs.motherTrigger.focus(); }">
                                 <div class="relative mt-1">
@@ -117,16 +117,66 @@
                     </div>
                     <label class="text-sm font-semibold">Birth or event date <span class="text-rose-600">*</span>
                         <input x-model="addForm.date_of_birth" @change="$nextTick(() => checkManualDamDate())" type="date" required class="form-input mt-1">
+                        <span x-show="formattedBirthDate" x-text="formattedBirthDate" class="mt-1 block text-xs font-normal text-slate-600"></span>
                     </label>
                     <label class="text-sm font-semibold">Birth outcome
                         <select x-model="addForm.birth_outcome" class="form-input mt-1"><option>Live Birth</option><option>Stillbirth</option><option>Abortion</option></select>
                     </label>
+                    <template x-if="addForm.birth_outcome === 'Live Birth' && calfHerdOptions.length && !monitoringCalf?.data?.calf_id">
+                        <label class="text-sm font-semibold">Herd Code
+                            <input x-show="assignedCalfHerdCode" :value="assignedCalfHerdCode" readonly class="form-input mt-1">
+                            <select x-show="!assignedCalfHerdCode" x-model="addForm.herd_code" :required="!assignedCalfHerdCode" :disabled="!!assignedCalfHerdCode" class="form-input mt-1">
+                                <option value="">Select herd code</option>
+                                <template x-for="code in calfHerdOptions" :key="code">
+                                    <option :value="code" x-text="code"></option>
+                                </template>
+                            </select>
+                        </label>
+                    </template>
+                    <template x-if="monitoringCalf">
+                        <label class="text-sm font-semibold">Mating method
+                            <select x-model="addForm.mating_method" class="form-input mt-1">
+                                <option value="">Select mating method</option>
+                                <option value="AI">Artificial Insemination (AI)</option>
+                                <option value="NM">Natural Mating (NM)</option>
+                            </select>
+                        </label>
+                    </template>
                     <div>
                         <label class="text-sm font-semibold">Calf ID
-                            <input :value="canResolveCalfFromSire ? (monitoringCalf?.data?.calf_id || currentSeries?.next_id || generatedId(addForm)) : ''" placeholder="Assigned on save" readonly class="form-input mt-1">
+                            <input :value="canResolveCalfFromSire ? previewCalfId : ''" placeholder="Assigned on save" readonly class="form-input mt-1">
                         </label>
-                        <button x-show="addForm.birth_outcome === 'Live Birth'" type="button" @click="verifyCalfSeries()" :disabled="!seriesQuery || checkingSeries" class="mt-2 text-sm font-semibold text-sky-800 underline disabled:opacity-50" x-text="checkingSeries ? 'Checking series…' : 'Verify Series'"></button>
-                        <p x-show="currentSeries" role="status" class="mt-1 text-xs text-slate-600" x-text="currentSeries?.message || (currentSeries?.last_id ? 'Last used this year: ' + currentSeries.last_id : 'No previous series this year') + (currentSeries?.next_id ? ' · Next ID: ' + currentSeries.next_id : ' · Series 999 reached')"></p>
+                        <button x-show="addForm.birth_outcome === 'Live Birth' && !monitoringCalf?.data?.calf_id" type="button" @click="verifyCalfSeries()" :disabled="!seriesQuery || checkingSeries"
+                            class="mt-2 block text-sm font-semibold text-sky-800 underline disabled:opacity-50">Check Available Series</button>
+                        <label x-show="currentSeries?.available_series?.length" class="mt-2 inline-flex items-center gap-2 text-sm font-semibold">
+                            <input type="checkbox" :checked="showSeriesOptions" @change="toggleSeriesOptions($event.target.checked)"
+                                x-init="$watch('seriesQuery', query => { if (showSeriesOptions && query !== seriesOptionsQuery) toggleSeriesOptions(false) })">
+                            Calf series number
+                        </label>
+                        <p x-show="checkingSeries" role="status" class="mt-1 text-xs text-slate-600">Checking series…</p>
+                        <template x-if="showSeriesOptions && currentSeries?.available_series?.length">
+                                <select aria-label="Calf series number" class="form-input mt-1" @change="selectCalfSeries($event.target.value)">
+                                    <option value="" disabled :selected="!selectedSeries">Select a series</option>
+                                    <option value="">Assign next available</option>
+                                    <template x-if="selectedSeries && !currentSeries.available_series.includes(selectedSeries)">
+                                        <option :value="selectedSeries" selected disabled x-text="selectedSeries + ' (no longer available)'"></option>
+                                    </template>
+                                    <template x-for="number in currentSeries?.available_series || []" :key="number">
+                                        <option :value="number" :selected="number === selectedSeries" x-text="number"></option>
+                                    </template>
+                                </select>
+                        </template>
+                        <p x-show="currentSeries?.message || currentSeries?.available_series?.length === 0" role="status" class="mt-1 text-xs text-slate-600" x-text="currentSeries?.message || 'No calf series numbers are available for this year.'"></p>
+                        <template x-if="showSeriesOptions && currentSeries?.reserved_ranges?.length">
+                            <details class="mt-2 text-xs text-slate-600">
+                                <summary class="cursor-pointer font-semibold">Reserved series</summary>
+                                <ul class="mt-1 space-y-1">
+                                    <template x-for="range in currentSeries.reserved_ranges" :key="range.section">
+                                        <li x-text="range.first + '–' + range.last + ' reserved for ' + range.section"></li>
+                                    </template>
+                                </ul>
+                            </details>
+                        </template>
                     </div>
                     <label class="text-sm font-semibold">Sex <span x-show="addForm.birth_outcome === 'Live Birth'" class="text-rose-600">*</span>
                         <select x-model="addForm.sex" :required="addForm.birth_outcome === 'Live Birth'" class="form-input mt-1"><option value="">Select sex</option><option>Male</option><option>Female</option></select>

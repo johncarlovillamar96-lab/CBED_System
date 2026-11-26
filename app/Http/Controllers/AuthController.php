@@ -93,7 +93,10 @@ class AuthController extends Controller
             'name' => $data['first_name'].' '.$data['last_name'],
         ] + $data);
 
-        return redirect()->route('signup')->with('success', "Account created for {$user->email}.");
+        return redirect()->route('signup')->with([
+            'success' => 'Account created',
+            'success_description' => "The new user can sign in with {$user->email}.",
+        ]);
     }
 
     public function updateAccount(Request $request, int $account)

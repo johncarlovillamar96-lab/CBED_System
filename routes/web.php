@@ -68,7 +68,7 @@ Route::middleware(['auth', 'workspace'])->post('/admin/cooperatives/import', [Co
 Route::view('/farmers', 'farmer')->middleware(['auth', 'workspace'])->name('ui.farmers');
 Route::view('/cooperatives', 'cooperative')->middleware(['auth', 'workspace'])->name('ui.cooperatives');
 Route::view('/carabaos', 'carabao')->middleware(['auth', 'workspace'])->name('ui.carabaos');
-Route::view('/mating', 'mating')->middleware(['auth', 'workspace'])->name('ui.mating');
+Route::get('/mating', [MonitoringReportController::class, 'matingPage'])->middleware(['auth', 'workspace'])->name('ui.mating');
 Route::view('/calves', 'calf-drop')->middleware(['auth', 'workspace'])->name('ui.calves');
 Route::redirect('/calf-drop', '/calves')->middleware(['auth', 'workspace'])->name('ui.calf-drop');
 Route::redirect('/health-nutrition', '/health')->middleware(['auth', 'workspace'])->name('ui.health-nutrition');
@@ -247,16 +247,19 @@ Route::middleware(['auth', 'workspace:monitoring-entry'])->get('/admin/calf-drop
     $data = $request->validate([
         'dam_id' => ['required', 'integer', 'exists:carabaos,id'],
         'cooperative_id' => ['nullable', 'integer', 'exists:cooperatives,id'],
+        'herd_code' => ['nullable', 'string', 'max:16'],
         'breed' => ['required', 'string', 'max:255'],
         'date_of_birth' => ['required', 'date'],
     ]);
     $dam = DB::table('carabaos as animal')
         ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
         ->where('animal.id', $data['dam_id'])
-        ->first(['animal.cooperative_id', 'farmer.cooperative_id as farmer_cooperative_id']);
+        ->first(['animal.cooperative_id', 'animal.farmer_id', 'animal.registry_number', 'animal.animal_id', 'farmer.cooperative_id as farmer_cooperative_id']);
     abort_unless($dam, 404);
     $cooperativeId = $data['cooperative_id'] ?? $dam->cooperative_id ?? $dam->farmer_cooperative_id;
-    $herdCode = DB::table('cooperatives')->where('id', $cooperativeId)->value('cooperative_code');
+    $herdCode = \App\Support\CooperativeReportingCounts::calfHerdCode(
+        DB::table('cooperatives')->where('id', $cooperativeId)->value('cooperative_code'), $data['herd_code'] ?? null, $dam->farmer_id,
+        $dam->registry_number ?: $dam->animal_id);
 
     return response()->json(\App\Support\CalfRegistryId::sequence($data['breed'], $herdCode, $data['date_of_birth']));
 })->name('admin.calf-drop.series');
@@ -264,6 +267,8 @@ Route::middleware(['auth', 'workspace:monitoring-entry'])->get('/admin/calf-drop
 Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function (Request $request) {
     $data = $request->validate([
         'calf_id' => ['nullable', 'string', 'max:255'],
+        'registry_series' => ['nullable', 'integer', 'between:1,999'],
+        'herd_code' => ['nullable', 'string', 'max:16'],
         'mother_id' => ['required', 'string', 'max:255'],
         'cooperative_id' => ['nullable', 'required_with:farmer_id', 'integer', 'exists:cooperatives,id'],
         'farmer_id' => ['nullable', 'required_with:cooperative_id', 'integer', 'exists:farmers,id'],
@@ -288,7 +293,13 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
     $motherId = trim($data['mother_id']);
     $farmerId = $data['farmer_id'] ?? null;
     $cooperativeId = $data['cooperative_id'] ?? null;
-    if ($farmerId !== null) {
+    if ($farmerId !== null && DB::table('cooperatives')->where('id', $cooperativeId)->value('cooperative_code') === 'AST') {
+        $members = \App\Support\CooperativeReportingCounts::whereAnimalMembership(
+            DB::table('carabaos as animal')->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id'), (int) $cooperativeId);
+        abort_unless($members->where('animal.farmer_id', $farmerId)
+            ->where(fn ($query) => $query->where('animal.animal_id', $motherId)->orWhere('animal.registry_number', $motherId))->exists(),
+            422, 'The selected dam does not belong to an Animal Industry herd.');
+    } elseif ($farmerId !== null) {
         abort_unless(DB::table('farmers')->where('id', $farmerId)->where('cooperative_id', $cooperativeId)->exists(),
             422, 'The selected farmer does not belong to this cooperative.');
     }
@@ -320,6 +331,9 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
     [$breed, $sireId] = \App\Support\CalfBreedSeries::resolveParentage($mother->breed, $data['sire_id'] ?? null, $data['breed'] ?? null);
     $cooperativeId ??= $mother->cooperative_id ?? DB::table('farmers')->where('id', $mother->farmer_id)->value('cooperative_id');
     $outcome = $data['birth_outcome'] ?? 'Live Birth';
+    $selectedSeries = isset($data['registry_series']) ? (int) $data['registry_series'] : null;
+    abort_if($selectedSeries !== null && ($animalId !== '' || $outcome !== 'Live Birth'), 422,
+        'Series selection is available when assigning a Calf ID for a live birth.');
     if ($outcome !== 'Live Birth') {
         $id = DB::transaction(function () use ($animalId, $data, $mother, $outcome, $sireId) {
             DB::table('carabaos')->where('id', $mother->id)->lockForUpdate()->first();
@@ -347,10 +361,8 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
         return response()->json(['message' => 'Calf drop recorded.', 'id' => $id], 201);
     }
 
-    $id = DB::transaction(function () use ($animalId, $breed, $cooperativeId, $data, $farmerId, $mother, $sireId) {
-        if ($animalId === '') {
-            \App\Support\CalfRegistryId::lockSequence();
-        }
+    $id = DB::transaction(function () use ($animalId, $breed, $cooperativeId, $data, $farmerId, $mother, $sireId, $selectedSeries) {
+        \App\Support\CalfRegistryId::lockSequence();
         $cooperative = $cooperativeId === null
             ? null
             : DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first();
@@ -363,7 +375,9 @@ Route::middleware(['auth', 'workspace'])->post('/admin/calf-drop-api', function 
         }
 
         if ($animalId === '') {
-            $animalId = \App\Support\CalfRegistryId::next($breed, $cooperative?->cooperative_code, $data['date_of_birth']);
+            $herdCode = \App\Support\CooperativeReportingCounts::calfHerdCode($cooperative?->cooperative_code, $data['herd_code'] ?? null,
+                $mother->farmer_id, $mother->registry_number ?: $mother->animal_id);
+            $animalId = \App\Support\CalfRegistryId::next($breed, $herdCode, $data['date_of_birth'], $selectedSeries);
         }
 
         abort_if(DB::table('carabaos')->where('animal_id', $animalId)->orWhere('registry_number', $animalId)->exists()
@@ -453,7 +467,7 @@ Route::middleware(['auth', 'workspace'])->delete('/admin/health-records/{record}
 Route::middleware(['auth', 'workspace'])->post('/admin/carabaos', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.store');
 Route::middleware(['auth', 'workspace'])->post('/admin/carabaos/bulk', fn () => response()->json(['message' => 'Carabao API is not connected yet.'], 501))->name('admin.carabaos.bulk');
 Route::middleware(['auth', 'workspace'])->post('/admin/carabaos/import', fn () => response()->json(['message' => 'Use the cooperative workbook import.'], 501))->name('admin.carabaos.import');
-Route::middleware(['auth', 'workspace'])->get('/admin/cooperatives/data', fn () => DB::table('cooperatives')->orderBy('cooperative_name')->get())->name('admin.cooperatives.data');
+Route::middleware(['auth', 'workspace'])->get('/admin/cooperatives/data', fn () => \App\Support\CooperativeReportingCounts::records())->name('admin.cooperatives.data');
 Route::middleware(['auth', 'workspace'])->post('/admin/cooperatives', function (Request $request) {
     $data = $request->validate([
         'cooperative_code' => ['required', 'string', 'max:255', 'unique:cooperatives,cooperative_code'],

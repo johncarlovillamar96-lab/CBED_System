@@ -12,7 +12,7 @@
     </x-admin-page-header>
 
     <section class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="Saved visits">
-        <form method="get" action="{{ route('ui.activity-logs.monitoring') }}" class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
+        <form method="get" action="{{ route('ui.activity-logs.monitoring') }}" data-auto-filters class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
             <label class="text-xs font-semibold text-slate-700">Search cooperative or creator
                 <input type="search" name="report_search" value="{{ $filters['report_search'] ?? '' }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
             </label>
@@ -53,7 +53,6 @@
             </label>
             <input type="hidden" name="per_page" value="{{ $reports->perPage() }}">
             <div class="flex items-end gap-2 lg:col-span-2">
-                <button type="submit" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#12345a]">Apply filters</button>
                 <x-reset-filters :href="route('ui.activity-logs.monitoring')" />
             </div>
         </form>

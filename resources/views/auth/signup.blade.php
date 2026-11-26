@@ -3,6 +3,12 @@
 @section('title', 'Accounts')
 
 @section('content')
+    @if (session('success'))
+        <div x-data="{ notice: @js(session('success')), description: @js(session('success_description', '')), noticeType: 'success' }">
+            @include('partials.action-toast', ['showDescription' => true])
+        </div>
+    @endif
+
     @php
         $rowActions = [
             'view' => ['View details', 'fa-eye'],

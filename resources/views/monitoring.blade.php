@@ -38,7 +38,7 @@
                 <x-monitoring-picker id="monitoring-cooperative" label="Cooperative" name="cooperative_id">
                     <option value="">Select a cooperative</option>
                     @foreach ($cooperatives as $cooperative)
-                        <option value="{{ $cooperative->id }}" data-animals-url="{{ route('ui.monitoring.animals', $cooperative->id, absolute: false) }}">{{ $cooperative->cooperative_name }}</option>
+                        <option value="{{ $cooperative->id }}" data-herd-code="{{ $cooperative->cooperative_code }}" data-animals-url="{{ route('ui.monitoring.animals', $cooperative->id, absolute: false) }}">{{ $cooperative->cooperative_name }}</option>
                     @endforeach
                 </x-monitoring-picker>
                 <x-monitoring-picker id="monitoring-farmer-filter" label="Farmer">
@@ -149,7 +149,10 @@
                     <a href="{{ route('ui.monitoring', ['month' => $nextMonth, 'cooperative_id' => $selectedCooperativeId ?: null, 'report_search' => $reportSearch ?: null, 'report_specification'=>$reportSpecification?:null, 'report_availability'=>$reportAvailability?:null, 'report_status'=>$reportStatus?:null]) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></a>
                 </div>
             </div>
-            <form method="GET" action="{{ route('ui.monitoring') }}" class="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+            <form method="GET" action="{{ route('ui.monitoring') }}" data-auto-filters class="grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+                @foreach (request()->only(['year', 'gip_reporting_date', 'table_per_page', 'table_cooperative', 'table_farmer', 'table_animal', 'table_province', 'table_municipality', 'table_barangay', 'table_date_start', 'table_date_end', 'table_search', 'table_service']) as $name => $value)
+                    @if (is_scalar($value))<input type="hidden" name="{{ $name }}" value="{{ $value }}">@endif
+                @endforeach
                 <label class="min-w-0 text-xs font-semibold text-slate-600">Calendar view<select name="view" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"><option value="day" @selected($calendarView==='day')>Day View</option><option value="month" @selected($calendarView==='month')>Month View</option><option value="year" @selected($calendarView==='year')>Year View</option></select></label>
                 <label class="min-w-0 text-xs font-semibold text-slate-600">Selected day<input type="date" name="date" min="2026-01-01" max="2026-12-31" value="{{ $selectedDate }}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"></label>
                 <label class="min-w-0 text-xs font-semibold text-slate-600">Month
@@ -173,7 +176,6 @@
                     <select name="report_availability" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-normal"><option value="">All availability</option><option value="available" @selected($reportAvailability==='available')>Available</option><option value="unavailable" @selected($reportAvailability==='unavailable')>Unavailable</option></select>
                 </label>
                 <div class="flex items-end gap-2">
-                    <button type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#0b1f3a] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#122b4d]"><i class="fa-solid fa-filter"></i>Apply filters</button>
                     <x-reset-filters :href="route('ui.monitoring')" />
                 </div>
             </form>
@@ -221,8 +223,11 @@
     </details>
 
     <section id="monitoring-record-table" class="inventory-panel pcc-records-panel scroll-mt-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="font-bold text-slate-800">Animal Monitoring Report Table</h2><p class="mt-1 text-sm text-slate-500">{{ number_format($consolidatedRowsPage->total()) }} live animal(s) · {{ $reportYear }}</p></div><div class="flex flex-wrap gap-2"><label class="self-center text-xs font-semibold">Paper size<select id="monitoring-paper-size" onchange="document.documentElement.classList.toggle('paper-a4',this.value==='a4')" class="ml-1 rounded border px-2 py-2"><option value="legal">Legal landscape</option><option value="a4">A4 landscape</option></select></label><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'xlsx'])) }}" class="rounded-lg bg-emerald-700 px-4 py-2.5 text-center text-sm font-semibold text-white">Export filtered Excel</a><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'csv'])) }}" class="rounded-lg border border-emerald-700 px-3 py-2.5 text-center text-sm font-semibold text-emerald-800">CSV</a><button type="button" onclick="window.print()" class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Print report</button></div></div>
-        <form method="GET" action="{{ route('ui.monitoring') }}" class="grid grid-cols-1 gap-3 border-b p-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="font-bold text-slate-800">Animal Monitoring Report Table</h2><p class="mt-1 text-sm text-slate-500">{{ number_format($consolidatedRowsPage->total()) }} animal(s) · {{ $reportYear }}</p></div><div class="flex flex-wrap gap-2"><label class="self-center text-xs font-semibold">Paper size<select id="monitoring-paper-size" onchange="document.documentElement.classList.toggle('paper-a4',this.value==='a4')" class="ml-1 rounded border px-2 py-2"><option value="legal">Legal landscape</option><option value="a4">A4 landscape</option></select></label><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'xlsx'])) }}" class="rounded-lg bg-emerald-700 px-4 py-2.5 text-center text-sm font-semibold text-white">Export filtered Excel</a><a href="{{ route('ui.monitoring', array_merge(request()->query(), ['table_export'=>'csv'])) }}" class="rounded-lg border border-emerald-700 px-3 py-2.5 text-center text-sm font-semibold text-emerald-800">CSV</a><button type="button" onclick="window.print()" class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Print report</button></div></div>
+        <form method="GET" action="{{ route('ui.monitoring').'#monitoring-record-table' }}" data-auto-filters class="grid grid-cols-1 gap-3 border-b p-4 sm:grid-cols-2 xl:grid-cols-4">
+            @foreach (request()->only(['view', 'date', 'month', 'cooperative_id', 'report_search', 'report_specification', 'report_availability', 'report_status']) as $name => $value)
+                @if (is_scalar($value))<input type="hidden" name="{{ $name }}" value="{{ $value }}">@endif
+            @endforeach
             <label class="text-xs font-semibold text-slate-600">Monitoring year<input name="year" type="number" min="2000" max="2100" value="{{ $reportYear }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></label>
             <label class="text-xs font-semibold text-slate-600">GIP reporting date<input name="gip_reporting_date" type="date" value="{{ $gipReportingDate }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></label>
             <input type="hidden" name="table_per_page" value="{{ $tablePerPage }}">
@@ -236,7 +241,7 @@
             <label class="text-xs font-semibold text-slate-600">Monitoring date to<input name="table_date_end" type="date" value="{{ $tableDateEnd }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"></label>
             <label class="text-xs font-semibold text-slate-600">Search<input name="table_search" value="{{ $tableSearch }}" type="search" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm" placeholder="Farmer, animal or cooperative"></label>
             <label class="text-xs font-semibold text-slate-600">Service type<select name="table_service" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"><option value="">All services</option>@foreach($categoryLabels as $key=>$label)<option value="{{ $key }}" @selected($tableService===$key)>{{ $label }}</option>@endforeach</select></label>
-            <div class="flex items-end gap-2"><button class="rounded-lg bg-[#0b1f3a] px-4 py-2.5 text-sm font-semibold text-white">Apply filters</button><x-reset-filters :href="route('ui.monitoring').'#monitoring-record-table'" /></div>
+            <div class="flex items-end gap-2"><x-reset-filters :href="route('ui.monitoring').'#monitoring-record-table'" /></div>
         </form>
         <div class="overflow-x-auto print:hidden">
             @include('partials.monitoring-report-table', [
@@ -462,7 +467,15 @@ function farmerMonitoringAnimals(farmerId) {
 }
 
 function monitoringAnimalLabel(animal) {
-    return String(animal.registry_number ?? '').trim() || 'No registry ID';
+    const id = String(animal.registry_number ?? '').trim() || animal.animal_id || 'No registry ID';
+    const sex = String(animal.sex ?? '').trim().toLowerCase();
+    const label = ['f', 'female'].includes(sex) ? 'Female' : ['m', 'male'].includes(sex) ? 'Male' : 'Unknown sex';
+    return `${id} · ${label}`;
+}
+
+function monitoringServiceAllowed(animal, service) {
+    return !['calf_monitoring', 'breeding'].includes(service)
+        || ['f', 'female'].includes(String(animal.sex ?? '').trim().toLowerCase());
 }
 
 function monitoringRows() {
@@ -482,11 +495,11 @@ function renderMonitoringRows() {
     const pendingRow = rows.some(({row}) => row._farmerId === farmer.value && !row.carabao_id);
     const message = document.getElementById('monitoring-farmer-animals');
     message.textContent = farmer.value
-        ? `${farmerAnimals.length} live female animal(s) for ${farmer.selectedOptions[0].textContent}.`
+        ? `${farmerAnimals.length} live animal(s) for ${farmer.selectedOptions[0].textContent}.`
         : (monitoringRoster.some(animal => animal.farmer_id)
-            ? 'Select a farmer to view their live female animals.'
+            ? 'Select a farmer to view their live animals.'
             : (monitoringRosterLoaded
-                ? 'No live female animals are linked to a farmer in this cooperative.'
+                ? 'No live animals are linked to a farmer in this cooperative.'
                 : (document.getElementById('monitoring-cooperative').value
                     ? ''
                     : 'Select a cooperative and farmer to view live animals.')));
@@ -502,6 +515,7 @@ function renderMonitoringRow(row, index, position, selected) {
     }).join('');
     const disabled = row.carabao_id ? '' : 'disabled';
     const services = Object.entries(monitoringSpecs).map(([key, service]) => {
+        if (row.carabao_id && !monitoringServiceAllowed(row, key)) return '';
         const data = row._services?.[key];
         return `<button type="button" id="monitoring-service-${index}-${key}" onclick="openMonitoringService(${index}, '${key}')" ${disabled}
             class="flex h-11 items-center justify-center rounded-lg border px-2 text-center text-xs font-semibold leading-tight disabled:opacity-50 ${data ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}">${data ? 'View ' : ''}${service.label}</button>
@@ -558,7 +572,7 @@ function focusMonitoringService(index, service) {
 
 function openMonitoringService(index, service) {
     const row = monitoringAnimals[index];
-    if (!row?.carabao_id || !monitoringSpecs[service]) return;
+    if (!row?.carabao_id || !monitoringSpecs[service] || !monitoringServiceAllowed(row, service)) return;
     const cooperative = document.getElementById('monitoring-cooperative');
     const context = {
         index,
@@ -570,6 +584,7 @@ function openMonitoringService(index, service) {
         registryId: row.registry_number || row.animal_id || String(row.carabao_id),
         bolusId: row.bolus_id,
         cooperativeId: cooperative.value,
+        cooperativeCode: cooperative.selectedOptions[0]?.dataset.herdCode,
         cooperative: cooperative.selectedOptions[0]?.textContent.trim() || '',
         farmerId: row.farmer_id || row._farmerId,
         farmer: row.farmer_name || row._farmerName,
@@ -578,6 +593,14 @@ function openMonitoringService(index, service) {
         hasService: Boolean(row._services[service]),
         data: row._services[service] || {},
     };
+    if (service === 'calf_monitoring') {
+        context.otherCalfDrafts = monitoringAnimals.flatMap((animal, rowIndex) => {
+            const draft = animal?._services?.calf_monitoring;
+            return rowIndex !== index && draft?.birth_outcome === 'Live Birth' && draft.registry_series
+                ? [{year: String(draft.date_of_birth).slice(0, 4), number: String(draft.registry_series).padStart(3, '0')}]
+                : [];
+        });
+    }
     if (service === 'health_nutrition') {
         openHealthEditor(null, false, context);
     } else {

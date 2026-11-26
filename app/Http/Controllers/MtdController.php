@@ -49,7 +49,9 @@ class MtdController extends Controller
         $mtdCooperatives = DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name']);
         $mtdFarmers = DB::table('farmers')->whereNotNull('cooperative_id')->orderBy('last_name')->orderBy('first_name')
             ->select('id', 'cooperative_id')->selectRaw("CONCAT_WS(' ', first_name, NULLIF(middle_name, ''), last_name) as name")->get();
-        $mtdAnimals = DB::table('carabaos')->whereNotNull('farmer_id')->orderBy('animal_id')
+        $mtdAnimals = DB::table('carabaos')->whereNotNull('farmer_id')
+            ->whereRaw("LOWER(TRIM(sex)) IN ('f', 'female')")
+            ->orderBy('registry_number')->orderBy('animal_id')
             ->get(['id', 'farmer_id', 'animal_id', 'registry_number', 'tag_number', 'animal_name', 'mtd_missing_teats'])
             ->each(fn ($animal) => $animal->mtd_missing_teats = $this->decodeMissingTeats($animal->mtd_missing_teats));
 
@@ -155,7 +157,7 @@ class MtdController extends Controller
                 $animal = DB::table('carabaos as animal')->join('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
                     ->where('animal.id', $record['carabao_id'])->where('farmer.id', $record['farmer_id'])
                     ->where('farmer.cooperative_id', $record['cooperative_id'])->lockForUpdate()
-                    ->first(['animal.registry_number', 'animal.animal_id', 'animal.mtd_missing_teats']);
+                    ->first(['animal.registry_number', 'animal.animal_id', 'animal.mtd_missing_teats', 'animal.sex']);
                 $availabilitySet = (bool) ($record['teat_availability_set'] ?? false);
                 $missing = $availabilitySet
                     ? array_values(array_intersect(self::TEATS, $record['missing_teats'] ?? []))
@@ -163,6 +165,9 @@ class MtdController extends Controller
                 unset($record['teat_availability_set'], $record['missing_teats']);
                 $issue = null;
                 if (! $animal) $issue = 'Select an animal belonging to the selected farmer and cooperative.';
+                elseif ($bag === 'mtdEntry' && ! in_array(strtolower(trim((string) $animal->sex)), ['f', 'female'], true)) {
+                    $issue = 'Select a female animal for Milk Test Day.';
+                }
                 elseif (! array_filter(array_intersect_key($record, array_flip([...self::READINGS, 'milk_yield_liters'])), fn ($value) => $value !== null && $value !== '')) {
                     $issue = 'Enter at least one Bulk or teat reading.';
                 }

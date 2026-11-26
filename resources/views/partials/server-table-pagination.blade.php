@@ -1,7 +1,7 @@
 @php
     $pageParam = $paginator->getPageName();
     $sizeParam = $sizeParam ?? 'per_page';
-    $isHealthPager = $isHealthPager ?? false;
+    $isAsyncPager = $isAsyncPager ?? false;
     $filterParams = $filterParams ?? request()->except([$pageParam, $sizeParam]);
     $inPlace = $inPlace ?? false;
 @endphp
@@ -14,7 +14,7 @@
                 (<b>{{ number_format($unfilteredTotal) }}</b> total)
             @endisset
         </p>
-        <form method="get" action="{{ $paginator->path() }}" @if ($isHealthPager) data-health-page-size @endif>
+        <form method="get" action="{{ $paginator->path() }}" @if ($isAsyncPager) data-async-page-size @endif>
             @foreach ($filterParams as $name => $value)
                 @if (is_scalar($value))
                     <input type="hidden" name="{{ $name }}" value="{{ $value }}">
@@ -22,7 +22,7 @@
             @endforeach
             <label class="flex items-center gap-2 text-sm text-slate-500">
                 Rows per page
-                <select name="{{ $sizeParam }}" @if ($inPlace) onchange="this.form.requestSubmit()" @elseif (!$isHealthPager) onchange="this.form.submit()" @endif class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
+                <select name="{{ $sizeParam }}" @if ($inPlace) onchange="this.form.requestSubmit()" @elseif (!$isAsyncPager) onchange="this.form.submit()" @endif class="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
                     @foreach (\App\Support\TablePagination::SIZES as $option)
                         <option value="{{ $option }}" @selected($paginator->perPage() === $option)>{{ $option }}</option>
                     @endforeach
@@ -35,7 +35,7 @@
         @if ($paginator->onFirstPage())
             <button type="button" disabled class="cbed-page-button">Previous</button>
         @else
-            <a href="{{ $paginator->previousPageUrl() }}" @if ($isHealthPager) data-health-page="previous" @endif @if ($inPlace) data-page-direction="previous" @endif class="cbed-page-button">Previous</a>
+            <a href="{{ $paginator->previousPageUrl() }}" @if ($isAsyncPager) data-async-page="previous" @endif @if ($inPlace) data-page-direction="previous" @endif class="cbed-page-button">Previous</a>
         @endif
         @if (!empty($jumpToPage) && $paginator->lastPage() > 1)
             <label class="flex items-center gap-2 whitespace-nowrap text-sm">
@@ -48,10 +48,10 @@
                 of <b>{{ $paginator->lastPage() }}</b>
             </label>
         @else
-            <span class="whitespace-nowrap text-sm" @if ($isHealthPager) data-health-page-status tabindex="-1" @endif>Page <b>{{ $paginator->currentPage() }}</b> of <b>{{ $paginator->lastPage() }}</b></span>
+            <span class="whitespace-nowrap text-sm" @if ($isAsyncPager) data-async-page-status tabindex="-1" @endif>Page <b>{{ $paginator->currentPage() }}</b> of <b>{{ $paginator->lastPage() }}</b></span>
         @endif
         @if ($paginator->hasMorePages())
-            <a href="{{ $paginator->nextPageUrl() }}" @if ($isHealthPager) data-health-page="next" @endif @if ($inPlace) data-page-direction="next" @endif class="cbed-page-button">Next</a>
+            <a href="{{ $paginator->nextPageUrl() }}" @if ($isAsyncPager) data-async-page="next" @endif @if ($inPlace) data-page-direction="next" @endif class="cbed-page-button">Next</a>
         @else
             <button type="button" disabled class="cbed-page-button">Next</button>
         @endif

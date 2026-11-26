@@ -10,7 +10,7 @@
     @include('partials.activity-metrics')
 
     <section aria-label="System activity" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <form method="get" action="{{ route('ui.activity-logs') }}" class="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
+        <form method="get" action="{{ route('ui.activity-logs') }}" data-auto-filters class="grid gap-4 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 lg:grid-cols-4">
             @foreach (['from' => ['From date', 'date'], 'to' => ['To date', 'date'], 'year' => ['Year', 'number'], 'month' => ['Month (1-12)', 'number'], 'animal' => ['Animal ID', 'search'], 'search' => ['Search activity descriptions', 'search']] as $field => [$label, $type])
                 <label class="text-sm font-semibold">{{ $label }}
                     <input type="{{ $type }}" name="{{ $field }}" value="{{ $filters[$field] ?? '' }}" @if($field === 'month') min="1" max="12" @elseif($field === 'year') min="1900" max="9998" @endif class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">
@@ -29,7 +29,6 @@
                 </label>
             @endforeach
             <div class="flex flex-wrap items-center gap-3 lg:col-span-4">
-                <button type="submit" class="cbed-save-button">Apply Filters</button>
                 <x-reset-filters :href="route('ui.activity-logs')" />
                 <button class="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" name="format" value="excel">Export Excel</button>
                 <button class="rounded-lg border bg-white px-3 py-2 text-sm font-semibold" name="format" value="print" formtarget="_blank">Printable Report</button>

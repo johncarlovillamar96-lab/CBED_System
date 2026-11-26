@@ -7,7 +7,7 @@
     </span>
     <div role="status" class="min-w-0 flex-1">
         <p class="text-sm font-semibold text-slate-800" x-text="notice"></p>
-        @if($isConnectionToast ?? false)
+        @if(($isConnectionToast ?? false) || ($showDescription ?? false))
             <p class="mt-1 text-xs text-slate-600" x-show="description" x-text="description"></p>
         @endif
     </div>

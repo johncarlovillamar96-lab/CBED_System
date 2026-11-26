@@ -41,14 +41,11 @@
                 <h2 class="text-lg font-bold text-slate-800">Nature of Exit Records</h2>
                 <p class="mt-1 text-sm text-slate-500">{{ $rows->total() }} record(s)</p>
             </div>
-            <form method="GET" action="{{ route('ui.nature-of-exit') }}" class="flex gap-2">
+            <form method="GET" action="{{ route('ui.nature-of-exit') }}" data-auto-filters class="flex gap-2">
                 <label for="exit-search" class="sr-only">Search exit records</label>
                 <input id="exit-search" type="search" name="search" value="{{ $search }}"
                     placeholder="Search cooperative, farmer, registry..."
                     class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm sm:w-80">
-                <button type="submit" class="rounded-lg bg-[#0b1f3a] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#122b4d]">
-                    Search
-                </button>
             </form>
         </div>
         <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">

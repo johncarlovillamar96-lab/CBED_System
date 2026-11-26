@@ -45,7 +45,7 @@
                 @foreach ([
                     [$calf['sex'] ?? null, $calf['date'] ?? null],
                     [\App\Support\MonitoringReportTable::breedingMethod($calf['method'] ?? null), $calf['date'] ?? null],
-                    [$visitPd ?? (blank($breeding['pd_date'] ?? null) ? ($breeding['pd'] ?? null) : null), $visitPd === null ? null : $monitoringDate],
+                    [$visitPd ?? (blank($breeding['pd_date'] ?? null) ? ($breeding['pd'] ?? null) : null), $visitPd === null ? null : ($row['_visit_pd_date'][$monitoringDate] ?? $monitoringDate)],
                     [$breeding['estrus'] ?? null, $breeding['date'] ?? null],
                     [\App\Support\MonitoringReportTable::breedingMethod($breeding['method'] ?? null), $breeding['date'] ?? null],
                     [$breeding['sire_id'] ?? null, $breeding['date'] ?? null],
@@ -79,7 +79,7 @@
                 @endforeach
                 <td class="border px-3 py-2">
                     @if (!empty($row['monitoring_date']))
-                        <time datetime="{{ $row['monitoring_date'] }}">{{ \Carbon\Carbon::parse($row['monitoring_date'])->format('F j, Y') }}</time>
+                        <time datetime="{{ $row['monitoring_date'] }}">{{ \Carbon\Carbon::parse($row['monitoring_date'])->format('d-M-y') }}</time>
                     @else
                         –
                     @endif
@@ -90,7 +90,7 @@
                 </td>
             </tr>
         @empty
-            <tr><td colspan="17" class="border px-3 py-8 text-center text-slate-500">No live animals match these filters.</td></tr>
+            <tr><td colspan="17" class="border px-3 py-8 text-center text-slate-500">No animals match these filters.</td></tr>
         @endforelse
     </tbody>
 </table>

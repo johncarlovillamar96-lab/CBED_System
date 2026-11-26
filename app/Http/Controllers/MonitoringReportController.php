@@ -12,6 +12,7 @@ use App\Support\AnimalExitRecord;
 use App\Support\CalfBreedSeries;
 use App\Support\CalfInventoryDetails;
 use App\Support\CalfRegistryId;
+use App\Support\CooperativeReportingCounts;
 use App\Support\HealthWorksheetMapping;
 use App\Support\InventoryBolusApplication;
 use App\Support\TablePagination;
@@ -97,6 +98,46 @@ class MonitoringReportController extends Controller
         return DB::table('bcs_records')->whereNotNull('body_condition_score')
             ->distinct()->orderBy('body_condition_score')->pluck('body_condition_score')
             ->map(fn ($score) => number_format((float) $score, 2, '.', ''))->values()->all();
+    }
+
+    public function matingPage()
+    {
+        $diagnoses = DB::table('monitoring_report_details as detail')
+            ->join('monitoring_reports as report', 'report.id', '=', 'detail.monitoring_report_id')
+            ->where('detail.monitoring_data', 'like', '%"pd_only"%')
+            ->get(['detail.id', 'detail.monitoring_specification', 'detail.monitoring_data', 'detail.registry_number',
+                'detail.animal_database_id', 'detail.farmer_name', 'report.cooperative_id', 'report.cooperative_name', 'report.report_date'])
+            ->map(function ($detail) {
+                $data = json_decode((string) $detail->monitoring_data, true) ?: [];
+                $diagnosis = $detail->monitoring_specification === 'breeding'
+                    ? $data
+                    : ($data['_additional_services']['breeding']['data'] ?? []);
+                if (! ($diagnosis['pd_only'] ?? false) || empty($diagnosis['pd_date'])) {
+                    return null;
+                }
+
+                return [
+                    'id' => 'pd-' . $detail->id,
+                    'pd_only' => true,
+                    'mating_type' => $diagnosis['method'] ?? null,
+                    'heat_status' => $diagnosis['estrus_type'] ?? null,
+                    'cooperative_id' => $detail->cooperative_id,
+                    'animal_id' => $detail->registry_number ?: $detail->animal_database_id,
+                    'farmer' => $detail->farmer_name,
+                    'cooperative' => $detail->cooperative_name,
+                    'monitoring_date' => $detail->report_date,
+                    'pd_date' => $diagnosis['pd_date'],
+                    'pd_result' => match ($diagnosis['pregnancy_status'] ?? null) {
+                        'Pregnant' => 'Positive',
+                        'Not Pregnant' => 'Negative',
+                        default => 'Inconclusive',
+                    },
+                    'pregnancy_months' => $diagnosis['pregnancy_months'] ?? null,
+                    'pd_technician' => $diagnosis['pd_technician'] ?? null,
+                ];
+            })->filter()->sortByDesc('monitoring_date')->values();
+
+        return view('mating', compact('diagnoses'));
     }
 
     public function animals(int $cooperative)
@@ -211,6 +252,7 @@ class MonitoringReportController extends Controller
     public function animalMatings(int $cooperative, int $animal)
     {
         $dam = $this->eligibleAnimals($cooperative)->where('animal.id', $animal)
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
             ->first(['animal.animal_id', 'animal.registry_number']);
         abort_unless($dam, 404);
 
@@ -233,8 +275,7 @@ class MonitoringReportController extends Controller
         $exitPattern = 'out|dead|deceas|culled|sold|transfer|dispos|exit';
         $animals = DB::table('carabaos as animal')
             ->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
-            ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
-            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
+            ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f', 'male', 'm')")
             ->whereRaw("LOWER(TRIM(COALESCE(animal.status, ''))) IN ('live', 'alive', 'active')")
             ->whereNull('animal.death_date')
             ->whereRaw("LOWER(COALESCE(animal.exit_reason, '')) NOT REGEXP ?", [$exitPattern])
@@ -246,7 +287,7 @@ class MonitoringReportController extends Controller
             $animals->whereRaw("LOWER(COALESCE(animal.nature_of_exit, '')) NOT REGEXP ?", [$exitPattern]);
         }
 
-        return $animals;
+        return CooperativeReportingCounts::whereAnimalMembership($animals, $cooperativeId);
     }
 
     public function store(Request $request)
@@ -465,6 +506,9 @@ class MonitoringReportController extends Controller
             'nature_of_exit' => AnimalExitRecord::rules(),
             'calf_monitoring' => [
                 'automatic_calf' => ['nullable', 'boolean'], 'monitored_date' => ['nullable', 'date'],
+                'mating_method' => ['nullable', 'in:AI,NM'],
+                'registry_series' => ['nullable', 'integer', 'between:1,999'],
+                'herd_code' => ['nullable', 'string', 'max:16'],
                 'reported_year' => ['nullable', 'integer', 'min:2000', 'max:2100'],
                 'province' => ['nullable', 'string', 'max:255'], 'municipality' => ['nullable', 'string', 'max:255'],
                 'barangay' => ['nullable', 'string', 'max:255'],
@@ -474,6 +518,7 @@ class MonitoringReportController extends Controller
                 'birth_weight' => ['nullable', 'numeric', 'min:0', 'max:1000'], 'findings' => ['nullable', 'string', 'max:2000'], 'remarks' => ['nullable', 'string', 'max:2000'],
             ],
             'breeding' => [
+                'pd_only' => ['nullable', 'boolean'],
                 'mating_form' => ['nullable', 'boolean'], 'bull_name' => ['nullable', 'string', 'max:255'],
                 'pd_technician' => ['nullable', 'string', 'max:255'], 'actual_calving' => ['nullable', 'date'],
                 'breeding_date' => ['nullable', 'date'], 'method' => ['nullable', 'in:AI,NM'], 'semen_bull_id' => ['nullable', 'integer', 'exists:semen_bulls,id'],
@@ -507,7 +552,8 @@ class MonitoringReportController extends Controller
         if ($validator->fails()) abort(422, 'Animal row '.($index + 1).': '.$validator->errors()->first());
         $required = match ($specification) {
             'calf_monitoring' => ['date_of_birth', 'birth_outcome'],
-            'breeding' => ($data['mating_form'] ?? false) ? ['breeding_date', 'method'] : ['breeding_date', 'method', 'semen_bull_id'],
+            'breeding' => ($data['pd_only'] ?? false) ? ['pd_date', 'pregnancy_status', 'pd_technician']
+                : (($data['mating_form'] ?? false) ? ['breeding_date', 'method'] : ['breeding_date', 'method', 'semen_bull_id']),
             'health_nutrition' => ($data['activity_form'] ?? false) ? ['monitoring_date'] : [],
             default => [],
         };
@@ -517,7 +563,11 @@ class MonitoringReportController extends Controller
         if ($specification === 'calf_monitoring' && ($data['birth_outcome'] ?? null) === 'Live Birth' && empty($data['sex'])) {
             abort(422, 'Animal row '.($index + 1).': calf sex is required for a live birth.');
         }
-        if ($specification === 'breeding' && ($data['mating_form'] ?? false)) {
+        if ($specification === 'breeding' && ($data['pd_only'] ?? false)) {
+            if ($data['pregnancy_status'] === 'Pregnant' && empty($data['pregnancy_months'])) {
+                abort(422, 'Animal row '.($index + 1).' requires pregnancy months for a positive diagnosis.');
+            }
+        } elseif ($specification === 'breeding' && ($data['mating_form'] ?? false)) {
             $rowNumber = $index + 1;
             if (($data['method'] ?? null) === 'AI' && empty($data['estrus_type'])) {
                 abort(422, "Animal row $rowNumber requires an estrus type for AI.");
@@ -574,30 +624,42 @@ class MonitoringReportController extends Controller
 
     private function saveAnimalDetails(int $reportId, int $cooperativeId, array $rows, string $monitoringDate, bool $updating = false): void
     {
+        $heldSeriesByYear = [];
+        $assigningCalfIds = false;
         foreach ($rows as $row) {
+            if (($row['availability_status'] ?? 'available') === 'unavailable') {
+                continue;
+            }
             $calf = $row['monitoring_services']['calf_monitoring']
                 ?? (($row['monitoring_specification'] ?? null) === 'calf_monitoring' ? ($row['monitoring_data'] ?? []) : []);
             if (($calf['automatic_calf'] ?? false) && ($calf['birth_outcome'] ?? null) === 'Live Birth') {
-                CalfRegistryId::lockSequence();
-                DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first(['id']);
-                break;
+                $assigningCalfIds = true;
+                if (isset($calf['registry_series'], $calf['date_of_birth'])) {
+                    $year = date('Y', strtotime($calf['date_of_birth']));
+                    $number = sprintf('%03d', $calf['registry_series']);
+                    abort_if(isset($heldSeriesByYear[$year][$number]), 422, 'Two monitoring rows chose the same calf series number for the birth year.');
+                    $heldSeriesByYear[$year][$number] = $number;
+                }
             }
+        }
+        if ($assigningCalfIds) {
+            CalfRegistryId::lockSequence();
+            DB::table('cooperatives')->where('id', $cooperativeId)->lockForUpdate()->first(['id']);
         }
 
         foreach ($rows as $row) {
-            $animal = DB::table('carabaos as animal')->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id')
+            $animals = DB::table('carabaos as animal')->leftJoin('farmers as farmer', 'farmer.id', '=', 'animal.farmer_id');
+            $animal = CooperativeReportingCounts::whereAnimalMembership($animals, $cooperativeId)
                 ->where('animal.id', (int) $row['carabao_id'])
-                ->whereRaw('COALESCE(animal.cooperative_id, farmer.cooperative_id) = ?', [$cooperativeId])
                 ->first(['animal.*', 'farmer.cooperative_id as farmer_cooperative_id', 'farmer.first_name', 'farmer.middle_name', 'farmer.last_name']);
             abort_unless($animal, 422, 'An animal is no longer assigned to this cooperative. Reload the report.');
             if (! $updating) {
-                $isLiveFemale = in_array(mb_strtolower(trim((string) $animal->sex)), ['female', 'f'], true)
-                    && in_array(mb_strtolower(trim((string) $animal->status)), ['live', 'alive', 'active'], true)
+                $isLive = in_array(mb_strtolower(trim((string) $animal->status)), ['live', 'alive', 'active'], true)
                     && empty($animal->death_date)
                     && ! preg_match('/out|dead|deceas|culled|sold|transfer|dispos|exit/i', (string) ($animal->exit_reason ?? '').' '.(string) ($animal->nature_of_exit ?? ''))
                     && ! DB::table('nature_of_exits')->where('carabao_id', $animal->id)
                         ->whereRaw("LOWER(COALESCE(nature_of_exit, '')) REGEXP ?", ['out|dead|deceas|culled|sold|transfer|dispos|exit'])->exists();
-                abort_unless($isLiveFemale, 422, 'Only live female animals can be added to a reproductive monitoring report.');
+                abort_unless($isLive, 422, 'Only live animals can be added to a monitoring report.');
             }
 
             $existing = $updating ? DB::table('monitoring_report_details')->where('monitoring_report_id', $reportId)->where('carabao_id', $animal->id)->first() : null;
@@ -650,14 +712,14 @@ class MonitoringReportController extends Controller
             }
             $result = $availability === 'unavailable'
                 ? ['monitoring_status' => 'unavailable']
-                : $this->syncDestination($detail, $animal, $specification, $details, $monitoringDate, $reportId);
+                : $this->syncDestination($detail, $animal, $specification, $details, $monitoringDate, $reportId, $heldSeriesByYear);
             foreach ($services as $service => $data) {
                 $serviceDetail = clone $detail;
                 $serviceDetail->destination_module = $additional[$service]['destination_module'] ?? null;
                 $serviceDetail->destination_record_id = $additional[$service]['destination_record_id'] ?? null;
                 $serviceDetail->destination_inventory_id = $additional[$service]['destination_inventory_id'] ?? null;
                 $destination = $this->syncDestination(
-                    $serviceDetail, $animal, $service, $data, $monitoringDate, $reportId
+                    $serviceDetail, $animal, $service, $data, $monitoringDate, $reportId, $heldSeriesByYear
                 );
                 $additional[$service] = ['data' => $data] + $destination;
             }
@@ -773,7 +835,7 @@ class MonitoringReportController extends Controller
         ]);
     }
 
-    private function syncDestination(object $detail, object $animal, ?string $specification, array &$data, string $monitoringDate, int $reportId): array
+    private function syncDestination(object $detail, object $animal, ?string $specification, array &$data, string $monitoringDate, int $reportId, array $heldSeriesByYear): array
     {
         $module = $specification ? (self::SPECIFICATIONS[$specification] ?? null) : null;
         $pending = [
@@ -781,6 +843,10 @@ class MonitoringReportController extends Controller
             'monitoring_status' => 'pending',
         ];
         if (! $specification || ! $module) return $pending;
+        if (in_array($specification, ['calf_monitoring', 'breeding'], true)) {
+            abort_unless(in_array(mb_strtolower(trim((string) $animal->sex)), ['female', 'f'], true), 422,
+                'Calf Monitoring and Breeding are available only for female animals.');
+        }
         $sourceData = ['monitoring_report_id' => $reportId, 'monitoring_detail_id' => $detail->id, 'monitoring_specification' => $specification, 'monitoring_fields' => $data];
 
         if ($specification === 'nature_of_exit') {
@@ -840,7 +906,7 @@ class MonitoringReportController extends Controller
             if ($automaticCalf) {
                 $sireId = trim((string) ($data['sire_id'] ?? ''));
                 abort_if($sireId === '', 422, 'Enter a Sire / Bull ID or choose Unknown sire.');
-                [$data['breed'], $data['sire_id']] = CalfBreedSeries::resolveParentage($animal->breed, $sireId);
+                [$data['breed'], $data['sire_id']] = CalfBreedSeries::resolveParentage($animal->breed, $sireId, matingMethod: $data['mating_method'] ?? null);
             }
             $calfId = trim((string) ($data['calf_id'] ?? ''));
             $matchingCalf = null;
@@ -853,10 +919,18 @@ class MonitoringReportController extends Controller
                 $existingChild = DB::table('carabaos')->where('dam_id', $animal->animal_id)->where('birth_date', $birthDate)->where('sex', $sex)->first();
                 if ($existingChild) $calfId = (string) $existingChild->animal_id;
             }
+            $selectedSeries = isset($data['registry_series']) ? (int) $data['registry_series'] : null;
+            unset($data['registry_series']);
+            abort_if($selectedSeries !== null && (! $automaticCalf || $outcome !== 'Live Birth' || $calfId !== ''), 422,
+                'Series selection is available when assigning a new Calf ID for a live birth.');
             if ($calfId === '' && $automaticCalf) {
                 if ($outcome === 'Live Birth') {
-                    $herdCode = DB::table('cooperatives')->where('id', $animal->cooperative_id ?: $animal->farmer_cooperative_id)->value('cooperative_code');
-                    $calfId = CalfRegistryId::next($data['breed'], $herdCode, $birthDate);
+                    $cooperativeCode = DB::table('monitoring_reports as report')->join('cooperatives as cooperative', 'cooperative.id', '=', 'report.cooperative_id')
+                        ->where('report.id', $reportId)->value('cooperative.cooperative_code');
+                    $herdCode = CooperativeReportingCounts::calfHerdCode($cooperativeCode, $data['herd_code'] ?? null,
+                        $animal->farmer_id, $animal->registry_number ?: $animal->animal_id);
+                    $heldSeries = $heldSeriesByYear[date('Y', strtotime($birthDate))] ?? [];
+                    $calfId = CalfRegistryId::next($data['breed'], $herdCode, $birthDate, $selectedSeries, $heldSeries);
                 } else {
                     $series = CalfBreedSeries::forBreed($data['breed']) ?? '6';
                     $eventCode = $outcome === 'Stillbirth' ? 'SB' : 'AB';
@@ -914,6 +988,9 @@ class MonitoringReportController extends Controller
         }
 
         if ($specification === 'breeding') {
+            if ($data['pd_only'] ?? false) {
+                return ['destination_module' => $module, 'destination_record_id' => null, 'destination_inventory_id' => null, 'monitoring_status' => 'completed'];
+            }
             $breedingDate = $data['breeding_date'] ?? null;
             $method = $data['method'] ?? null;
             if (! $breedingDate || ! $method) return $pending;

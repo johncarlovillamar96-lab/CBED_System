@@ -48,7 +48,7 @@ final class CalfBreedSeries
         return self::forBreed($code) === '2' || in_array($code, ['2', 'CARABAO', ''], true);
     }
 
-    public static function resolveParentage(?string $damBreed, ?string $sireId, ?string $breed = null): array
+    public static function resolveParentage(?string $damBreed, ?string $sireId, ?string $breed = null, ?string $matingMethod = null): array
     {
         $breed ??= $damBreed;
         $damBreed = strtoupper(trim((string) $damBreed));
@@ -57,7 +57,7 @@ final class CalfBreedSeries
         $sireSeries = preg_match('/^[25678]/', $sireCode) ? $sireCode[0] : null;
         $cb50Dam = in_array($damBreed, self::CB50_DAM_CODES, true);
         $seriesTwoDam = self::forBreed($damBreed) === '2';
-        if ($sireCode === 'UNKNOWN' && $seriesTwoDam) {
+        if ($sireCode === 'UNKNOWN' && ($matingMethod === 'AI' || $seriesTwoDam)) {
             $breed = 'CB75';
         } elseif ($cb50Dam || $seriesTwoDam) {
             $cb50SireCode = in_array($sireCode, self::CB50_DAM_CODES, true);

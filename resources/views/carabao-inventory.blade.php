@@ -148,7 +148,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-6">
+        <div class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-7">
             <div class="xl:col-span-2">
                 <label class="filter-label">Search</label>
                 <input x-model="search" @input="page=1" class="filter-input" placeholder="Cooperative, farmer, Bolus ID...">
@@ -169,6 +169,15 @@
                     <option value="all">All Sex</option>
                     <option value="Female">Female</option>
                     <option value="Male">Male</option>
+                </select>
+            </div>
+            <div>
+                <label for="inventory-classification-filter" class="filter-label">Classification</label>
+                <select id="inventory-classification-filter" x-model="classificationFilter" @change="page=1" class="filter-input">
+                    <option value="all">All Classifications</option>
+                    <template x-for="classification in classifications" :key="classification.key">
+                        <option :value="classification.key" x-text="classification.label"></option>
+                    </template>
                 </select>
             </div>
             <div>
@@ -595,6 +604,7 @@ function carabaoInventoryPage() {
         search: '',
         exitFilter: 'all',
         sexFilter: 'all',
+        classificationFilter: 'all',
         provinceFilter: 'all',
         birthYearFilter: 'all',
         page: 1,
@@ -633,10 +643,11 @@ function carabaoInventoryPage() {
                     || a.nature_of_exit===this.exitFilter;
                 const sex=String(a.sex??'').trim().toLowerCase();
                 const matchesSex=this.sexFilter==='all' || (this.sexFilter==='Female'?['f','female'].includes(sex):['m','male'].includes(sex));
+                const matchesClassification=this.classificationFilter==='all' || this.classificationKey(a)===this.classificationFilter;
                 const matchesProvince=this.provinceFilter==='all' || normalizeProvince(a.province)===this.provinceFilter;
                 const birthDate=a.birth_date||a.birthday||'';
                 const matchesBirthYear=this.birthYearFilter==='all'||(String(a.dam_id??'').trim()!==''&&String(birthDate).slice(0,4)===String(this.birthYearFilter));
-                return matchesSearch && matchesExit && matchesSex && matchesProvince && matchesBirthYear;
+                return matchesSearch && matchesExit && matchesSex && matchesClassification && matchesProvince && matchesBirthYear;
             });
         },
 
@@ -834,6 +845,19 @@ function carabaoInventoryPage() {
 
         get provinces() {
             return [...new Set(this.records.map(a=>normalizeProvince(a.province)).filter(Boolean))].sort();
+        },
+
+        classificationKey(animal) {
+            return this.hasNoClassification(animal) ? '' : String(animal.classification ?? '').trim().toLowerCase().replace(/[\s_-]+/g,'');
+        },
+
+        get classifications() {
+            const options=new Map();
+            for (const animal of this.records) {
+                const key=this.classificationKey(animal);
+                if (key && !options.has(key)) options.set(key,{key,label:animal.classification.trim()});
+            }
+            return [...options.values()].sort((a,b)=>a.label.localeCompare(b.label));
         },
 
         // Cooperative dropdown uses the real cooperative name and keeps its ID
@@ -1123,7 +1147,7 @@ function carabaoInventoryPage() {
         },
 
         clearFilters() {
-            this.search='';this.exitFilter='all';this.sexFilter='all';this.provinceFilter='all';this.birthYearFilter='all';this.page=1;
+            this.search='';this.exitFilter='all';this.sexFilter='all';this.classificationFilter='all';this.provinceFilter='all';this.birthYearFilter='all';this.page=1;
         },
 
         openAdd() {

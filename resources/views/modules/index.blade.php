@@ -268,7 +268,7 @@
     @endif
 
     {{-- RECORDS TABLE --}}
-    <section @if($module === 'health') id="health-records-panel" @endif class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section @if(in_array($module, ['health', 'bcs', 'milk'], true)) id="{{ $module }}-records-panel" data-async-records-panel @endif class="pcc-records-panel overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
         <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -288,8 +288,7 @@
         </div>
 
         {{-- SEARCH --}}
-        <form method="GET" action="{{ url()->current() }}"
-              @if($module === 'fhpr') id="fhpr-filters" @endif
+        <form method="GET" action="{{ url()->current() }}" data-auto-filters
               class="grid grid-cols-1 gap-3 border-b bg-slate-50 p-5 sm:grid-cols-2 {{ $detailedSearch ? 'xl:grid-cols-8' : 'xl:grid-cols-6' }}">
             @if(in_array($module, ['health', 'fhpr'], true))
                 <input type="hidden" name="per_page" value="{{ $rows->perPage() }}">
@@ -446,16 +445,11 @@
                     </label>
                 </div>
             @endif
-            @unless($module === 'fhpr')
+            @if($module !== 'fhpr' && $module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
                 <div class="flex items-end gap-2 xl:col-span-2">
-                    <button type="submit" class="action-primary {{ $module === 'milk' ? 'h-11' : '' }}">
-                        <i class="fa-solid fa-magnifying-glass"></i> {{ $detailedSearch ? 'Apply Filters' : 'Search' }}
-                    </button>
-                    @if($module !== 'milk' && ($searchValue !== '' || ($module === 'health' && array_filter($healthFilters)) || ($module === 'bcs' && array_filter($bcsFilters, fn ($value) => $value !== null)) || ($isProduct && array_filter($productFilters)) || (in_array($module, ['mtd', 'exits'], true) && array_filter($filters))))
-                        <x-reset-filters :href="url()->current()" />
-                    @endif
+                    <x-reset-filters :href="url()->current()" />
                 </div>
-            @endunless
+            @endif
         </form>
 
         {{-- TABLE --}}
@@ -550,9 +544,13 @@
                                         : $column;
 
                                     $value = data_get($row, $columnKey);
+                                    $wrapMilkCooperative = $module === 'milk' && $columnKey === 'cooperative_name_display';
+                                    $wrapCell = $wrapMilkCooperative
+                                        || ($module === 'health' && in_array($columnKey, ['services', 'dosage_ml', 'remarks', 'actions'], true))
+                                        || ($module === 'mtd' && $columnKey === 'remarks');
                                 @endphp
 
-                                <td class="td {{ $module === 'mtd' && $columnKey === 'remarks' ? 'min-w-[20rem] max-w-[32rem]' : 'max-w-xs' }} {{ ($module === 'health' && in_array($columnKey,['services','dosage_ml','remarks','actions'],true)) || ($module === 'mtd' && $columnKey === 'remarks') ? 'whitespace-normal' : 'whitespace-nowrap' }}">
+                                <td class="td {{ $module === 'mtd' && $columnKey === 'remarks' ? 'min-w-[20rem] max-w-[32rem]' : 'max-w-xs' }} {{ $wrapCell ? 'whitespace-normal' : 'whitespace-nowrap' }} {{ $wrapMilkCooperative ? 'break-words' : '' }}">
                                     @if($module === 'fhpr' && $columnKey === 'days_in_milk')
                                         <div x-data="fhprMilkDate(@js($row->id), @js($value), @js($row->_lactation_start_date), @js($row->_lactation_start_display))" @fhpr-dry-off-updated.window="update($event.detail)">
                                             <div x-text="days===null||days===''?'—':days">{{ $value !== null && $value !== '' ? $value : '—' }}</div>
@@ -666,13 +664,13 @@
         @if ($isPaginator)
             @include('partials.server-table-pagination', [
                 'paginator' => $rows,
-                'isHealthPager' => $module === 'health',
+                'isAsyncPager' => in_array($module, ['health', 'bcs', 'milk'], true),
                 'filterParams' => $module === 'health' ? array_filter($healthFilters + ['search' => $searchValue]) : null,
                 'unfilteredTotal' => $module === 'health' ? $healthSummary['activities'] : null,
             ])
         @endif
-        @if($module === 'health')
-            <p data-health-pagination-message role="status" class="px-5 text-sm text-slate-600"></p>
+        @if(in_array($module, ['health', 'bcs', 'milk'], true))
+            <p data-async-pagination-message role="status" class="px-5 text-sm text-slate-600"></p>
         @endif
     </section>
 
@@ -830,19 +828,60 @@ function milkProductionEntry(cooperatives, farmers, animals, cooperative, farmer
 }
 function mtdEntry(cooperatives, farmers, animals, cooperative, farmer, previousRows, today) {
     const teats=['right_front','right_back','left_front','left_back'];
-    const inventory=animals.map(animal=>({...animal,animal_number:animal.animal_id || animal.registry_number || animal.tag_number || String(animal.id)}));
+    const inventory=animals.map(animal=>({
+        ...animal,
+        animal_number:String(animal.registry_number ?? '').trim() || 'No registry number',
+    }));
     const directory=milkProductionEntry(cooperatives,farmers,inventory,cooperative,farmer,'',0);
     const rows=Object.values(previousRows || {}).filter(row=>row && typeof row==='object').map((row,index)=>({...row,key:index+1,missing_teats:Array.isArray(row.missing_teats) ? row.missing_teats : []}));
-    if(!rows.length)rows.push({key:1,carabao_id:'',test_date:today,collection_period:'',missing_teats:[]});
-    return {...directory,rows,nextKey:rows.length+1,
+    const testDate=rows[0]?.test_date || today;
+    if(!rows.length)rows.push({key:1,carabao_id:'',collection_period:'',missing_teats:[]});
+    return {...directory,rows,testDate,nextKey:rows.length+1,
+        registrySelectionError:null,
+        registryPickerPosition:{},
         availableAnimals(row){
             const selected=new Set(this.rows.filter(other=>other.key!==row.key && other.carabao_id)
                 .map(other=>String(other.carabao_id)));
             return this.options('animal').filter(animal=>!selected.has(String(animal.id)));
         },
+        matchingRegistryIds(row){
+            const query=this.query.trim().toLowerCase();
+            return this.availableAnimals(row).filter(animal=>animal.name.toLowerCase().includes(query));
+        },
+        positionRegistryPicker(trigger){
+            if(!trigger)return;
+            const bounds=trigger.getBoundingClientRect();
+            const width=Math.min(Math.max(bounds.width,224),window.innerWidth-16);
+            const below=window.innerHeight-bounds.bottom-8;
+            const above=bounds.top-8;
+            const openAbove=below<220 && above>below;
+            this.registryPickerPosition={
+                left:Math.max(8,Math.min(bounds.left,window.innerWidth-width-8))+'px',
+                width:width+'px',
+                top:openAbove?'auto':(bounds.bottom+4)+'px',
+                bottom:openAbove?(window.innerHeight-bounds.top+4)+'px':'auto',
+                maxHeight:Math.min(220,Math.max(0,(openAbove?above:below)-4))+'px',
+            };
+        },
+        repositionRegistryPicker(){
+            if(this.openPicker.startsWith('registry-'))this.positionRegistryPicker(document.getElementById('mtd-'+this.openPicker));
+        },
+        selectRegistryId(row,item,wrapper){
+            if(String(row.carabao_id)!==String(item.id))this.loadTeatAvailability(row,String(item.id));
+            this.registrySelectionError=null;
+            this.openPicker='';
+            wrapper.querySelector('button').focus();
+        },
+        checkRegistrySelections(event){
+            const missing=this.rows.find(row=>!row.carabao_id);
+            if(!missing)return;
+            event.preventDefault();
+            this.registrySelectionError=missing.key;
+            document.getElementById('mtd-registry-'+missing.key)?.focus();
+        },
         addRow(){
             const previous=this.rows.at(-1);
-            this.rows.push({key:this.nextKey++,carabao_id:'',test_date:previous?.test_date || today,collection_period:previous?.collection_period || '',missing_teats:[]});
+            this.rows.push({key:this.nextKey++,carabao_id:'',collection_period:previous?.collection_period || '',missing_teats:[]});
         },
         loadTeatAvailability(row,id){
             const animal=inventory.find(item=>String(item.id)===String(id));
@@ -919,11 +958,11 @@ function mtdRecordActions(baseUrl, results) {
 @endif
 @endif
 
-@if($module === 'health')
+@if(in_array($module, ['health', 'bcs', 'milk'], true))
 @push('scripts')
 <script>
-const healthPanel=document.getElementById('health-records-panel');
-if(healthPanel){
+const recordsPanel=document.querySelector('[data-async-records-panel]');
+if(recordsPanel){
     const address=new URL(window.location.href);
     if(address.searchParams.has('page') || address.searchParams.has('per_page')){
         address.searchParams.delete('page');
@@ -932,89 +971,60 @@ if(healthPanel){
     }
 
     let pageRequest;
-    async function loadHealthPage(url, focusSelector){
+    async function loadRecordsPage(url, focusSelector){
         pageRequest?.abort();
         const request=new AbortController();
         pageRequest=request;
-        const message=healthPanel.querySelector('[data-health-pagination-message]');
+        const message=recordsPanel.querySelector('[data-async-pagination-message]');
         message.textContent='Loading records…';
-        healthPanel.setAttribute('aria-busy','true');
+        recordsPanel.setAttribute('aria-busy','true');
         try{
             const response=await fetch(url,{signal:request.signal});
             if(!response.ok)throw new Error('Could not load records.');
             const html=await response.text();
             if(request.signal.aborted)return;
-            const page=new DOMParser().parseFromString(html,'text/html').getElementById(healthPanel.id);
+            const page=new DOMParser().parseFromString(html,'text/html').getElementById(recordsPanel.id);
             if(!page)throw new Error('Could not load records.');
-            healthPanel.replaceChildren(...page.childNodes);
-            (healthPanel.querySelector(focusSelector) || healthPanel.querySelector('[data-health-page-status]'))?.focus({preventScroll:true});
+            recordsPanel.replaceChildren(...page.childNodes);
+            (recordsPanel.querySelector(focusSelector) || recordsPanel.querySelector('[data-async-page-status]'))?.focus({preventScroll:true});
         }catch(error){
             if(request.signal.aborted)return;
             message.textContent='Could not load records. Please try again.';
-            const size=healthPanel.querySelector('[data-health-page-size] select');
+            const size=recordsPanel.querySelector('[data-async-page-size] select');
             const original=[...size.options].find(option=>option.defaultSelected);
             if(original)size.value=original.value;
         }finally{
             if(pageRequest===request){
-                healthPanel.removeAttribute('aria-busy');
+                recordsPanel.removeAttribute('aria-busy');
                 pageRequest=null;
             }
         }
     }
 
-    healthPanel.addEventListener('click',event=>{
-        const link=event.target.closest('[data-health-page]');
+    recordsPanel.addEventListener('click',event=>{
+        const link=event.target.closest('[data-async-page]');
         if(!link || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
         event.preventDefault();
-        loadHealthPage(link.href,'[data-health-page="'+link.dataset.healthPage+'"]');
+        loadRecordsPage(link.href,'[data-async-page="'+link.dataset.asyncPage+'"]');
     });
-    healthPanel.addEventListener('change',event=>{
-        const form=event.target.closest('[data-health-page-size]');
+    recordsPanel.addEventListener('change',event=>{
+        const form=event.target.closest('[data-async-page-size]');
         if(!form)return;
         const url=new URL(form.action);
         url.search=new URLSearchParams(new FormData(form));
-        loadHealthPage(url,'[data-health-page-size] select');
+        loadRecordsPage(url,'[data-async-page-size] select');
     });
 }
 </script>
 @endpush
+@endif
+@if($module === 'health')
 @include('partials.health-activity-script')
 @endif
 
 @if($module === 'fhpr')
 @push('scripts')
 <script>
-{
-    const filters = document.getElementById('fhpr-filters');
-    const search = filters.elements.namedItem('search');
-    let searchTimer;
-
-    const applyFilters = () => {
-        clearTimeout(searchTimer);
-        filters.requestSubmit();
-    };
-
-    const scheduleSearch = () => {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(applyFilters, 500);
-    };
-    search.addEventListener('input', event => {
-        if (!event.isComposing) scheduleSearch();
-    });
-    search.addEventListener('compositionstart', () => clearTimeout(searchTimer));
-    search.addEventListener('compositionend', scheduleSearch);
-    search.addEventListener('keydown', event => {
-        if (event.key === 'Enter' && !event.isComposing) {
-            event.preventDefault();
-            applyFilters();
-        }
-    });
-    filters.addEventListener('change', event => {
-        if (event.target !== search) applyFilters();
-    });
-    filters.addEventListener('submit', () => clearTimeout(searchTimer));
-}
-
 function fhprMilkDate(id, days, startDate, displayDate) {
     return {
         id, days, startDate:startDate||'', displayDate:displayDate||'',

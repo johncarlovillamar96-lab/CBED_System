@@ -44,6 +44,7 @@ function breedingPage(monitoringMode = false){return {
     },
 
     records:[],cooperatives:[],farmers:[],animals:[],semenBulls:[],
+    standaloneDiagnoses: @js($diagnoses ?? []),
     totalActiveBulls:0,lookupReady:false,loading:false,saving:false,
     search:'',filterMatingType:'',filterCooperative:'',filterPD:'',filterDate:'',filterYear:'',unreportedCalvesOnly:false,overdueCalvesOnly:false,includeReportedPregnancies:false,
     selectedCooperative:'',showBulk:false,showView:false,
@@ -56,7 +57,7 @@ function breedingPage(monitoringMode = false){return {
     fields:[
         'cooperative','farmer','animal_id','breeding_date','mating_type',
         'bull_id','bull_name','straws','heat_status','mating_technician',
-        'pd_date','pd_result','pregnancy_months','pd_technician',
+        'monitoring_date','pd_date','pd_result','pregnancy_months','pd_technician',
         'expected_calving','actual_calving','remarks'
     ],
 
@@ -156,7 +157,9 @@ function breedingPage(monitoringMode = false){return {
             const data=Array.isArray(payload)?payload:payload?.data;
             if (!Array.isArray(data)) throw new Error('The server did not return a list of mating records.');
 
-            this.records=data.map(r=>this.normalizeRecord(r));
+            this.records=[...this.standaloneDiagnoses, ...data.map(r=>this.normalizeRecord(r))]
+                .sort((a, b) => (b.monitoring_date || b.breeding_date || b.pd_date || '')
+                    .localeCompare(a.monitoring_date || a.breeding_date || a.pd_date || ''));
             this.page=Math.min(this.page,this.totalPages());
         }finally{
             this.loading=false;
@@ -179,6 +182,7 @@ function breedingPage(monitoringMode = false){return {
             animal_id:a.animal_id||a.bolus||r.animal_id||r.registry_number||'',
             registry_number:r.registry_number||a.registry_number||'',
             breeding_date:this.dateOnly(r.breeding_date||r.mating_date),
+            record_date:this.dateOnly(r.record_date),
             mating_type:this.normalizeMatingType(r.mating_type),
             semen_bull_id:r.semen_bull_id?String(r.semen_bull_id):'',
             bull_id:r.bull_id||b.bull_id||'',
@@ -202,11 +206,14 @@ function breedingPage(monitoringMode = false){return {
     dateOnly(v){return v?String(v).slice(0,10):'';},
 
     displayDate(v){
-        if(!v||v==='—')return '—';
-        const parts=String(v).slice(0,10).split('-').map(Number);
-        if(parts.length!==3||parts.some(Number.isNaN))return String(v);
-        const date=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));
-        return new Intl.DateTimeFormat('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}).format(date);
+        if(!v)return '—';
+        const parts=/^(\d{4})-(\d{2})-(\d{2})$/.exec(this.dateOnly(v));
+        if(!parts)return String(v);
+
+        const [,year,month,day]=parts;
+        const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const monthName=months[Number(month)-1];
+        return monthName?`${Number(day)}-${monthName}-${year.slice(-2)}`:String(v);
     },
 
     normalizeMatingType(v){
@@ -386,7 +393,9 @@ function breedingPage(monitoringMode = false){return {
             farmer: context.farmer,
             carabao_id: String(context.carabaoId),
             animal_id: context.animalId,
-            breeding_date: data.breeding_date || context.reportDate,
+            pd_only: Boolean(data.pd_only),
+            pd_mating_type: data.method ? this.matingType({mating_type: data.method, heat_status: data.estrus_type}) : '',
+            breeding_date: data.breeding_date || (data.pd_only ? '' : context.reportDate),
             mating_type: this.normalizeMatingType(data.method),
             semen_bull_id: String(data.semen_bull_id ?? ''),
             bull_id: data.bull_id ?? '',
@@ -422,11 +431,35 @@ function breedingPage(monitoringMode = false){return {
     },
 
     saveMonitoringMating() {
-        if (!this.validateRows()) return;
         const row = this.bulkRows[0];
+        if (row.pd_only) {
+            const result = {Positive: 'Pregnant', Negative: 'Not Pregnant', Inconclusive: 'Inconclusive'}[row.pd_result];
+            if (!row.pd_date || !result || !row.pd_technician?.trim()) {
+                this.msg('Enter the PD date, result, and confirming technician.', 'error');
+                return;
+            }
+            if (row.pd_result === 'Positive' && !(Number(row.pregnancy_months) >= 1 && Number(row.pregnancy_months) <= 11)) {
+                this.msg('Enter the months of pregnancy for a positive diagnosis.', 'error');
+                return;
+            }
+            this.finishMonitoringMating({
+                pd_only: true,
+                method: row.pd_mating_type === 'FTAI' ? 'AI' : (row.pd_mating_type || null),
+                estrus_type: row.pd_mating_type === 'FTAI' ? 'FTAI' : null,
+                pd_date: row.pd_date,
+                pregnancy_status: result,
+                pregnancy_months: row.pd_result === 'Positive' && row.pregnancy_months !== '' ? Number(row.pregnancy_months) : null,
+                pd_technician: row.pd_technician.trim(),
+                record_date: row.record_date || null,
+                remarks: row.remarks || null,
+            });
+            return;
+        }
+        if (!this.validateRows()) return;
         const data = this.toPayload(row);
         this.finishMonitoringMating({
             ...this.monitoringMatingContext.data,
+            pd_only: false,
             mating_form: true,
             method: data.mating_type,
             breeding_date: data.breeding_date,
@@ -499,6 +532,17 @@ function breedingPage(monitoringMode = false){return {
         }
     },
 
+    matingType(r){
+        return r.mating_type==='AI'&&r.heat_status==='FTAI'?'FTAI':r.mating_type;
+    },
+
+    selectMatingType(r,type){
+        r.mating_type=type==='FTAI'?'AI':type;
+        if(type==='FTAI')r.heat_status='FTAI';
+        else if(r.heat_status==='FTAI')r.heat_status='';
+        this.typeChanged(r);
+    },
+
     typeChanged(r){
         if(r.mating_type!=='AI'){r.straws='';r.heat_status='';}
         else if(!r.straws)r.straws='1';
@@ -562,13 +606,26 @@ function breedingPage(monitoringMode = false){return {
         return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     },
 
-    pregnancyDays(r){
-        if(!r||r.pd_result!=='Positive'||!r.breeding_date)return 0;
-        const d=new Date(r.breeding_date+'T00:00:00');
-        const n=new Date();
-        return Math.max(0,Math.floor((
-            new Date(n.getFullYear(),n.getMonth(),n.getDate())-d
-        )/86400000));
+    estimatedPregnancyStart(record){
+        const months=Number(record?.pregnancy_months);
+        if(!record?.pd_date||!Number.isInteger(months)||months<1||months>11)return '';
+
+        const pdDate=new Date(record.pd_date+'T00:00:00Z');
+        if(Number.isNaN(pdDate.getTime()))return '';
+        pdDate.setUTCDate(1);
+        pdDate.setUTCMonth(pdDate.getUTCMonth()-(months-1));
+        return pdDate.toISOString().slice(0,10);
+    },
+
+    pregnancyDaysLabel(record){
+        if(record?.pd_result!=='Positive')return '—';
+        const start=record.breeding_date||this.estimatedPregnancyStart(record);
+        const end=record.pd_date||this.formatDate(new Date());
+        if(!start)return '—';
+
+        const days=(Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000;
+        if(!Number.isFinite(days)||days<0)return '—';
+        return (record.breeding_date?'':'~')+days+' days';
     },
 
     toPayload(r){
@@ -800,7 +857,7 @@ function breedingPage(monitoringMode = false){return {
     },
 
     isUnreportedCalf(r){
-        return r.pd_result==='Positive'&&!r.calf_drop_reported;
+        return !r.pd_only&&r.pd_result==='Positive'&&!r.calf_drop_reported;
     },
 
     showUnreportedCalves(){
@@ -833,11 +890,11 @@ function breedingPage(monitoringMode = false){return {
 
         return this.records.filter(r=>
             (!q||this.fields.some(f=>String(r[f]??'').toLowerCase().includes(q)))&&
-            (!this.filterMatingType||r.mating_type===this.filterMatingType)&&
+            (!this.filterMatingType||this.matingType(r)===this.filterMatingType)&&
             (!this.filterCooperative||String(r.cooperative_id)===this.filterCooperative)&&
-            (!this.filterYear||String(r.breeding_date||r.pd_date||'').slice(0,4)===this.filterYear)&&
+            (!this.filterYear||String(r.monitoring_date||r.breeding_date||r.pd_date||'').slice(0,4)===this.filterYear)&&
             (!this.filterPD||(r.pd_result||'Pending')===this.filterPD)&&
-            (!this.filterDate||r.breeding_date===this.filterDate)
+            (!this.filterDate||(r.monitoring_date||r.breeding_date)===this.filterDate)
         );
     },
 
@@ -853,7 +910,7 @@ function breedingPage(monitoringMode = false){return {
         const a=this.filteredRecords();
 
         return [
-            {title:'Total Mating Records',value:a.length,description:'Records matching filters',icon:'fa-solid fa-list-check',bg:'bg-slate-100',color:'text-slate-700'},
+            {title:'Total Mating Records',value:a.filter(r=>!r.pd_only).length,description:'Records matching filters',icon:'fa-solid fa-list-check',bg:'bg-slate-100',color:'text-slate-700'},
             {title:'Artificial Insemination',value:a.filter(r=>r.mating_type==='AI').length,description:'AI records in selected year',icon:'fa-solid fa-syringe',bg:'bg-orange-50',color:'text-orange-700'},
             {title:'Natural Mating (NM)',value:a.filter(r=>r.mating_type==='NM').length,description:'Natural service records in selected year',icon:'fa-solid fa-horse',bg:'bg-emerald-50',color:'text-emerald-700'},
             {title:'PD Positive',value:a.filter(r=>r.pd_result==='Positive').length,description:'Confirmed positive diagnoses',icon:'fa-solid fa-heart',bg:'bg-emerald-50',color:'text-emerald-700'},
@@ -862,7 +919,7 @@ function breedingPage(monitoringMode = false){return {
     },
 
     availableYears(){
-        const years=this.records.map(r=>Number(String(r.breeding_date||r.pd_date||'').slice(0,4))).filter(year=>Number.isInteger(year)&&year>=1900);
+        const years=this.records.map(r=>Number(String(r.monitoring_date||r.breeding_date||r.pd_date||'').slice(0,4))).filter(year=>Number.isInteger(year)&&year>=1900);
         const first=years.length?Math.min(...years):new Date().getFullYear();
         const last=Math.max(new Date().getFullYear()+1,...years);
         return Array.from({length:last-first+1},(_,index)=>String(last-index));
@@ -940,7 +997,7 @@ function breedingPage(monitoringMode = false){return {
 
         const lines=[
             h.map(x=>this.esc(x)).join(','),
-            ...this.filteredRecords().map(r=>[
+            ...this.filteredRecords().filter(r=>!r.pd_only).map(r=>[
                 r.id,r.cooperative_id,r.farmer_id,r.carabao_id,r.breeding_date,
                 r.mating_type,r.semen_bull_id,r.bull_id,r.bull_name,r.straws,
                 r.heat_status,r.mating_technician,r.pd_date,r.pd_result,

@@ -8,6 +8,24 @@ class AnimalClassification
 {
     public static function classify(array $signals): array
     {
+        if (in_array(self::normalize((string) ($signals['sex'] ?? '')), ['m', 'male'], true)) {
+            $saved = self::normalize((string) ($signals['inventory_classification'] ?? ''));
+
+            return [
+                'classification' => match ($saved) {
+                    'malecalf' => 'Male Calf',
+                    'youngbull' => 'Young Bull',
+                    'bull' => 'Bull',
+                    default => 'Male',
+                },
+                'pregnancy' => 'Not Applicable',
+                'last_calving_date' => null,
+                'dry_off_date' => null,
+                'dim' => null,
+                'dry_off_review' => false,
+            ];
+        }
+
         $asOf = Carbon::parse($signals['as_of'] ?? now()->toDateString())->startOfDay();
         $birthDate = self::validDate($signals['birth_date'] ?? null);
         $calvingDate = self::validDate($signals['last_calving_date'] ?? null);

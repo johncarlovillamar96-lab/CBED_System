@@ -2,6 +2,12 @@
     <p x-show="!bulkRows.length" role="status" class="py-8 text-center text-sm text-slate-500">Loading record…</p>
     <template x-for="r in (editingId?bulkRows:[])" :key="r._key">
         <div class="space-y-5">
+            @if($monitoringMating ?? false)
+                <label class="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" x-model="r.pd_only">
+                    Pregnancy diagnosis only
+                </label>
+            @endif
             <fieldset class="rounded-xl border border-slate-200 p-4">
                 <legend class="px-2 text-sm font-bold text-slate-800">Animal &amp; Mating</legend>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -19,20 +25,30 @@
                         <input x-show="!animalsForFarmer(r).length" x-model.trim="r.animal_id" class="form-input mt-1" placeholder="Animal ID">
                         @endif
                     </label>
-                    <label class="text-sm font-medium text-slate-700">Mating Date *<input type="date" x-model="r.breeding_date" @change="dateChanged(r)" class="form-input mt-1"></label>
-                    <label class="text-sm font-medium text-slate-700">Mating Type *
-                        <select x-model="r.mating_type" @change="typeChanged(r)" class="form-input mt-1"><option value="AI">Artificial Insemination (AI)</option><option value="NM">Natural Mating (NM)</option></select>
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700">Mating Date *<input type="date" x-model="r.breeding_date" @change="dateChanged(r)" class="form-input mt-1"></label>
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700">Mating Type *
+                        <select :value="matingType(r)" @change="selectMatingType(r, $event.target.value)" class="form-input mt-1"><option value="NM">NM</option><option value="AI">AI</option><option value="FTAI">FTAI</option></select>
                     </label>
-                    <label class="text-sm font-medium text-slate-700">Bull ID
+                    @if($monitoringMating ?? false)
+                        <label x-show="r.pd_only" class="text-sm font-medium text-slate-700">Mating Type
+                            <select x-model="r.pd_mating_type" class="form-input mt-1">
+                                <option value="">Unknown</option>
+                                <option value="NM">NM</option>
+                                <option value="AI">AI</option>
+                                <option value="FTAI">FTAI</option>
+                            </select>
+                        </label>
+                    @endif
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700">Bull ID
                         <input x-model="r.bull_id" @input="matchBullField(r,'bull_id')" list="editMatingBullOptions" class="form-input mt-1" placeholder="Select or enter Bull ID">
                         <datalist id="editMatingBullOptions"><template x-for="b in semenBulls" :key="b.id"><option :value="b.bull_id" :label="b.bull_name||b.bull_id"></option></template></datalist>
                     </label>
-                    <label class="text-sm font-medium text-slate-700">Bull Name<input x-model="r.bull_name" @input="matchBullField(r,'bull_name')" class="form-input mt-1" placeholder="Optional"></label>
-                    <label x-show="r.mating_type==='AI'" class="text-sm font-medium text-slate-700">Straws<input type="number" min="0" step="1" x-model="r.straws" class="form-input mt-1"></label>
-                    <label x-show="r.mating_type==='AI'" class="text-sm font-medium text-slate-700">Estrus / Heat *
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700">Bull Name<input x-model="r.bull_name" @input="matchBullField(r,'bull_name')" class="form-input mt-1" placeholder="Optional"></label>
+                    <label x-show="!r.pd_only && r.mating_type==='AI'" class="text-sm font-medium text-slate-700">Straws<input type="number" min="0" step="1" x-model="r.straws" class="form-input mt-1"></label>
+                    <label x-show="!r.pd_only && r.mating_type==='AI'" class="text-sm font-medium text-slate-700">Estrus / Heat *
                         <select x-model="r.heat_status" class="form-input mt-1"><option value="">Select</option><option>ES</option><option>NH</option><option>FTAI</option></select>
                     </label>
-                    <label class="text-sm font-medium text-slate-700 sm:col-span-2">Mating Technician<input x-model.trim="r.mating_technician" class="form-input mt-1" placeholder="Technician name"></label>
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700 sm:col-span-2">Mating Technician<input x-model.trim="r.mating_technician" class="form-input mt-1" placeholder="Technician name"></label>
                 </div>
             </fieldset>
 
@@ -49,8 +65,8 @@
             <fieldset class="rounded-xl border border-slate-200 p-4">
                 <legend class="px-2 text-sm font-bold text-slate-800">Calving &amp; Notes</legend>
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label x-show="r.pd_result==='Positive'" class="text-sm font-medium text-slate-700">Expected Calving<input type="date" x-model="r.expected_calving" class="form-input mt-1"></label>
-                    <label class="text-sm font-medium text-slate-700">Actual Calving<input type="date" x-model="r.actual_calving" class="form-input mt-1"></label>
+                    <label x-show="!r.pd_only && r.pd_result==='Positive'" class="text-sm font-medium text-slate-700">Expected Calving<input type="date" x-model="r.expected_calving" class="form-input mt-1"></label>
+                    <label x-show="!r.pd_only" class="text-sm font-medium text-slate-700">Actual Calving<input type="date" x-model="r.actual_calving" class="form-input mt-1"></label>
                     @if($monitoringMating ?? false)
                     <label class="text-sm font-medium text-slate-700">Record Date<input type="date" x-model="r.record_date" class="form-input mt-1"></label>
                     @endif
@@ -58,7 +74,7 @@
                 </div>
             </fieldset>
 
-            <details class="rounded-xl bg-slate-50 p-4 text-sm">
+            <details x-show="!r.pd_only" class="rounded-xl bg-slate-50 p-4 text-sm">
                 <summary class="cursor-pointer font-semibold text-slate-700">Calculated follow-up dates</summary>
                 <dl class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div><dt class="text-xs text-slate-500">2nd Cycle (18–21 Days)</dt><dd class="mt-1 font-medium" x-text="secondCycleRange(r.breeding_date)"></dd></div>

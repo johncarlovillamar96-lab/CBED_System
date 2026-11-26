@@ -210,6 +210,9 @@
                         <th class="px-5 py-4 font-bold">CDA Registration No.</th>
                         <th class="px-5 py-4 font-bold">Cooperative / Herd Code</th>
                         <th class="px-5 py-4 font-bold">Cooperative Name</th>
+                        <th scope="col" class="whitespace-nowrap px-5 py-4 text-center font-bold" title="Registered farmers and farmers linked by the workbook herd assignments">Trustees</th>
+                        <th scope="col" class="whitespace-nowrap px-5 py-4 text-center font-bold" title="Farmers linked to at least one animal in this cooperative’s inventory">Recipients</th>
+                        <th scope="col" class="whitespace-nowrap px-5 py-4 text-center font-bold" title="Animals counted for this cooperative, including recorded exits">Total Animals Released</th>
                         <th class="px-5 py-4 font-bold">General Accreditation</th>
                         <th class="px-5 py-4 font-bold">Coop Type</th>
                         <th class="px-5 py-4 font-bold">Category</th>
@@ -242,10 +245,22 @@
                                     </div>
                                     <div class="max-w-xs">
                                         <p class="font-semibold text-slate-800" x-text="coop.name"></p>
+                                        <template x-if="coop.herds?.length">
+                                            <select x-model="coop.selected_herd" :aria-label="'Herd code for '+coop.name"
+                                                class="mt-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs">
+                                                <option value="">All herd codes</option>
+                                                <template x-for="herd in coop.herds" :key="herd.code">
+                                                    <option :value="herd.code" x-text="herd.code"></option>
+                                                </template>
+                                            </select>
+                                        </template>
                                     </div>
                                 </div>
                             </td>
 
+                            <td class="px-5 py-4 text-center tabular-nums" x-text="cooperativeCount(coop, 'trustee_count')"></td>
+                            <td class="px-5 py-4 text-center tabular-nums" x-text="cooperativeCount(coop, 'recipient_count')"></td>
+                            <td class="px-5 py-4 text-center tabular-nums" x-text="cooperativeCount(coop, 'animals_released')"></td>
                             <td class="whitespace-nowrap px-5 py-4">
                                 <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
                                     :class="accreditationClass(coop.accreditation_status)"
@@ -293,7 +308,7 @@
                     </template>
 
                     <tr x-show="filteredCooperatives().length === 0">
-                        <td colspan="11" class="px-5 py-16 text-center">
+                        <td colspan="20" class="px-5 py-16 text-center">
                             <i class="fa-solid fa-people-group mb-3 text-3xl text-slate-300"></i>
                             <p class="font-semibold text-slate-700">No cooperatives found</p>
                             <p class="mt-1 text-sm text-slate-500">
@@ -1321,6 +1336,11 @@ document.addEventListener('alpine:init', () => {
             await this.loadCooperatives();
         },
 
+        cooperativeCount(coop, key) {
+            const herd = coop.herds?.find(herd => herd.code === coop.selected_herd);
+            return Number((herd ?? coop)[key] ?? 0).toLocaleString();
+        },
+
         async loadCooperatives() {
             this.isLoadingRecords = true;
 
@@ -1351,6 +1371,7 @@ document.addEventListener('alpine:init', () => {
 
                     id: row.cooperative_code ?? row.id ?? '',
                     name: row.cooperative_name ?? row.name ?? '',
+                    selected_herd: '',
 
                     cda_registration_no: row.cda_registration_no ?? '',
                     accreditation_status: row.accreditation_status ?? '',
