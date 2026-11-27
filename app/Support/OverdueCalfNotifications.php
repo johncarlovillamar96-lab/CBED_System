@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 
 class OverdueCalfNotifications
 {
-    public static function annotate(Collection $records): Collection
+    public static function annotate(Collection $records, bool $includeAwaiting = false): Collection
     {
         $checks = $records->filter(fn ($r) => trim((string) $r->pregnancy_result) !== '')
             ->sortByDesc(fn ($r) => sprintf('%s|%s|%012d', $r->pregnancy_check_date ?? '', $r->mating_date ?? '', $r->id));
@@ -18,7 +18,7 @@ class OverdueCalfNotifications
         // A follow-up PD can confirm the pregnancy without repeating the mating date.
         $latestDated = $checks->filter(fn ($r) => $r->mating_date)->unique('carabao_id')->pluck('id', 'carabao_id');
         $today = Carbon::today('Asia/Singapore');
-        return $records->map(function ($record) use ($latestPositive, $latestDated, $positive, $today) {
+        return $records->map(function ($record) use ($latestPositive, $latestDated, $positive, $today, $includeAwaiting) {
             $record->pregnancy_days = $positive($record) && $record->mating_date
                 ? max(0, (int) Carbon::parse($record->mating_date, 'Asia/Singapore')->startOfDay()->diffInDays($today, false)) : 0;
             $awaitingCalfDrop = $latestPositive->has($record->carabao_id)
@@ -28,6 +28,7 @@ class OverdueCalfNotifications
                 && ! InventoryClassification::isExcluded($record->inventory_status ?? null, $record->inventory_exit ?? null);
             $record->calf_drop_due = $awaitingCalfDrop && $record->pregnancy_days >= 280;
             $record->calf_drop_overdue = $record->calf_drop_due;
+            if ($includeAwaiting) $record->calf_drop_awaiting = $awaitingCalfDrop && $positive($record);
             return $record;
         });
     }

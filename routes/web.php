@@ -70,6 +70,15 @@ Route::view('/cooperatives', 'cooperative')->middleware(['auth', 'workspace'])->
 Route::view('/carabaos', 'carabao')->middleware(['auth', 'workspace'])->name('ui.carabaos');
 Route::get('/mating', [MonitoringReportController::class, 'matingPage'])->middleware(['auth', 'workspace'])->name('ui.mating');
 Route::view('/calves', 'calf-drop')->middleware(['auth', 'workspace'])->name('ui.calves');
+Route::get('/calves/history', function () {
+    $history = resource_path('data/calf-drop-history.json');
+    abort_unless(is_file($history), 404);
+
+    return response()->file($history, [
+        'Content-Type' => 'application/json; charset=UTF-8',
+        'Cache-Control' => 'private, no-store',
+    ]);
+})->middleware(['auth', 'workspace'])->name('ui.calves.history');
 Route::redirect('/calf-drop', '/calves')->middleware(['auth', 'workspace'])->name('ui.calf-drop');
 Route::redirect('/health-nutrition', '/health')->middleware(['auth', 'workspace'])->name('ui.health-nutrition');
 Route::redirect('/milk-production', '/milk')->middleware(['auth', 'workspace'])->name('ui.milk-production');
@@ -92,6 +101,11 @@ Route::middleware(['auth', 'workspace'])->put('/mtd/{record}', [MtdController::c
 Route::middleware(['auth', 'workspace'])->delete('/mtd/{record}', [MtdController::class, 'destroy'])->whereNumber('record')->name('mtd.delete');
 Route::middleware(['auth', 'workspace'])->get('/health', [ModuleController::class, 'index'])->defaults('module', 'health')->name('ui.health');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring', [ModuleController::class, 'monitoring'])->name('ui.monitoring');
+Route::middleware(['auth', 'workspace:monitoring-entry'])->group(function () {
+    Route::get('/monitoring/offline-shell', [MonitoringReportController::class, 'offlineShell'])->name('ui.monitoring.offline-shell');
+    Route::get('/monitoring/offline-context', [MonitoringReportController::class, 'offlineContext'])->name('ui.monitoring.offline-context');
+    Route::post('/monitoring/offline-sync', [MonitoringReportController::class, 'syncOffline'])->name('ui.monitoring.offline-sync');
+});
 Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs', [ActivityLogController::class, 'index'])->name('ui.activity-logs');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/activity-logs/monitoring', [MonitoringReportController::class, 'activityLogs'])->name('ui.activity-logs.monitoring');
 Route::middleware(['auth', 'workspace:monitoring'])->get('/monitoring/cooperatives/{cooperative}/animals', [MonitoringReportController::class, 'animals'])->whereNumber('cooperative')->name('ui.monitoring.animals');
@@ -150,12 +164,15 @@ Route::middleware(['auth', 'workspace'])->get('/admin/calf-drop-api', function (
         ])
         ->map(function ($row) {
             $workbook = json_decode($row->workbook_details ?? '{}', true);
+            $workbookCooperative = trim((string) ($workbook['cooperative'] ?? ''));
             return [
             'id' => $row->id, 'calf_id' => $row->calf_animal_id, 'mother_id' => $row->dam_animal_id ?: ($workbook['dam'] ?? null),
             'needs_review' => $row->workbook_details !== null && (! $row->dam_id || ! $row->birth_date || ! $row->sex),
             'dam_unlinked' => $row->workbook_details !== null && ! $row->dam_id,
             'farmer' => trim(implode(' ', array_filter([$row->first_name, $row->middle_name, $row->last_name]))) ?: ($workbook['farmer'] ?? ''),
-            'province' => $row->province ?: ($workbook['province'] ?? null), 'cooperative' => $row->cooperative_name ?: ($workbook['cooperative'] ?? null), 'date_of_birth' => $row->birth_date,
+            'province' => $row->province ?: ($workbook['province'] ?? null),
+            'cooperative' => $row->cooperative_name ?: ($workbookCooperative === '#ERROR!' ? null : ($workbook['cooperative'] ?? null)),
+            'date_of_birth' => $row->birth_date,
             'municipality' => $row->municipality, 'barangay' => $row->barangay,
             'sex' => $row->sex, 'breed' => $row->calf_breed ?? $workbook['breed'] ?? $row->dam_breed, 'sire_id' => $row->sire_id,
             'monitored_date' => $row->monitoring_date, 'reported_year' => $row->birth_date ? substr($row->birth_date, 0, 4) : ($workbook['year'] ?? ''),

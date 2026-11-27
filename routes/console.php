@@ -41,7 +41,6 @@ Artisan::command('cbed:create-admin {email} {--name=CBED Administrator} {--reset
     $user ??= new User(['name' => $name, 'email' => $email]);
     $user->role = User::ADMIN;
     $user->password = $password;
-    $user->setRememberToken(null);
     $user->save();
 
     $this->info($this->option('reset-password') ? 'Admin password updated.' : 'Admin account created.');

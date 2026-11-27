@@ -6,7 +6,7 @@
     <title>Monitoring Calendar Report | {{ $calendarYear }}</title>
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: #f4f7fb; color: #17263a; font: 14px/1.5 Arial, sans-serif; }
+        body { margin: 0; background: #f4f7fb; color: #17263a; font-size: 14px; line-height: 1.5; }
         .container { max-width: 1440px; margin: 0 auto; padding-inline: clamp(16px, 3vw, 32px); }
         .report-toolbar { position: sticky; top: 0; z-index: 1; background: #fff; border-bottom: 1px solid #dbe3ed; }
         .toolbar-inner, .report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
@@ -67,6 +67,7 @@
             tr { break-inside: avoid; }
         }
     </style>
+    @include('partials.typography')
 </head>
 <body>
     <nav class="report-toolbar" aria-label="Report actions">

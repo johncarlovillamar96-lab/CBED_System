@@ -22,17 +22,20 @@ class RecordActivity
         $key = (string) Str::uuid();
         $connection = DB::connection();
         TransactionActivity::setCaptureKey($connection, $key);
+        $request->attributes->set('activity_capture_key', $key);
 
         try {
             return $next($request);
         } finally {
             TransactionActivity::setCaptureKey($connection, null);
-            $importTotals = $request->attributes->get('activity_import_totals', []);
-            $publish = fn () => app(TransactionActivity::class)->publish($connection, $key, $actor, $route, importTotals: $importTotals);
-            if ($connection->transactionLevel() > 0) {
-                $connection->afterCommit($publish);
-            } else {
-                $publish();
+            if (! $request->attributes->get('activity_published')) {
+                $importTotals = $request->attributes->get('activity_import_totals', []);
+                $publish = fn () => app(TransactionActivity::class)->publish($connection, $key, $actor, $route, importTotals: $importTotals);
+                if ($connection->transactionLevel() > 0) {
+                    $connection->afterCommit($publish);
+                } else {
+                    $publish();
+                }
             }
         }
     }

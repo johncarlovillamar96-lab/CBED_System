@@ -49,6 +49,8 @@ foreach ([
     '2026_11_19_000001_add_inventory_disposal_details',
     '2026_11_22_000001_add_name_parts_to_users',
     '2026_11_22_000002_create_activity_logs_table',
+    '2026_11_27_000001_add_sex_to_users',
+    '2026_11_27_000002_add_is_active_to_users',
 ] as $migration) {
     (require dirname(__DIR__)."/database/migrations/{$migration}.php")->up();
 }

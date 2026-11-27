@@ -15,7 +15,10 @@ use App\Support\CalfRegistryId;
 use App\Support\CooperativeReportingCounts;
 use App\Support\HealthWorksheetMapping;
 use App\Support\InventoryBolusApplication;
+use App\Support\MatingCalfReports;
+use App\Support\OverdueCalfNotifications;
 use App\Support\TablePagination;
+use App\Support\TransactionActivity;
 
 class MonitoringReportController extends Controller
 {
@@ -140,8 +143,39 @@ class MonitoringReportController extends Controller
         return view('mating', compact('diagnoses'));
     }
 
-    public function animals(int $cooperative)
+    public function offlineContext(Request $request)
     {
+        abort_unless($request->header('X-CBED-Monitoring-Account') === (string) $request->user()->id, 403);
+
+        return response()->json([
+            'account' => (string) $request->user()->id,
+            'csrf' => $request->session()->token(),
+            'cooperatives' => $this->offlineCooperatives(),
+            'bcs' => $this->bcsScoreOptions(),
+            'bulls' => DB::table('semen_bulls')->whereRaw('LOWER(status) = ?', ['active'])
+                ->orderBy('bull_name')->get(['id', 'bull_id', 'bull_name', 'breed', 'status']),
+        ], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    public function offlineShell(Request $request)
+    {
+        return response()->view('monitoring', ['offlineShell' => true, 'cooperatives' => $this->offlineCooperatives()])
+            ->header('X-CBED-Monitoring-Account', (string) $request->user()->id)
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function offlineCooperatives()
+    {
+        return DB::table('cooperatives')->orderBy('cooperative_name')->get(['id', 'cooperative_name', 'cooperative_code']);
+    }
+
+    public function animals(Request $request, int $cooperative)
+    {
+        $offline = $request->boolean('offline');
+        if ($offline) {
+            abort_unless($request->user()->canManageMonitoring(), 403);
+            abort_unless($request->header('X-CBED-Monitoring-Account') === (string) $request->user()->id, 403);
+        }
         abort_unless(DB::table('cooperatives')->where('id', $cooperative)->exists(), 404);
 
         $animals = $this->eligibleAnimals($cooperative)
@@ -207,7 +241,7 @@ class MonitoringReportController extends Controller
             $pregnancyChecks[(int) $record->carabao_id] = $record;
         }
 
-        return response()->json($animals->map(function ($animal) use ($latestBcs, $lastCalving, $dryOffDates, $pregnancyChecks, $asOf) {
+        $roster = $animals->map(function ($animal) use ($latestBcs, $lastCalving, $dryOffDates, $pregnancyChecks, $asOf) {
             $id = (int) $animal->carabao_id;
             $pregnancyCheck = $pregnancyChecks[$id] ?? null;
             $classification = AnimalClassification::classify([
@@ -246,28 +280,121 @@ class MonitoringReportController extends Controller
                 'province' => $animal->province, 'municipality' => $animal->municipality, 'barangay' => $animal->barangay,
                 'entrustment' => $animal->entrustment, 'ownership_status' => $animal->ownership_status,
             ];
-        })->values(), 200, ['Cache-Control' => 'no-store, private'], JSON_INVALID_UTF8_SUBSTITUTE);
+        })->values();
+
+        if (! $offline) {
+            return response()->json($roster, 200, ['Cache-Control' => 'no-store, private'], JSON_INVALID_UTF8_SUBSTITUTE);
+        }
+
+        $dams = $animals->filter(fn ($animal) => in_array(strtolower(trim((string) $animal->sex)), ['female', 'f'], true));
+        $identifiers = $dams->flatMap(fn ($animal) => [$animal->animal_id, $animal->registry_number])->filter()->unique()->values();
+        $records = $this->matingHistoryQuery()
+            ->where(fn ($query) => $query->whereIn('mating.carabao_id', $dams->pluck('carabao_id'))
+                ->orWhere(fn ($query) => $query->whereNull('mating.carabao_id')
+                    ->where('mating.cooperative_id', $cooperative)->whereIn('mating.registry_number', $identifiers)))
+            ->get()->map($this->addPregnancyDetails(...));
+        [$linked, $legacy] = $this->annotateMonitoringCalfDrop($records, $dams)
+            ->partition(fn ($record) => $record->carabao_id !== null);
+        $linked = $linked->groupBy('carabao_id');
+        $legacy = $legacy->groupBy(fn ($record) => mb_strtolower((string) $record->registry_number));
+        $diagnoses = $this->standalonePregnancyChecks($cooperative, $dams->pluck('carabao_id')->all());
+        $histories = $dams->mapWithKeys(function ($dam) use ($linked, $legacy, $diagnoses) {
+            $records = $linked->get($dam->carabao_id, collect())
+                ->concat($legacy->get(mb_strtolower((string) $dam->animal_id), []))
+                ->concat($legacy->get(mb_strtolower((string) $dam->registry_number), []))
+                ->unique('id')->sortByDesc(fn ($record) => [$record->mating_date, $record->id])->values();
+            return [$dam->carabao_id => $records->concat($diagnoses->get($dam->carabao_id, []))];
+        });
+
+        return response()->json(['animals' => $roster, 'matings' => $histories], 200, ['Cache-Control' => 'no-store, private'], JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
     public function animalMatings(int $cooperative, int $animal)
     {
         $dam = $this->eligibleAnimals($cooperative)->where('animal.id', $animal)
             ->whereRaw("LOWER(TRIM(COALESCE(animal.sex, ''))) IN ('female', 'f')")
-            ->first(['animal.animal_id', 'animal.registry_number']);
+            ->first(['animal.id as carabao_id', 'animal.animal_id', 'animal.registry_number']);
         abort_unless($dam, 404);
 
         $identifiers = array_filter([$dam->animal_id, $dam->registry_number]);
-        $records = DB::table('mating_records as mating')
-            ->leftJoin('semen_bulls as bull', 'bull.id', '=', 'mating.semen_bull_id')
+        $records = $this->matingHistoryQuery()
             ->where(fn ($query) => $query->where('mating.carabao_id', $animal)
                 ->orWhere(fn ($legacy) => $legacy->whereNull('mating.carabao_id')
                     ->where('mating.cooperative_id', $cooperative)
                     ->whereIn('mating.registry_number', $identifiers)))
-            ->select('mating.id', 'mating.mating_date', 'mating.mating_type', 'mating.actual_calving_date', 'mating.pregnancy_result')
-            ->selectRaw("COALESCE(NULLIF(mating.bull_id, ''), bull.bull_id) as bull_id")
-            ->orderByDesc('mating.mating_date')->orderByDesc('mating.id')->get();
+            ->get()->map($this->addPregnancyDetails(...));
 
-        return response()->json($records, 200, ['Cache-Control' => 'no-store, private']);
+        $records = $this->annotateMonitoringCalfDrop($records, collect([$dam]));
+        $diagnoses = $this->standalonePregnancyChecks($cooperative, [$animal]);
+        return response()->json($records->concat($diagnoses->get($animal, [])), 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    private function matingHistoryQuery()
+    {
+        return DB::table('mating_records as mating')
+            ->leftJoin('semen_bulls as bull', 'bull.id', '=', 'mating.semen_bull_id')
+            ->select('mating.id', 'mating.mating_date', 'mating.mating_type', 'mating.actual_calving_date',
+                'mating.pregnancy_result', 'mating.pregnancy_check_date', 'mating.expected_calving_date',
+                'mating.source_data', 'mating.carabao_id', 'mating.registry_number')
+            ->selectRaw("COALESCE(NULLIF(mating.bull_id, ''), bull.bull_id) as bull_id")
+            ->orderByDesc('mating.mating_date')->orderByDesc('mating.id');
+    }
+
+    private function annotateMonitoringCalfDrop(\Illuminate\Support\Collection $records, \Illuminate\Support\Collection $dams): \Illuminate\Support\Collection
+    {
+        if ($records->isEmpty()) return $records;
+
+        $damIds = $dams->pluck('animal_id', 'carabao_id');
+        $identifiers = $damIds->values()->merge($records->pluck('registry_number'))->filter()->unique();
+        foreach ($records as $record) {
+            $record->animal_registry_id = $damIds->get($record->carabao_id);
+        }
+
+        return OverdueCalfNotifications::annotate(MatingCalfReports::annotate(
+            $records,
+            DB::table('calves')->whereIn('dam_id', $damIds->keys())->get(['dam_id', 'birth_date']),
+            DB::table('carabaos')->whereIn('dam_id', $identifiers)->get(['dam_id as mother_id', 'birth_date']),
+        ), includeAwaiting: true);
+    }
+
+    private function addPregnancyDetails(object $record): object
+    {
+        $source = json_decode((string) $record->source_data, true) ?: [];
+        $fields = $source['mating_api_fields'] ?? $source['monitoring_fields'] ?? [];
+        $record->pregnancy_months = $source['pregnancy_months'] ?? $fields['pregnancy_months'] ?? null;
+        $record->pd_technician = $source['pd_technician'] ?? $fields['pd_technician'] ?? $source['confirmed by_18'] ?? null;
+        unset($record->source_data);
+
+        return $record;
+    }
+
+    private function standalonePregnancyChecks(int $cooperative, array $animalIds)
+    {
+        return DB::table('monitoring_report_details as detail')
+            ->join('monitoring_reports as report', 'report.id', '=', 'detail.monitoring_report_id')
+            ->where('report.cooperative_id', $cooperative)
+            ->whereIn('detail.carabao_id', $animalIds)
+            ->where('detail.monitoring_data', 'like', '%"pd_only"%')
+            ->orderByDesc('detail.id')
+            ->get(['detail.id', 'detail.carabao_id', 'detail.monitoring_specification', 'detail.monitoring_data'])
+            ->map(function ($detail) {
+                $data = json_decode((string) $detail->monitoring_data, true) ?: [];
+                $diagnosis = $detail->monitoring_specification === 'breeding'
+                    ? $data
+                    : ($data['_additional_services']['breeding']['data'] ?? []);
+                if (! ($diagnosis['pd_only'] ?? false) || empty($diagnosis['pd_date'])) return null;
+
+                return [
+                    'id' => 'pd-'.$detail->id,
+                    'carabao_id' => $detail->carabao_id,
+                    'pd_only' => true,
+                    'mating_type' => $diagnosis['method'] ?? null,
+                    'pregnancy_result' => $diagnosis['pregnancy_status'] ?? null,
+                    'pregnancy_check_date' => $diagnosis['pd_date'],
+                    'pregnancy_months' => $diagnosis['pregnancy_months'] ?? null,
+                    'pd_technician' => $diagnosis['pd_technician'] ?? null,
+                ];
+            })->filter()->groupBy('carabao_id');
     }
 
     private function eligibleAnimals(int $cooperativeId): \Illuminate\Database\Query\Builder
@@ -293,34 +420,75 @@ class MonitoringReportController extends Controller
     public function store(Request $request)
     {
         $validated = $this->validateReport($request, true);
-        $cooperative = DB::table('cooperatives')->where('id', $validated['cooperative_id'])->first();
-        abort_unless($cooperative, 404);
-
-        $reportId = DB::transaction(function () use ($request, $validated, $cooperative) {
-            $reportId = DB::table('monitoring_reports')->insertGetId([
-                'cooperative_id' => $cooperative->id,
-                'created_by' => auth()->id(),
-                'cooperative_name' => $cooperative->cooperative_name,
-                'province' => $cooperative->province,
-                'municipality' => $cooperative->municipality,
-                'barangay' => $cooperative->barangay,
-                'report_date' => $validated['monitoring_date'],
-                'monitored_by' => $validated['monitored_by'] ?? null,
-                'attested_by' => $validated['attested_by'] ?? null,
-                'noted_by' => $validated['noted_by'] ?? null,
-                'report_data' => json_encode(['version' => 2, 'rows' => []], JSON_UNESCAPED_UNICODE),
-                'remarks' => $validated['remarks'] ?? null,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-
-            $this->saveAnimalDetails($reportId, (int) $cooperative->id, $validated['rows'], $validated['monitoring_date']);
-
-            return $reportId;
-        });
+        $reportId = DB::transaction(fn () => $this->createReport($validated, (int) $request->user()->id));
 
         return redirect()->route('ui.monitoring', ['report_id' => $reportId])
             ->with('success', 'Monitoring report saved with the selected animals and service records.');
+    }
+
+    public function syncOffline(Request $request)
+    {
+        $input = $request->validate(['submission_id' => ['required', 'uuid']]);
+        $account = (int) $request->user()->id;
+        abort_unless($request->header('X-CBED-Monitoring-Account') === (string) $account, 409,
+            'Sign in with the account that saved this report.');
+        $submission = strtolower($input['submission_id']);
+        $fingerprint = hash('sha256', json_encode($request->except('submission_id'), JSON_THROW_ON_ERROR));
+
+        $result = DB::transaction(function () use ($request, $account, $submission, $fingerprint) {
+            $key = ['user_id' => $account, 'submission_id' => $submission];
+            $new = DB::table('monitoring_submissions')->insertOrIgnore($key + ['payload_hash' => $fingerprint]);
+            $receipt = DB::table('monitoring_submissions')->where($key)->lockForUpdate()->first();
+            if (! $new) {
+                if (! $receipt->report_id) {
+                    return ['conflict' => true, 'closed' => true,
+                        'message' => 'The previously synced report was deleted. This local copy cannot sync again.'];
+                }
+                if (! hash_equals($receipt->payload_hash, $fingerprint)) {
+                    return ['conflict' => true, 'report_id' => $receipt->report_id,
+                        'message' => 'This submission was already processed. Review the saved report before discarding the local copy.'];
+                }
+                return ['report_id' => (int) $receipt->report_id, 'duplicate' => true];
+            }
+
+            $reportId = $this->createReport($this->validateReport($request, true), $account);
+            DB::table('monitoring_submissions')->where($key)->update(['report_id' => $reportId]);
+            app(TransactionActivity::class)->publish(
+                DB::connection(), $request->attributes->get('activity_capture_key'),
+                $request->user(), $request->route()->getName(), $submission,
+            );
+            return ['report_id' => $reportId, 'duplicate' => false];
+        }, 3);
+
+        $request->attributes->set('activity_published', true);
+        return response()->json($result, isset($result['conflict']) ? 409 : ($result['duplicate'] ? 200 : 201));
+    }
+
+    private function createReport(array $validated, int $actor): int
+    {
+        $cooperative = DB::table('cooperatives')->where('id', $validated['cooperative_id'])->first();
+        abort_unless($cooperative, 404);
+
+        $reportId = DB::table('monitoring_reports')->insertGetId([
+            'cooperative_id' => $cooperative->id,
+            'created_by' => $actor,
+            'cooperative_name' => $cooperative->cooperative_name,
+            'province' => $cooperative->province,
+            'municipality' => $cooperative->municipality,
+            'barangay' => $cooperative->barangay,
+            'report_date' => $validated['monitoring_date'],
+            'monitored_by' => $validated['monitored_by'] ?? null,
+            'attested_by' => $validated['attested_by'] ?? null,
+            'noted_by' => $validated['noted_by'] ?? null,
+            'report_data' => json_encode(['version' => 2, 'rows' => []], JSON_UNESCAPED_UNICODE),
+            'remarks' => $validated['remarks'] ?? null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->saveAnimalDetails($reportId, (int) $cooperative->id, $validated['rows'], $validated['monitoring_date']);
+
+        return $reportId;
     }
 
     public function update(Request $request, int $report)

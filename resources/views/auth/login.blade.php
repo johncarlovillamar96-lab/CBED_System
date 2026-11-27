@@ -83,7 +83,7 @@
             border-top: .3rem solid var(--login-gold);
         }
 
-        .login-form input {
+        .login-form input:not([type="checkbox"]) {
             min-height: 3.125rem;
             width: 100%;
             padding-inline-start: 2.75rem;
@@ -93,11 +93,11 @@
             transition: border-color .15s, background-color .15s, box-shadow .15s;
         }
 
-        .login-form input:hover {
+        .login-form input:not([type="checkbox"]):hover {
             border-color: #94a3b8;
         }
 
-        .login-form input:focus {
+        .login-form input:not([type="checkbox"]):focus {
             outline: 2px solid transparent;
             border-color: #2563eb;
             background: #fff;
@@ -176,6 +176,7 @@
             }
         }
     </style>
+    @include('partials.typography')
 </head>
 <body class="login-page relative isolate flex flex-col">
     <div class="login-decoration" aria-hidden="true"></div>
@@ -195,10 +196,11 @@
             </div>
             <div class="login-illustration hidden overflow-hidden lg:flex lg:flex-1 lg:flex-col">
                 <div class="login-photo flex-1" role="img" aria-label="A carabao and her calf on a Philippine farm"></div>
-                    <ul class="login-focus-areas grid shrink-0 grid-cols-4 divide-x divide-white/25 rounded-b-2xl px-2 py-3 text-center text-[11px] font-semibold leading-tight text-white">
+                    <ul class="login-focus-areas grid shrink-0 grid-cols-5 divide-x divide-white/25 rounded-b-2xl px-2 py-3 text-center text-[11px] font-semibold leading-tight text-white">
                         <li class="px-2"><i class="fa-solid fa-venus mb-1 block text-sm" aria-hidden="true"></i>Female Carabao Entrustment</li>
                         <li class="px-2"><i class="fa-solid fa-bottle-droplet mb-1 block text-sm" aria-hidden="true"></i>Milk Production</li>
                         <li class="px-2"><i class="fa-solid fa-chart-line mb-1 block text-sm" aria-hidden="true"></i>Enterprise Development</li>
+                        <li class="px-2"><i class="fa-solid fa-dna mb-1 block text-sm" aria-hidden="true"></i>Genetic Improvement Program</li>
                         <li class="px-2"><i class="fa-solid fa-people-group mb-1 block text-sm" aria-hidden="true"></i>Farmer &amp; Cooperative Support</li>
                 </ul>
             </div>
@@ -225,6 +227,11 @@
                             <i class="fa-solid fa-lock pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-500" aria-hidden="true"></i>
                             <x-password-input autocomplete="current-password" required />
                         </span>
+                    </label>
+                    <label class="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                        <input type="checkbox" name="remember" value="1" @checked(old('remember'))
+                            class="h-4 w-4 accent-[#0b1f3a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                        Keep me signed in for 5 days
                     </label>
                     <button type="submit" class="group flex min-h-[3.125rem] w-full items-center justify-center gap-2 rounded-lg bg-[#0b1f3a] px-4 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-[#184069] active:bg-[#08172b]">
                         <span>Sign in</span>

@@ -1,4 +1,4 @@
-{{-- resources/views/calf-drop.blade.php --}}
+﻿{{-- resources/views/calf-drop.blade.php --}}
 @extends('layouts.admin')
 @section('inlineCalfDropNotifications', '1')
 @section('title', 'Calf Records | CBED')
@@ -7,12 +7,11 @@
 @section('content')
 <div x-data="calfDropPage()" x-cloak class="calf-records-page management-page min-w-0 bg-slate-50 text-slate-800">
     <x-admin-page-header title="Calf Records" description="Review births and manage calf records linked to Carabao Inventory." section="Animal Management">
-        <button type="button" @click="exportCSV()" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-export"></i> Export</button>
-        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-import"></i> Import CSV<input type="file" accept=".csv,text/csv" class="hidden" @change="importCSV($event)"></label>
+        <button type="button" @click="openCalfHistory()" aria-haspopup="dialog" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i> View Calf Drop History</button>
+        <button type="button" @click="openCooperativeCalfPrint()" aria-haspopup="dialog" :disabled="inventoryLoading || !calfCooperatives.length" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm disabled:opacity-50"><i class="fa-solid fa-print" aria-hidden="true"></i> Print</button>
+        <button type="button" @click="exportCSV()" class="inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-export" aria-hidden="true"></i> Export</button>
+        <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-file-import"></i> Import<input type="file" accept=".csv,text/csv" class="hidden" @change="importCSV($event)"></label>
         @if(auth()->user()->isAdmin())<button type="button" @click="openAdd()" class="cbed-add-button inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm"><i class="fa-solid fa-plus"></i> Add Calf Record</button>@endif
-        <button type="button" @click="loadInventoryCalves(true)" :disabled="inventoryLoading" class="action-secondary disabled:opacity-50">
-            <i class="fa-solid fa-rotate" :class="inventoryLoading ? 'fa-spin' : ''"></i> Refresh
-        </button>
     </x-admin-page-header>
 
     {{-- Summary cards --}}
@@ -42,7 +41,7 @@
                 <tbody class="divide-y divide-slate-100 border-t border-slate-100">
                     <template x-for="group in cooperativeBirthYearSummaries" :key="group.name">
                         <tr>
-                            <th scope="row" class="px-4 py-3 align-top font-semibold text-slate-800" x-text="group.name || 'Unspecified cooperative'"></th>
+                            <th scope="row" class="px-4 py-3 align-top font-semibold text-slate-800" x-text="group.name"></th>
                             <template x-for="year in birthYearSummary" :key="year.year">
                                 <td class="min-w-[12rem] border-l border-slate-100 px-4 py-3 align-top" x-data="{ get item() { return group.years[year.year]; } }">
                                     <template x-if="item">
@@ -76,7 +75,7 @@
                 </tbody>
             </table>
         </div>
-        <p x-show="!cooperativeBirthYearSummaries.length" class="text-sm text-slate-500">No matching records have a birth or event date.</p>
+        <p x-show="!cooperativeBirthYearSummaries.length" class="text-sm text-slate-500">No matching calf records have a birth date and a cooperative listed in the directory.</p>
     </section>
 
     {{-- Distribution panels --}}
@@ -109,32 +108,254 @@
                 <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700" aria-hidden="true"><i class="fa-regular fa-calendar"></i></span>
                 <div>
                     <h2 id="calves-by-year-title" class="font-bold text-slate-900">Calf Records by Birth Year</h2>
-                    <p class="mt-1 text-xs text-slate-500">Grouped by birth or event date across all reported years.</p>
+                    <p class="mt-1 text-xs text-slate-500">Total uses the worksheet when available. With Calf ID follows your filters. Not Reported uses the full ID count.</p>
                 </div>
             </header>
             <div class="max-h-72 overflow-y-auto p-5">
+                <div class="mb-2 mr-7 grid grid-cols-4 gap-2 px-3 text-xs font-semibold text-slate-600">
+                    <span>Year</span>
+                    <span class="text-right">Total</span>
+                    <span class="text-right">With Calf ID</span>
+                    <span class="text-right">Not Reported</span>
+                </div>
+                <div x-show="calfHistoryError" class="mb-2 flex items-center gap-2 text-xs text-rose-700">
+                    <span role="status" x-text="calfHistoryError"></span>
+                    <button type="button" @click="loadCalfHistory()" class="font-semibold underline">Retry</button>
+                </div>
                 <ol class="space-y-3">
-                    <template x-for="item in birthYearSummary" :key="item.year">
-                        <li class="rounded-lg border border-slate-200 p-3">
-                            <div class="grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 text-sm">
-                                <span class="font-medium tabular-nums text-slate-700" x-text="item.year"></span>
-                                <div class="h-2.5 rounded-full bg-slate-100" aria-hidden="true"><div class="h-full rounded-full bg-emerald-600" :style="`width:${item.percent}%`"></div></div>
-                                <span class="font-semibold tabular-nums text-slate-900" x-text="item.count + ' total'"></span>
+                    <template x-for="item in birthYearReportRows" :key="item.year">
+                        <li class="grid grid-cols-[minmax(0,1fr)_1.25rem] items-center gap-2">
+                            <div class="grid grid-cols-4 items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm">
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <span class="font-medium tabular-nums text-slate-700" x-text="item.year"></span>
+                                    <div class="hidden h-2 min-w-0 flex-1 rounded-full bg-slate-100 sm:block" aria-hidden="true"><div class="h-full rounded-full bg-emerald-600" :style="`width:${item.totalPercent}%`"></div></div>
+                                </div>
+                                <span class="text-right font-semibold tabular-nums text-slate-700"
+                                    :title="item.historyTotal === null ? 'Total from calf records with IDs' : 'Total from the history worksheet'"
+                                    x-text="item.total"></span>
+                                <div class="text-right tabular-nums">
+                                    <button type="button" x-show="item.withCalfId" class="rounded font-semibold text-blue-700 underline hover:text-blue-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+                                        aria-haspopup="dialog" :aria-label="'View ' + (item.withCalfId?.count ?? 0) + ' calf records with IDs for ' + item.year"
+                                        @click="openBirthYear(item.withCalfId)" x-text="item.withCalfId?.count"></button>
+                                    <span x-show="!item.withCalfId" class="text-slate-500">0</span>
+                                </div>
+                                <span class="text-right font-semibold tabular-nums text-slate-700"
+                                    :title="item.historyTotal === null ? 'No history worksheet total for this year' : item.historyTotal + ' in worksheet · ' + item.registeredTotal + ' with calf IDs'"
+                                    x-text="item.notReported ?? '—'"></span>
                             </div>
+                            <button type="button" x-show="item.withCalfId?.unknownSexCount" class="rounded text-center text-amber-700 hover:text-amber-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700"
+                                aria-haspopup="dialog" @click="openBirthYear(item.withCalfId, true)"
+                                :title="'View records with unknown sex (' + (item.withCalfId?.unknownSexCount ?? 0) + ')'"
+                                :aria-label="'View ' + (item.withCalfId?.unknownSexCount ?? 0) + ' records with unknown sex for ' + item.year">
+                                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                            </button>
                         </li>
                     </template>
                 </ol>
-                <p x-show="!birthYearSummary.length" class="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No matching records have a birth or event date.</p>
+                <p x-show="!birthYearReportRows.length && !calfHistoryLoading" class="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No matching records have a birth date.</p>
             </div>
         </article>
     </section>
+
+    <dialog x-ref="birthYearDialog" aria-labelledby="calf-birth-year-dialog-title"
+        class="m-auto w-11/12 max-w-6xl overflow-hidden rounded-xl bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
+        <div class="grid max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
+            <header class="flex items-center justify-between gap-4 border-b border-slate-200 p-5">
+                <div>
+                    <h2 id="calf-birth-year-dialog-title" class="text-lg font-bold" x-text="'Calf Records for ' + (selectedBirthYear?.year ?? '')"></h2>
+                    <div class="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                        <span class="text-slate-500" x-text="birthYearDialogRecords.length + (birthYearSex === 'unknown' ? ' with unknown sex' : ' total')"></span>
+                        <button type="button" x-show="selectedBirthYear?.unknownSexCount" class="rounded text-amber-700 hover:text-amber-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700"
+                            @click="birthYearSex = birthYearSex === 'unknown' ? '' : 'unknown'" :aria-pressed="birthYearSex === 'unknown'"
+                            title="Filter to records with unknown sex" aria-label="Filter to records with unknown sex">
+                            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <form method="dialog"><button type="submit" autofocus class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button></form>
+            </header>
+            <div class="min-h-0 overflow-auto">
+                <dl class="grid grid-cols-2 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-3 lg:grid-cols-6" x-data="{ get stats() { return birthYearDialogStats; } }">
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Total Cooperatives</dt>
+                        <dd class="mt-1 text-lg font-bold tabular-nums" x-text="stats.cooperativeTotal"></dd>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Total</dt>
+                        <dd class="mt-1 text-lg font-bold tabular-nums" x-text="stats.total"></dd>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Female</dt>
+                        <dd class="mt-1 text-lg font-bold tabular-nums" x-text="stats.female"></dd>
+                    <dd class="mt-1 space-y-1 text-xs text-slate-600">
+                        <div class="flex justify-between gap-1"><span>Heifer</span><span class="font-semibold tabular-nums" x-text="stats.heifers"></span></div>
+                        <div class="flex justify-between gap-1"><span>Cow</span><span class="font-semibold tabular-nums" x-text="stats.cows"></span></div>
+                    </dd>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Male</dt>
+                        <dd class="mt-1 text-lg font-bold tabular-nums" x-text="stats.male"></dd>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Parity</dt>
+                        <dd class="mt-1 text-lg font-bold tabular-nums" x-text="stats.parityTotal"></dd>
+                    </div>
+                    <div class="rounded-lg border border-slate-200 bg-white p-3">
+                        <dt class="text-xs font-semibold text-slate-600">Animal Status</dt>
+                        <dd class="mt-1">
+                            <template x-for="[status, count] in stats.statuses" :key="status">
+                                <div class="flex justify-between gap-1 text-xs"><span x-text="status"></span><span class="font-semibold tabular-nums" x-text="count"></span></div>
+                            </template>
+                        </dd>
+                    </div>
+                </dl>
+                <div class="grid gap-3 border-b border-slate-200 px-5 py-3 sm:grid-cols-3">
+                    <div>
+                    <label for="birth-year-cooperative-filter" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Cooperative</label>
+                    <select id="birth-year-cooperative-filter" class="filter-input" x-model="birthYearCooperative">
+                        <option value="">All cooperatives</option>
+                        <template x-for="cooperative in birthYearCooperativeOptions" :key="cooperative">
+                            <option :value="cooperative" x-text="cooperative"></option>
+                        </template>
+                    </select>
+                    </div>
+                    <div>
+                        <label for="birth-year-sex-filter" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Sex</label>
+                        <select id="birth-year-sex-filter" class="filter-input" x-model="birthYearSex">
+                            <option value="">All sexes</option>
+                            <option value="female">Female</option>
+                            <option value="male">Male</option>
+                            <option value="unknown">Unknown sex</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="birth-year-status-filter" class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Animal Status</label>
+                        <select id="birth-year-status-filter" class="filter-input" x-model="birthYearStatus">
+                            <option value="">All statuses</option>
+                            <template x-for="status in birthYearStatusOptions" :key="status">
+                                <option :value="status" x-text="status"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+                <p x-show="!birthYearDialogRecords.length" class="px-5 py-6 text-sm text-slate-500">No calf records match the selected filters.</p>
+                <table x-show="birthYearDialogRecords.length" class="calf-records-table w-full text-left text-sm">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th scope="col" class="px-4 py-3">Cooperative</th>
+                            <th scope="col" class="px-4 py-3">Calf ID</th>
+                            <th scope="col" class="px-4 py-3">Date of Birth</th>
+                            <th scope="col" class="px-4 py-3">Sex</th>
+                            <th scope="col" class="px-4 py-3">Classification</th>
+                            <th scope="col" class="px-4 py-3">Parity</th>
+                            <th scope="col" class="px-4 py-3">Animal Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <template x-for="calf in birthYearDialogRecords" :key="String(calf.calf_id || calf.id)">
+                            <tr>
+                                <td class="px-4 py-3" x-text="calf.cooperative || '—'"></td>
+                                <th scope="row" class="px-4 py-3 font-semibold" x-text="calf.calf_id || '—'"></th>
+                                <td class="whitespace-nowrap px-4 py-3" x-text="formatBirthDate(calf.date_of_birth)"></td>
+                                <td class="px-4 py-3" x-text="calf.sex || '—'"></td>
+                                <td class="px-4 py-3" x-text="birthYearCalfClassification(calf)"></td>
+                                <td class="px-4 py-3" x-text="birthYearCalfParityDisplay(calf)"></td>
+                                <td class="whitespace-nowrap px-4 py-3" x-text="birthYearCalfStatus(calf) || '—'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <form method="dialog" class="flex justify-end gap-2 border-t border-slate-200 p-4">
+                <button type="button" @click="printBirthYear()" :disabled="!birthYearPrintSummary.length"
+                    class="rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50">
+                    <i class="fa-solid fa-print mr-1" aria-hidden="true"></i> Print
+                </button>
+                <button type="submit" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">Close</button>
+            </form>
+        </div>
+    </dialog>
+
+    <dialog x-ref="calfPrintRangeDialog" aria-labelledby="calf-print-range-title"
+        class="m-auto w-11/12 max-w-md rounded-xl bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
+        <header class="flex items-center justify-between gap-4 border-b border-slate-200 p-5">
+            <h2 id="calf-print-range-title" class="text-lg font-bold">Print Calf Drop History</h2>
+            <form method="dialog"><button type="submit" class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button></form>
+        </header>
+        <form @submit.prevent="printCooperativeCalfHistory()">
+            <div class="grid grid-cols-2 gap-3 p-5">
+                <div>
+                    <label for="calf-print-from-year" class="mb-1 block text-sm font-semibold">From year</label>
+                    <select id="calf-print-from-year" class="filter-input" x-model="calfPrintFromYear" autofocus required>
+                        <option value="" disabled>Select year</option>
+                        <template x-for="year in calfPrintYears" :key="year"><option :value="year" x-text="year"></option></template>
+                    </select>
+                </div>
+                <div>
+                    <label for="calf-print-to-year" class="mb-1 block text-sm font-semibold">To year</label>
+                    <select id="calf-print-to-year" class="filter-input" x-model="calfPrintToYear">
+                        <template x-for="year in calfPrintYears" :key="year"><option :value="year" x-text="year"></option></template>
+                    </select>
+                </div>
+                <p x-show="calfPrintFromYear > calfPrintToYear" class="col-span-2 text-sm text-rose-700" role="status">From year must be earlier than or equal to To year.</p>
+            </div>
+            <div class="flex justify-end border-t border-slate-200 p-4">
+                <button type="submit" :disabled="!calfPrintFromYear || !calfPrintToYear || calfPrintFromYear > calfPrintToYear"
+                    class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d] disabled:opacity-50">Print</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog x-ref="calfHistoryDialog" aria-labelledby="calf-history-title"
+        class="m-auto w-11/12 max-w-screen-2xl overflow-hidden rounded-xl bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-950/60">
+        <div class="grid max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
+            <header class="flex items-center justify-between gap-4 border-b border-slate-200 p-5">
+                <div>
+                    <h2 id="calf-history-title" class="text-lg font-bold">Calf Drop History</h2>
+                    <p x-show="calfHistory" class="mt-1 text-sm text-slate-500"
+                        x-text="calfHistory ? calfHistory.sheet + ' · ' + calfHistory.rows.length + ' rows · ' + calfHistory.columnCount + ' columns' : ''"></p>
+                </div>
+                <form method="dialog"><button type="submit" autofocus class="cbed-close-button" aria-label="Close"><span aria-hidden="true">&times;</span></button></form>
+            </header>
+            <div class="min-h-0 overflow-auto" tabindex="0" role="region" aria-label="Calf Drop History worksheet">
+                <p x-show="calfHistoryLoading" class="p-5 text-sm text-slate-500" role="status">Loading calf history…</p>
+                <div x-show="calfHistoryError" class="flex items-center gap-3 p-5 text-sm">
+                    <p role="alert" class="text-rose-700" x-text="calfHistoryError"></p>
+                    <button type="button" @click="loadCalfHistory()" class="font-semibold text-blue-700 underline">Retry</button>
+                </div>
+                <table x-show="calfHistory" class="calf-history-table w-max text-sm">
+                    <thead>
+                        <template x-for="(row, rowIndex) in (calfHistory?.rows.slice(0, 4) ?? [])" :key="rowIndex">
+                            <tr>
+                                <template x-for="([value, columns, rows], cellIndex) in row" :key="cellIndex">
+                                    <th :colspan="columns" :rowspan="rows" x-text="value"></th>
+                                </template>
+                            </tr>
+                        </template>
+                    </thead>
+                    <tbody>
+                        <template x-for="(row, rowIndex) in (calfHistory?.rows.slice(4) ?? [])" :key="rowIndex">
+                            <tr>
+                                <template x-for="([value, columns, rows], cellIndex) in row" :key="cellIndex">
+                                    <td :colspan="columns" :rowspan="rows" x-text="value"></td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <form method="dialog" class="flex justify-end border-t border-slate-200 p-4">
+                <button type="submit" class="rounded-lg bg-[#0b1f3a] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#122b4d]">Close</button>
+            </form>
+        </div>
+    </dialog>
 
     @include('partials.calf-drop-notifications')
 
     {{-- Directory and filters --}}
     <section class="cbed-card dashboard-panel overflow-hidden rounded-xl border">
         <div class="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 class="text-lg font-bold text-slate-900">Calf Records</h2><p class="mt-1 text-sm text-slate-500">Search, filter, view, import, export, or add calf records.</p></div><div class="flex flex-wrap items-center gap-2"><span class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"><span x-text="filteredRecords.length"></span> records</span><x-reset-filters x-on:click="resetFilters()" /></div></div>
-        <div class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-7">
+        <div data-mobile-filters class="grid grid-cols-1 gap-3 border-b border-slate-200 bg-slate-50 p-5 sm:grid-cols-2 xl:grid-cols-7">
             <div class="min-w-0 xl:col-span-2">
                 <label for="calf-record-search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">Search Records</label>
                 <div class="relative">
@@ -245,6 +466,11 @@
     .calf-records-table tbody tr:nth-child(even) { background: #f8fafc; }
     .calf-records-table tbody tr:hover { background: #f0f8fb; }
     .calf-records-table tbody td { border-bottom: 1px solid #e8edf3; vertical-align: middle; }
+    .calf-history-table { border-collapse: separate; border-spacing: 0; }
+    .calf-history-table thead { position: sticky; top: 0; z-index: 1; background: #103c60; color: #fff; }
+    .calf-history-table th, .calf-history-table td { border: solid #cbd5e1; border-width: 0 1px 1px 0; padding: .35rem .55rem; white-space: pre-wrap; }
+    .calf-history-table td { min-width: 3rem; }
+    .calf-history-table tbody tr:nth-child(even) { background: #f8fafc; }
     [x-cloak]{display:none!important}
     .calf-records-page { background:radial-gradient(circle at 92% 0%,rgba(11,31,58,.06),transparent 25%),#f5f8fc; }
     .calf-records-page .management-summary-card { border-top:4px solid #0b5e8b!important;border-radius:1rem!important;box-shadow:0 5px 18px rgba(15,45,67,.06)!important;transition:transform .16s ease,box-shadow .16s ease; }

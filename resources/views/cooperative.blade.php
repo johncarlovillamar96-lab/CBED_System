@@ -755,7 +755,7 @@
         display: none;
         color: #111827;
         background: #fff;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: var(--cbed-font);
     }
 
     .pdf-report-header {

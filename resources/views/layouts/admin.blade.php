@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>@yield('title', 'Dashboard') | CBED Data System</title>
@@ -35,7 +35,9 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="/css/table-drag-scroll.css">
     <link rel="stylesheet" href="/css/cbed-buttons.css">
+    <link rel="stylesheet" href="/css/cbed-mobile.css?v=3">
     <script defer src="/js/table-drag-scroll.js"></script>
+    <script defer src="/js/cbed-mobile.js?v=3"></script>
 
     <style>
         :root {
@@ -56,7 +58,6 @@
 
         body {
             margin: 0;
-            font-family: Arial, Helvetica, sans-serif;
             background: var(--page-bg);
             color: #1e293b;
         }
@@ -112,6 +113,18 @@
             padding: .6rem .85rem .45rem;
         }
 
+        .cbed-account-icon {
+            background: #475569;
+            color: #cbd5e1;
+            transition: box-shadow .2s, background-color .2s, color .2s;
+        }
+
+        .cbed-account-icon.is-online {
+            background: #123d35;
+            color: #a7f3d0;
+            box-shadow: 0 0 0 2px #34d399, 0 0 12px #34d39988;
+        }
+
         .cbed-scrollbar::-webkit-scrollbar {
             width: 5px;
             height: 5px;
@@ -146,13 +159,17 @@
                 transform: translateX(0) !important;
             }
         }
+
     </style>
 
     @stack('styles')
+    @include('partials.typography')
 </head>
 
-<body x-data="{ sidebarOpen: false }"
-      @keydown.escape.window="sidebarOpen = false">
+<body x-data="{ sidebarOpen: false, connected: navigator.onLine }"
+      @keydown.escape.window="sidebarOpen = false"
+      @online.window="connected = true" @offline.window="connected = false"
+      @cbed-monitoring-connection.window="connected = $event.detail.online">
 
     @include('partials.connection-toast', ['dataSource' => $__env->yieldContent('dataSource')])
 
@@ -172,6 +189,8 @@
         :class="{ 'mobile-open': sidebarOpen }">
 
         {{-- BRAND --}}
+        <button type="button" @click="sidebarOpen = false" aria-label="Close menu"
+            class="cbed-mobile-menu-close absolute right-1 top-1 z-10 rounded-lg text-white">×</button>
         <div class="flex min-h-[4.5rem] shrink-0 items-center gap-3 border-b border-white/10 bg-gradient-to-r from-[#16375a] to-transparent px-4 py-3">
             <div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-[#ffe09a] bg-[#ffd05b] text-[#0b1f3a] shadow-sm">
                 <i class="fa-solid fa-cow text-lg" aria-hidden="true"></i>
@@ -308,13 +327,26 @@
 
         {{-- SIDEBAR FOOTER --}}
         <div class="shrink-0 border-t border-white/10 p-3">
-            <div class="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/20 text-blue-300">
-                    <i class="fa-solid fa-user-shield"></i>
+            <div class="flex items-center gap-2 rounded-xl bg-white/5 p-2">
+                <div class="cbed-account-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                    :class="{ 'is-online': connected }" :title="connected ? 'Online' : 'Offline'">
+                    <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                    <span class="sr-only" role="status" x-text="connected ? 'Online' : 'Offline'"></span>
                 </div>
 
-                <div class="min-w-0">
-                    <p class="truncate text-xs font-semibold">{{ auth()->user()->name }}</p>
+                <div class="min-w-0 flex-1">
+                    @php
+                        $account = auth()->user();
+                        $accountNameParts = array_filter([$account->first_name, $account->last_name], fn ($part) => filled($part));
+                        if (!$accountNameParts) {
+                            $accountNameParts = preg_split('/\s+(?=\S+$)/u', trim($account->name), 2);
+                        }
+                    @endphp
+                    <p class="whitespace-normal break-words text-xs font-semibold leading-snug">
+                        @foreach ($accountNameParts as $part)
+                            <span class="{{ $loop->first ? 'block truncate' : 'block' }}" title="{{ $part }}">{{ $part }}</span>
+                        @endforeach
+                    </p>
                     <p class="mt-1 text-[.68rem] text-slate-400">{{ \App\Models\User::ROLES[auth()->user()->role] }}</p>
                 </div>
             </div>
@@ -333,8 +365,8 @@
     </aside>
 
     {{-- MAIN APPLICATION --}}
-    <div class="cbed-main flex min-h-screen flex-col">
-        <div class="border-b border-slate-200 bg-white px-4 py-3 lg:hidden print:hidden">
+    <div class="cbed-main cbed-mobile-frame flex min-h-screen flex-col">
+        <div class="cbed-mobile-top border-b border-slate-200 bg-white px-4 py-3 lg:hidden print:hidden">
             <button type="button" @click="sidebarOpen = true" :aria-expanded="sidebarOpen.toString()"
                     aria-controls="cbed-sidebar" class="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">
                 <i class="fa-solid fa-bars" aria-hidden="true"></i>
@@ -344,6 +376,23 @@
 
         {{-- PAGE CONTENT --}}
         <main class="min-w-0 flex-1 px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8 {{ request()->routeIs('ui.mating', 'ui.calves') ? 'pt-3' : 'pt-4 sm:pt-6 lg:pt-8' }}">
+
+            @if (session('login_welcome'))
+                <div x-data="{ visible: true }" x-init="setTimeout(() => visible = false, 2000)" x-show="visible" x-transition.opacity
+                    class="pointer-events-none fixed inset-0 z-[80] grid place-items-center p-4 print:hidden">
+                    <div class="w-full max-w-sm rounded-2xl border border-emerald-200 bg-white px-10 py-5 text-center shadow-2xl">
+                        <span class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </span>
+                        <div role="status" class="break-words">
+                            <p class="text-lg font-bold text-slate-900">Welcome</p>
+                            @if (session('login_welcome.name'))
+                                <p class="mt-1 text-base font-medium text-slate-700">{{ session('login_welcome.name') }}</p>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            @endif
 
             @unless(in_array($module ?? null, ['fhpr', 'health', 'milk', 'meat', 'manure', 'mtd', 'bcs', 'exits'], true) || request()->routeIs('admin.carabao-inventory', 'admin.semen-bulls', 'dashboard', 'dashboard.page', 'ui.farmers', 'ui.cooperatives', 'ui.monitoring', 'ui.monitoring.*', 'ui.activity-logs', 'ui.activity-logs.*', 'imports.*', 'signup') || View::hasSection('inlineCalfDropNotifications'))
                 @include('partials.calf-drop-notifications')
@@ -383,5 +432,6 @@
     @include('partials.table-pagination-assets')
     <script src="{{ asset('js/auto-filters.js') }}" defer></script>
     @stack('scripts')
+    @include('partials.mobile-navigation')
 </body>
 </html>

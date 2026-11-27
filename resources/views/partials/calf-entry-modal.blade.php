@@ -9,34 +9,46 @@
                     <button type="button" @click="setEntryMode(true)" :aria-pressed="showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Use a mating record</button>
                     <button type="button" @click="setEntryMode(false)" :aria-pressed="!showMatingPicker" :disabled="savingCalf" class="rounded-lg border px-3 py-2 text-sm font-semibold" :class="!showMatingPicker ? 'border-sky-700 bg-sky-50 text-sky-900' : 'border-slate-200 text-slate-600'">Manual Entry</button>
                 </div>
-                <section x-show="showMatingPicker && !monitoringCalf" class="mb-4 rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="calf-drop-due-title">
+                <section x-show="showMatingPicker" class="mb-4 rounded-xl border border-slate-200 bg-white p-4" aria-labelledby="calf-drop-due-title">
                     <h4 id="calf-drop-due-title" class="font-semibold text-slate-900">Latest AI records with positive pregnancy results at 280+ days</h4>
-                    <p class="mt-1 text-sm text-slate-500">Select a mother awaiting a calf-drop report to prefill the form.</p>
+                    <p class="mt-1 text-sm text-slate-500" x-text="monitoringCalf ? 'Use the selected mother’s mating record to prefill the form.' : 'Select a mother awaiting a calf-drop report to prefill the form.'"></p>
                     <p x-show="loadingDueMatings" role="status" class="mt-3 text-sm text-slate-500">Loading mating records…</p>
                     <div x-show="dueMatingsError" class="mt-3 flex items-center gap-3 text-sm text-rose-700">
                         <span role="alert" x-text="dueMatingsError"></span>
-                        <button type="button" @click="loadDueMatings()" class="font-semibold underline">Retry</button>
+                        <button type="button" @click="monitoringCalf ? loadMonitoringMatings() : loadDueMatings()" class="font-semibold underline">Retry</button>
                     </div>
-                    <p x-show="!loadingDueMatings && !dueMatingsError && !dueMatings.length" class="mt-3 text-sm text-slate-500">No matching pregnancies are awaiting a calf-drop report.</p>
-                    <ul x-show="dueMatings.length" class="mt-3 max-h-48 divide-y divide-slate-100 overflow-y-auto">
-                        <template x-for="mating in dueMatings" :key="mating.id">
+                    <p x-show="!loadingDueMatings && !dueMatingsError && !visibleDueMatings.length" class="mt-3 text-sm text-slate-500">No matching pregnancies are awaiting a calf-drop report.</p>
+                    <ul x-show="visibleDueMatings.length" class="mt-3 max-h-48 divide-y divide-slate-100 overflow-y-auto">
+                        <template x-for="mating in visibleDueMatings" :key="mating.id">
                             <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                                 <div>
-                                    <span class="font-semibold text-slate-900" x-text="mating.animal_id || mating.carabao_id"></span>
+                                    <span class="font-semibold text-slate-900" x-text="mating.animal_id || mating.animal_registry_id || mating.carabao_id"></span>
                                     <span class="ml-2 text-slate-600" x-text="mating.cooperative_name || ''"></span>
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <span class="rounded-full px-2.5 py-1 text-xs font-semibold" :class="mating.calf_drop_overdue ? 'bg-amber-100 text-amber-900' : 'bg-blue-50 text-blue-800'" x-text="mating.pregnancy_days + ' days'"></span>
-                                    <button type="button" @click="addFromMating(mating)" :disabled="savingCalf" class="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-50">Use mating record</button>
+                                    <button type="button" @click="monitoringCalf ? useDamMating(mating) : addFromMating(mating)" :disabled="savingCalf" class="rounded-lg border border-slate-300 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-50">Use mating record</button>
                                 </div>
                             </li>
                         </template>
                     </ul>
                 </section>
-                <section x-show="monitoringCalf ? showMatingPicker : (!showMatingPicker && selectedDamMatings.length)" class="mb-4 rounded-xl border border-slate-200 p-4">
-                    <h4 class="font-semibold text-slate-900">Latest AI record for the selected animal</h4>
+                <section x-show="monitoringCalf || (!showMatingPicker && selectedDamMatings.length)" class="mb-4 rounded-xl border border-slate-200 p-4">
+                    <h4 class="font-semibold text-slate-900" x-text="monitoringCalf ? 'Pregnancy and mating details' : 'Latest AI record for the selected animal'"></h4>
                     <p x-show="loadingDueMatings" role="status" class="mt-2 text-sm text-slate-500">Loading mating records…</p>
                     <p x-show="dueMatingsError" role="alert" class="mt-2 text-sm text-rose-700" x-text="dueMatingsError"></p>
+                    <template x-if="monitoringPregnancyDetails">
+                        <dl class="mt-2 grid gap-2 rounded-lg bg-slate-50 p-3 text-sm sm:grid-cols-2">
+                            <div><dt class="text-slate-500">Pregnancy result</dt><dd class="font-semibold" x-text="monitoringPregnancyDetails.status"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.pregnancy_check_date"><dt class="text-slate-500">Diagnosis date</dt><dd x-text="formatBirthDate(monitoringPregnancyDetails.pregnancy_check_date)"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.mating_date"><dt class="text-slate-500">Mating date</dt><dd x-text="formatBirthDate(monitoringPregnancyDetails.mating_date)"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.mating_type"><dt class="text-slate-500">Mating method</dt><dd x-text="monitoringPregnancyDetails.mating_type"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.bull_id"><dt class="text-slate-500">Sire / Bull ID</dt><dd x-text="monitoringPregnancyDetails.bull_id"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.expected_calving_date"><dt class="text-slate-500">Expected calving</dt><dd x-text="formatBirthDate(monitoringPregnancyDetails.expected_calving_date)"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.pregnancy_months"><dt class="text-slate-500">Months of pregnancy</dt><dd x-text="monitoringPregnancyDetails.pregnancy_months"></dd></div>
+                            <div x-show="monitoringPregnancyDetails.pd_technician"><dt class="text-slate-500">Confirming technician</dt><dd x-text="monitoringPregnancyDetails.pd_technician"></dd></div>
+                        </dl>
+                    </template>
                     <p x-show="!loadingDueMatings && !dueMatingsError && !selectedDamMatings.length" class="mt-2 text-sm text-slate-600">No latest AI record with a positive pregnancy result. You can use Manual Entry.</p>
                     <ul x-show="selectedDamMatings.length" class="mt-2 max-h-48 divide-y divide-slate-100 overflow-y-auto">
                         <template x-for="record in selectedDamMatings" :key="record.id">

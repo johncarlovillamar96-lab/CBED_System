@@ -9,7 +9,7 @@ button.cbed-close-button {
     border-radius: .5rem;
     background: #fff;
     color: #475569;
-    font: 600 1.5rem/1 Arial, sans-serif;
+    font: 600 1.5rem/1 var(--cbed-font, system-ui, sans-serif);
 }
 
 button.cbed-close-button:not([hidden]):not(.hidden) {

@@ -1,10 +1,32 @@
 @push('scripts')
 <script>
+function latestCalfAi(records) {
+    return records.filter(record => ['ai', 'artificialinsemination'].includes(
+        String(record.mating_type || '').toLowerCase().replace(/[^a-z]/g, '')
+    )).sort((a, b) => String(b.mating_date || '').localeCompare(String(a.mating_date || '')) || Number(b.id) - Number(a.id))[0];
+}
+
+function monitoringDueCalfMating(records, today = new Date().toLocaleDateString('sv-SE', {timeZone: 'Asia/Manila'})) {
+    const latest = latestCalfAi((records ?? []).filter(record => !record.pd_only));
+    if (!latest?.calf_drop_awaiting || !latest.mating_date) return null;
+    const days = Math.floor((Date.parse(today) - Date.parse(latest.mating_date)) / 86400000);
+    return days >= 280 ? {...latest, pregnancy_days: days, calf_drop_overdue: true} : null;
+}
+
 function calfDropPage(monitoringMode = false) {
     return {
         storageKey: 'cbed_calfdrop_records', records: [], inventoryCalves: [], inventoryLoading: false, search: '', filterCooperative: '', filterProvince: '', filterBreed: '', filterSex: '',
         currentYear: String(new Date().getFullYear()),
         filterReportedYear: '',
+        selectedBirthYear: null,
+        birthYearSex: '',
+        birthYearCooperative: '',
+        birthYearStatus: '',
+        calfHistory: null,
+        calfHistoryLoading: false,
+        calfHistoryError: '',
+        calfPrintFromYear: '',
+        calfPrintToYear: '',
         showAdd: false, savingCalf: false, deletingCalf: false, addForm: {}, showView: false, showEdit: false, savingEdit: false, editForm: {}, selected: null, notice: '', rowKey: 0, noticeTimer: null, page: 1, perPage: 15,
         monitoringCalf: null,
         matingRecords: [],
@@ -97,9 +119,7 @@ function calfDropPage(monitoringMode = false) {
         },
         damBreed(row) { return String(this.damFor(row)?.breed ?? '').trim(); },
         latestAi(records) {
-            return records.filter(record => ['ai', 'artificialinsemination'].includes(
-                String(record.mating_type || '').toLowerCase().replace(/[^a-z]/g, '')
-            )).sort((a, b) => String(b.mating_date || '').localeCompare(String(a.mating_date || '')) || Number(b.id) - Number(a.id))[0];
+            return latestCalfAi(records);
         },
         isPregnantMating(record) {
             return ['+', 'p', 'positive', 'pregnant', 'yes'].includes(String(record?.pregnancy_result || '').trim().toLowerCase());
@@ -109,7 +129,7 @@ function calfDropPage(monitoringMode = false) {
         },
         get selectedDamMatings() {
             if (this.monitoringCalf) {
-                const latest = this.latestAi(this.matingRecords);
+                const latest = this.latestAi(this.matingRecords.filter(record => !record.pd_only));
                 return this.isPregnantMating(latest) ? [latest] : [];
             }
             if (!this.addForm.mother_id) return [];
@@ -120,6 +140,29 @@ function calfDropPage(monitoringMode = false) {
                 : String(record.cooperative_id) === String(this.addForm.cooperative_id)
                     && ids.includes(String(record.registry_number || '').trim().toUpperCase())));
             return this.isPregnantMating(latest) ? [latest] : [];
+        },
+        get visibleDueMatings() {
+            if (!this.monitoringCalf) return this.dueMatings;
+            const mating = monitoringDueCalfMating(this.matingRecords);
+            return mating ? [mating] : [];
+        },
+        get monitoringPregnancyDetails() {
+            if (!this.monitoringCalf) return null;
+            const dam = this.monitoringCalf.dam;
+            const status = value => {
+                const result = String(value ?? '').trim().toLowerCase();
+                if (this.isPregnantMating({pregnancy_result: result})) return 'Pregnant';
+                if (['-', 'n', 'negative', 'not pregnant', 'no'].includes(result)) return 'Not pregnant';
+                return result === 'inconclusive' ? 'Inconclusive' : '';
+            };
+            const recordedOn = record => record.pregnancy_check_date || record.mating_date || '';
+            const latest = this.matingRecords
+                .filter(record => status(record.pregnancy_result)
+                    && (!dam.last_calving_date || recordedOn(record) > dam.last_calving_date))
+                .sort((a, b) => recordedOn(b).localeCompare(recordedOn(a)))[0];
+            if (latest) return { ...latest, status: status(latest.pregnancy_result) };
+            const rosterStatus = status(dam.pregnancy_status);
+            return rosterStatus ? { status: rosterStatus } : null;
         },
         useDamMating(mating) {
             this.sireTyped = false;
@@ -253,6 +296,7 @@ function calfDropPage(monitoringMode = false) {
                 this.msg('Unable to read saved calf records. Check browser storage.');
             }
             this.loadInventoryCalves(true);
+            this.loadCalfHistory();
         },
         isSampleRecord(record) {
             const calfId=String(record?.calf_id??'').trim();
@@ -321,6 +365,7 @@ function calfDropPage(monitoringMode = false) {
                 mother_id: String(a.dam_id).trim(), farmer, province: this.normalizeProvince(a.province),
                 municipality: a.municipality || '', barangay: a.barangay || '', cooperative,
                 date_of_birth: dob, sex, breed: String(a.breed ?? '').trim(), sire_id: String(a.sire_id ?? '').trim(),
+                classification: a.classification, parity: a.parity,
                 monitored_date: '', reported_year: /^\d{4}$/.test(dob.slice(0,4)) ? dob.slice(0,4) : '',
                 birth_outcome: 'Live Birth', animal_status, breed_series: '',
                 remarks: [a.dam_name ? 'Dam: ' + a.dam_name : '', a.sire_name ? 'Sire: ' + a.sire_name : '', a.remarks || ''].filter(Boolean).join(' · ')
@@ -353,12 +398,29 @@ function calfDropPage(monitoringMode = false) {
                     console.warn('Calf transfer history unavailable:', error);
                     this.$dispatch('cbed-data-status', {
                         title: 'Calf transfer counts may be incomplete',
-                        description: 'Use Refresh to retry Nature of Exit history.',
+                        description: 'Reload the page to retry loading Nature of Exit history.',
                         type: 'error'
                     });
                 }
                 const seenCalfIds=new Set();
-                const calfRows=(databaseCalves ?? []).map(c=>({...c,id:'db-calf-'+c.id,database_id:c.id,source:'Calf Drop'})).concat(animals.filter(a=>this.hasDam(a)).map(a=>this.inventoryToCalf(a,coops,farmers)))
+                const normalizeId = value => String(value ?? '').trim().toLowerCase();
+                const inventoryById = new Map();
+                for (const animal of animals) {
+                    for (const identifier of [animal.animal_id, animal.registry_number, animal.bolus_id, animal.tag_number]) {
+                        const key = normalizeId(identifier);
+                        if (key && !inventoryById.has(key)) inventoryById.set(key, animal);
+                    }
+                }
+                const calfRows = (databaseCalves ?? []).map(calf => {
+                    const animal = inventoryById.get(normalizeId(calf.calf_id));
+                    const calfSex = normalizeId(calf.sex).charAt(0);
+                    const inventorySex = normalizeId(animal?.sex).charAt(0);
+                    const matchingAnimal = calfSex && inventorySex && calfSex !== inventorySex ? null : animal;
+                    return {
+                        ...calf, id: 'db-calf-' + calf.id, database_id: calf.id, source: 'Calf Drop',
+                        classification: matchingAnimal?.classification, parity: matchingAnimal?.parity,
+                    };
+                }).concat(animals.filter(a => this.hasDam(a)).map(a => this.inventoryToCalf(a, coops, farmers)));
                 this.inventoryCalves=calfRows
                     .filter(calf=>{
                         const id=String(calf.calf_id||'').trim().toLowerCase();
@@ -375,7 +437,7 @@ function calfDropPage(monitoringMode = false) {
                 if (databaseCalves === null) {
                     this.$dispatch('cbed-data-status', {
                         title: 'Calf drop history unavailable',
-                        description: 'Inventory calves are shown. Use Refresh to retry the calf drop history.',
+                        description: 'Inventory calves are shown. Reload the page to retry loading Calf Drop history.',
                         type: 'error'
                     });
                 } else if (announce) {
@@ -388,7 +450,7 @@ function calfDropPage(monitoringMode = false) {
                 console.error('Calf Drop inventory load failed:', e);
                 this.$dispatch('cbed-data-status', {
                     title: 'Calf records unavailable',
-                    description: 'Use Refresh to retry loading the records from the database.',
+                    description: 'Reload the page to retry loading records from the database.',
                     type: 'error'
                 });
             } finally { this.inventoryLoading = false; }
@@ -450,10 +512,344 @@ function calfDropPage(monitoringMode = false) {
         get birthYearSummary() {
             return this.summarizeBirthYears(this.matchingCalfRecords);
         },
+        get birthYearReportRows() {
+            const hasCalfId = record => String(record.calf_id ?? '').trim() !== '';
+            const withCalfId = new Map(this.summarizeBirthYears(this.matchingCalfRecords.filter(hasCalfId))
+                .map(item => [item.year, item]));
+            const historyTotals = this.calfHistory?.yearlyTotals ?? {};
+            const registeredTotals = new Map(this.summarizeBirthYears(this.allRecords.filter(hasCalfId))
+                .map(item => [item.year, item.count]));
+            const years = new Set([...withCalfId.keys(), ...Object.keys(historyTotals)]);
+            const rows = [...years].sort((a, b) => Number(b) - Number(a)).map(year => {
+                const historyTotal = historyTotals[year] ?? null;
+                const registeredTotal = registeredTotals.get(year) ?? 0;
+                return {
+                    year,
+                    withCalfId: withCalfId.get(year),
+                    historyTotal,
+                    registeredTotal,
+                    total: historyTotal ?? registeredTotal,
+                    notReported: historyTotal === null ? null : Math.max(0, historyTotal - registeredTotal),
+                };
+            });
+            const maximumTotal = Math.max(1, ...rows.map(row => row.total));
+            return rows.map(row => ({ ...row, totalPercent: row.total / maximumTotal * 100 }));
+        },
+        openBirthYear(item, unknownSexOnly = false) {
+            this.selectedBirthYear = item;
+            this.birthYearSex = unknownSexOnly ? 'unknown' : '';
+            this.birthYearCooperative = '';
+            this.birthYearStatus = '';
+            this.$nextTick(() => this.$refs.birthYearDialog.showModal());
+        },
+        get birthYearDialogRecords() {
+            if (!this.selectedBirthYear) return [];
+            const records = this.birthYearSex === 'unknown' ? this.selectedBirthYear.unknownSexRecords : this.selectedBirthYear.records;
+            return records.filter(record => {
+                const sex = String(record.sex ?? '').trim().toLowerCase();
+                const matchesSex = !this.birthYearSex || this.birthYearSex === 'unknown'
+                    || sex === this.birthYearSex || sex === this.birthYearSex[0];
+                return matchesSex
+                    && (!this.birthYearCooperative || String(record.cooperative ?? '').trim() === this.birthYearCooperative)
+                    && (!this.birthYearStatus || this.birthYearStatusLabel(record) === this.birthYearStatus);
+            });
+        },
+        get birthYearCooperativeOptions() {
+            return this.options('cooperative', this.selectedBirthYear?.records ?? []);
+        },
+        get birthYearStatusOptions() {
+            return [...new Set((this.selectedBirthYear?.records ?? []).map(record => this.birthYearStatusLabel(record)))]
+                .sort((a, b) => a.localeCompare(b));
+        },
+        get cooperativeDirectoryNames() {
+            return new Map(this.calfCooperatives
+                .map(cooperative => String(cooperative.cooperative_name ?? '').trim())
+                .filter(Boolean)
+                .map(name => [name.toLowerCase(), name]));
+        },
+        get birthYearPrintSummary() {
+            const cooperatives = new Map();
+            const directoryNames = this.cooperativeDirectoryNames;
+            for (const record of this.birthYearDialogRecords) {
+                if (String(record.animal_status ?? '').trim().toLowerCase() === 'dead') continue;
+                const name = directoryNames.get(String(record.cooperative ?? '').trim().toLowerCase());
+                if (!name) continue;
+                if (!cooperatives.has(name)) cooperatives.set(name, { female: 0, male: 0, total: 0 });
+                const counts = cooperatives.get(name);
+                const sex = String(record.sex ?? '').trim().toLowerCase();
+                if (sex === 'female' || sex === 'f') counts.female++;
+                if (sex === 'male' || sex === 'm') counts.male++;
+                counts.total++;
+            }
+            return [...cooperatives].sort(([a], [b]) => a.localeCompare(b));
+        },
+        printBirthYear() {
+            const summary = this.birthYearPrintSummary;
+            const count = summary.reduce((total, [, row]) => total + row.total, 0);
+            if (!count) return;
+
+            const sex = { female: 'Female', male: 'Male', unknown: 'Unknown sex' };
+            const details = [
+                count + (count === 1 ? ' record' : ' records') + ' (dead excluded)',
+                this.birthYearCooperative || 'All cooperatives',
+                sex[this.birthYearSex] || 'All sexes',
+                this.birthYearStatus || 'All statuses',
+            ].join(' · ');
+            this.printCalfTable(
+                'Calf Records for ' + this.selectedBirthYear.year,
+                details,
+                [{
+                    headers: [['Cooperative', 'F', 'M', 'Total'].map(label => ({ label }))],
+                    rows: summary.map(([name, counts]) => [name, counts.female, counts.male, counts.total]),
+                }]
+            );
+        },
+        get calfPrintYears() {
+            const years = this.summarizeBirthYears(this.allRecords).map(item => item.year);
+            return [...new Set([this.currentYear, ...years])].sort((a, b) => Number(b) - Number(a));
+        },
+        openCooperativeCalfPrint() {
+            this.calfPrintFromYear = '';
+            this.calfPrintToYear = this.currentYear;
+            this.$refs.calfPrintRangeDialog.showModal();
+        },
+        cooperativeCalfHistoryRows(reportYears) {
+            const recordsByCooperative = new Map([...this.cooperativeDirectoryNames.keys()].map(name => [name, []]));
+            for (const record of this.allRecords) {
+                if (String(record.animal_status ?? '').trim().toLowerCase() === 'dead') continue;
+                const name = String(record.cooperative ?? '').trim().toLowerCase();
+                recordsByCooperative.get(name)?.push(record);
+            }
+
+            return this.calfCooperatives.filter(cooperative => String(cooperative.cooperative_name ?? '').trim())
+                .map((cooperative, index) => {
+                    const name = cooperative.cooperative_name.trim();
+                    const years = new Map(this.summarizeBirthYears(recordsByCooperative.get(name.toLowerCase()))
+                        .map(year => [year.year, year.records]));
+                    const countSex = (year, sex) => (years.get(year) ?? []).filter(record => {
+                        const value = String(record.sex ?? '').trim().toLowerCase();
+                        return value === sex || value === sex[0];
+                    }).length || '';
+                    return [
+                        index + 1, name, cooperative.barangay, cooperative.municipality, cooperative.province,
+                        ...reportYears.flatMap(year => [countSex(year, 'female'), countSex(year, 'male')]),
+                    ];
+                });
+        },
+        printCooperativeCalfHistory() {
+            const availableYears = this.calfPrintYears;
+            if (!availableYears.includes(this.calfPrintFromYear) || !availableYears.includes(this.calfPrintToYear)
+                || this.calfPrintFromYear > this.calfPrintToYear) return;
+            const firstYear = Number(this.calfPrintFromYear);
+            const lastYear = Number(this.calfPrintToYear);
+            const years = Array.from({ length: lastYear - firstYear + 1 }, (_, index) => String(firstYear + index));
+            const locationHeaders = ['No.', 'Cooperative / Association', 'Barangay', 'Municipality', 'Province'];
+            const sections = [];
+            const yearsPerTable = 4;
+            for (let start = 0; start < years.length; start += yearsPerTable) {
+                const sectionYears = years.slice(start, start + yearsPerTable);
+                const rows = this.cooperativeCalfHistoryRows(sectionYears);
+                const sexHeaders = sectionYears.flatMap(() => [{ label: 'F' }, { label: 'M' }]);
+                const totals = sexHeaders.map((_, index) =>
+                    rows.reduce((sum, row) => sum + Number(row[locationHeaders.length + index]), 0)
+                );
+                sections.push({
+                    headers: [
+                        [
+                            ...locationHeaders.map(label => ({ label, rowSpan: 2 })),
+                            ...sectionYears.map(year => ({ label: 'Calf Drop ' + year, colSpan: 2 })),
+                        ],
+                        sexHeaders,
+                    ],
+                    rows,
+                    footer: { label: 'Total', locationColumns: locationHeaders.length - 1, totals },
+                });
+            }
+            const period = firstYear === lastYear ? String(firstYear) : firstYear + '–' + lastYear;
+            this.printCalfTable('Calf Drop History by Cooperative', period + ' · Dead excluded', sections, true);
+        },
+        async printCalfTable(title, details, sections, landscape = false) {
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                window.alert('Allow pop-ups for this site to print calf records.');
+                return;
+            }
+            const doc = printWindow.document;
+            doc.title = title;
+            const typography = doc.createElement('link');
+            typography.rel = 'stylesheet';
+            typography.href = new URL('/css/cbed-typography.css?v=1', location.origin);
+            const typographyReady = new Promise(resolve => {
+                typography.onload = resolve;
+                typography.onerror = resolve;
+            });
+            doc.head.append(typography);
+
+            const style = doc.createElement('style');
+            style.textContent = `
+                @page { ${landscape ? 'size: 13in 8.5in; margin: 7mm;' : 'margin: 12mm;'} }
+                body { ${landscape ? 'margin: 0; font-size: 9.5pt; line-height: 1.15;' : 'font-size: 11pt;'} color: #0f172a; }
+                h1 { margin: 0 0 ${landscape ? '2mm' : '4mm'}; font-size: ${landscape ? '15pt' : '18pt'}; }
+                p { margin: 0 0 ${landscape ? '2mm' : '4mm'}; }
+                table { width: 100%; border-collapse: collapse; }
+                table + table { break-before: page; }
+                table.cooperative-print { table-layout: fixed; }
+                .cooperative-print th, .cooperative-print td { overflow-wrap: anywhere; }
+                th, td { border: 1px solid #64748b; padding: ${landscape ? '0.65mm 1mm' : '2mm'}; }
+                .cooperative-print td.numeric, .cooperative-print thead tr:nth-child(2) th { padding-inline: 0.5mm; }
+                th { background: #e2e8f0; text-align: center; }
+                thead tr:nth-child(2) th { background: #ffedd5; }
+                td.numeric { text-align: center; }
+                thead { display: table-header-group; break-inside: avoid; page-break-inside: avoid; }
+                tfoot { display: table-row-group; font-weight: bold; }
+                tfoot th, tfoot td { background: #e2e8f0; }
+                tr { break-inside: avoid; }
+            `;
+            doc.head.append(style);
+
+            const heading = doc.createElement('h1');
+            heading.textContent = title;
+            const filters = doc.createElement('p');
+            filters.textContent = details;
+            doc.body.append(heading, filters);
+            for (const { headers, rows, footer } of sections) {
+                doc.body.append(this.buildCalfPrintTable(doc, headers, rows, footer, landscape));
+            }
+            await typographyReady;
+            await doc.fonts?.ready;
+            if (printWindow.closed) return;
+            printWindow.addEventListener('afterprint', () => printWindow.close(), { once: true });
+            printWindow.focus();
+            printWindow.print();
+        },
+        buildCalfPrintTable(doc, headers, rows, footer, landscape) {
+            const table = doc.createElement('table');
+            if (landscape) {
+                table.className = 'cooperative-print';
+                const columns = doc.createElement('colgroup');
+                const countWidths = headers[1].map(() => 3);
+                const cooperativeWidth = 59 - countWidths.length * 3;
+                for (const width of [4, cooperativeWidth, 13, 14, 10, ...countWidths]) {
+                    const column = doc.createElement('col');
+                    column.style.width = width + '%';
+                    columns.append(column);
+                }
+                table.append(columns);
+            }
+            const head = table.createTHead();
+            for (const labels of headers) {
+                const header = head.insertRow();
+                for (const { label, colSpan = 1, rowSpan = 1 } of labels) {
+                    const cell = doc.createElement('th');
+                    cell.scope = colSpan > 1 ? 'colgroup' : 'col';
+                    cell.colSpan = colSpan;
+                    cell.rowSpan = rowSpan;
+                    cell.textContent = label;
+                    header.append(cell);
+                }
+            }
+            const body = table.createTBody();
+            for (const values of rows) {
+                const row = body.insertRow();
+                for (const value of values) {
+                    const cell = row.insertCell();
+                    cell.textContent = value ?? '';
+                    if (typeof value === 'number') cell.className = 'numeric';
+                }
+            }
+            if (footer) {
+                const row = table.createTFoot().insertRow();
+                const label = doc.createElement('th');
+                label.scope = 'row';
+                label.textContent = footer.label;
+                row.append(label);
+                row.insertCell().colSpan = footer.locationColumns;
+                for (const total of footer.totals) {
+                    const cell = row.insertCell();
+                    cell.className = 'numeric';
+                    cell.textContent = total;
+                }
+            }
+            return table;
+        },
+        get birthYearDialogStats() {
+            const records = this.birthYearDialogRecords;
+            const statuses = new Map();
+            const directoryNames = this.cooperativeDirectoryNames;
+            const representedCooperatives = new Set();
+            let female = 0;
+            let male = 0;
+            let heifers = 0;
+            let cows = 0;
+            let parityTotal = 0;
+            for (const record of records) {
+                const cooperative = String(record.cooperative ?? '').trim().toLowerCase();
+                if (directoryNames.has(cooperative)) representedCooperatives.add(cooperative);
+                const sex = String(record.sex ?? '').trim().toLowerCase();
+                const parity = Number(String(record.parity ?? '').trim() || NaN);
+                if (sex === 'female' || sex === 'f') {
+                    female++;
+                    if (parity === 0) heifers++;
+                    if (Number.isFinite(parity) && parity >= 1) cows++;
+                }
+                if (sex === 'male' || sex === 'm') male++;
+
+                if (Number.isFinite(parity)) parityTotal += parity;
+
+                const label = this.birthYearStatusLabel(record);
+                statuses.set(label, (statuses.get(label) ?? 0) + 1);
+            }
+            return {
+                total: records.length, female, male, heifers, cows, parityTotal,
+                cooperativeTotal: representedCooperatives.size,
+                statuses: [...statuses].sort(([a], [b]) => a.localeCompare(b)),
+            };
+        },
+        birthYearCalfStatus(record) {
+            const calfId = String(record.calf_id ?? '').trim().toLowerCase();
+            return this.transferredCalfIds.has(calfId)
+                ? 'Transferred'
+                : String(record.animal_status ?? '').trim();
+        },
+        birthYearStatusLabel(record) {
+            const status = this.birthYearCalfStatus(record).toLowerCase();
+            return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unrecorded';
+        },
+        birthYearCalfClassification(record) {
+            const classification = String(record.classification ?? '').trim().replace(/^[-–—]$/, '');
+
+            const birthday = String(record.date_of_birth ?? '').slice(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return classification || 'Unclassified';
+            const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Manila' });
+            if (today < birthday) return classification || 'Unclassified';
+            const age = Number(today.slice(0, 4)) - Number(birthday.slice(0, 4))
+                - Number(today.slice(5) < birthday.slice(5));
+            if (age >= 1 && classification) return classification;
+
+            const sex = String(record.sex ?? '').trim().toLowerCase();
+            if (sex === 'female' || sex === 'f') {
+                if (age < 1) return 'Female Calf';
+                if (age < 2) return 'Yearling Heifer';
+                return 'Heifer';
+            }
+            if (sex === 'male' || sex === 'm') {
+                if (age < 1) return 'Male Calf';
+                if (age < 2) return 'Yearling Bull';
+                if (age < 4) return 'Junior Bull';
+                return 'Senior Bull';
+            }
+            return classification || 'Unknown sex';
+        },
+        birthYearCalfParityDisplay(record) {
+            const classification = this.birthYearCalfClassification(record).toLowerCase();
+            return ['yearling heifer', 'female calf'].includes(classification) ? '—' : (record.parity ?? '—');
+        },
         get cooperativeBirthYearSummaries() {
+            const directoryNames = this.cooperativeDirectoryNames;
             const groups=new Map();
             for(const record of this.matchingCalfRecords){
-                const name=String(record.cooperative??'').trim();
+                const name = directoryNames.get(String(record.cooperative ?? '').trim().toLowerCase());
+                if (!name) continue;
                 if(!groups.has(name))groups.set(name,[]);
                 groups.get(name).push(record);
             }
@@ -479,15 +875,16 @@ function calfDropPage(monitoringMode = false) {
             });
             const years=[...counts.entries()].map(([year,records])=>{
                 const breakdown={male:{live:0,dead:0,transferred:0},female:{live:0,dead:0,transferred:0}};
+                const unknownSexRecords = [];
                 for(const record of records.values()){
                     const sex=String(record.sex??'').trim().toLowerCase();
-                    const calfId=String(record.calf_id??'').trim().toLowerCase();
-                    const status=this.transferredCalfIds.has(calfId) ? 'transferred' : String(record.animal_status??'').trim().toLowerCase();
+                    if (!['female', 'f', 'male', 'm'].includes(sex)) unknownSexRecords.push(record);
+                    const status=this.birthYearCalfStatus(record).toLowerCase();
                     if((sex==='male'||sex==='female')&&['live','dead','transferred'].includes(status)){
                         breakdown[sex][status]++;
                     }
                 }
-                return {year,count:records.size,...breakdown};
+                return {year,count:records.size,unknownSexCount:unknownSexRecords.length,unknownSexRecords,records:[...records.values()],...breakdown};
             });
             const max=Math.max(1,...years.map(item=>item.count));
             return years.map(item=>({...item,percent:item.count/max*100})).sort((a,b)=>Number(b.year)-Number(a.year));
@@ -557,19 +954,32 @@ function calfDropPage(monitoringMode = false) {
                 this.toggleSeriesOptions(true);
                 this.verifyCalfSeries();
             }
-            if (this.showMatingPicker) this.loadMonitoringMatings(context);
+            this.loadMonitoringMatings(context);
         },
         async loadMonitoringMatings(context = this.monitoringCalf) {
             const lookup = ++this.matingLookup;
             this.loadingDueMatings = true;
             this.dueMatingsError = '';
             try {
+                if (!navigator.onLine && context.cachedMatings) {
+                    this.matingRecords = context.cachedMatings;
+                    return;
+                }
                 const response = await fetch(context.matingRecordsUrl, {headers: {Accept: 'application/json'}, cache: 'no-store'});
-                if (!response.ok) throw new Error();
+                if (!response.ok || response.redirected) {
+                    const error = new Error();
+                    error.status = response.redirected ? 401 : response.status;
+                    throw error;
+                }
                 const records = await response.json();
                 if (this.matingLookup === lookup) this.matingRecords = records;
-            } catch {
-                if (this.matingLookup === lookup) this.dueMatingsError = 'Could not load mating records.';
+            } catch (error) {
+                if (this.matingLookup === lookup) {
+                    if (!error.status && context.cachedMatings) this.matingRecords = context.cachedMatings;
+                    else this.dueMatingsError = !error.status && !context.cachedMatings
+                        ? 'Pregnancy and mating details for this animal aren’t available offline yet. Open Monitoring while connected to update them.'
+                        : 'Could not load pregnancy and mating details.';
+                }
             } finally {
                 if (this.matingLookup === lookup) this.loadingDueMatings = false;
             }
@@ -1030,7 +1440,40 @@ function calfDropPage(monitoringMode = false) {
         },
         resetFilters() { this.search='';this.filterCooperative='';this.filterProvince='';this.filterBreed='';this.filterSex='';this.filterReportedYear='';this.page=1; },
         msg(message) { this.notice=message;clearTimeout(this.noticeTimer);this.noticeTimer=setTimeout(()=>{this.notice='';},3500); },
-        exportCSV() { const escapeCSV=value=> '"'+String(value??'').replace(/"/g,'""')+'"';const lines=[this.fields.map(escapeCSV).join(','),...this.filteredRecords.map(r=>this.fields.map(f=>escapeCSV(r[f])).join(','))];const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='calfdrop_records.csv';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url); },
+        openCalfHistory() {
+            this.$refs.calfHistoryDialog.showModal();
+            this.loadCalfHistory();
+        },
+        async loadCalfHistory() {
+            if (this.calfHistory || this.calfHistoryLoading) return;
+            this.calfHistoryLoading = true;
+            this.calfHistoryError = '';
+            try {
+                const response = await fetch(@js(route('ui.calves.history', [], false)), { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('History request failed');
+                this.calfHistory = await response.json();
+            } catch {
+                this.calfHistoryError = 'Calf Drop History could not be loaded.';
+            } finally {
+                this.calfHistoryLoading = false;
+            }
+        },
+        exportCSV() {
+            const escapeCSV = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+            const lines = [
+                this.fields.map(escapeCSV).join(','),
+                ...this.filteredRecords.map(record => this.fields.map(field => escapeCSV(record[field])).join(',')),
+            ];
+            const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'calfdrop_records.csv';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        },
         importCSV(event) {
             const file=event.target.files&&event.target.files[0];
             if(!file)return;

@@ -28,8 +28,10 @@
                 <thead class="bg-[#103c60] text-xs uppercase text-white">
                     <tr>
                         <th scope="col" class="sticky left-0 z-10 min-w-40 bg-[#103c60] px-5 py-3">Full Name</th>
+                        <th scope="col" class="px-5 py-3">Sex</th>
                         <th scope="col" class="px-5 py-3">Email</th>
                         <th scope="col" class="px-5 py-3">Role</th>
+                        <th scope="col" class="px-5 py-3">Status</th>
                         <th scope="col" class="px-5 py-3">Actions</th>
                     </tr>
                 </thead>
@@ -40,8 +42,10 @@
                         @endphp
                         <tr class="group hover:bg-slate-50">
                             <th scope="row" class="sticky left-0 z-10 break-words bg-white px-5 py-3 font-semibold text-slate-900 group-hover:bg-slate-50">{{ $fullName !== '' ? $fullName : 'Name not set' }}</th>
+                            <td class="px-5 py-3">{{ \App\Models\User::SEX_OPTIONS[$account->sex] ?? '—' }}</td>
                             <td class="break-all px-5 py-3">{{ $account->email }}</td>
                             <td class="whitespace-nowrap px-5 py-3">{{ $roles[$account->role] ?? $account->role }}</td>
+                            <td class="whitespace-nowrap px-5 py-3">{{ $account->is_active ? 'Active' : 'Deactivated' }}</td>
                             <td class="whitespace-nowrap px-5 py-3">
                                 <div class="flex items-center">
                                     @foreach ($rowActions as $option => [$label, $icon])
@@ -57,7 +61,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="px-5 py-10 text-center text-slate-500">No accounts on this page.</td></tr>
+                        <tr><td colspan="6" class="px-5 py-10 text-center text-slate-500">No accounts on this page.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -92,6 +96,14 @@
                     <input name="last_name" value="{{ $errors->signup->any() && is_string(old('last_name')) ? old('last_name') : '' }}" class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal" required maxlength="127" autocomplete="off">
                 </label>
             </div>
+            <label class="block text-sm font-semibold">Sex
+                <select name="sex" class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal">
+                    <option value="">Not specified</option>
+                    @foreach (\App\Models\User::SEX_OPTIONS as $value => $label)
+                        <option value="{{ $value }}" @selected($errors->signup->any() && old('sex') === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
             <label class="block text-sm font-semibold">Email
                 <input type="email" name="email" value="{{ $errors->signup->any() && is_string(old('email')) ? old('email') : '' }}" class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal" required maxlength="255" autocomplete="off">
             </label>

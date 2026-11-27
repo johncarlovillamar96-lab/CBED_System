@@ -18,8 +18,10 @@
     @if ($action === 'view')
         <dl class="space-y-4 break-words p-6">
             <div><dt class="text-sm text-slate-500">Full Name</dt><dd class="font-semibold">{{ $selectedAccount->name }}</dd></div>
+            <div><dt class="text-sm text-slate-500">Sex</dt><dd class="font-semibold">{{ \App\Models\User::SEX_OPTIONS[$selectedAccount->sex] ?? 'Not specified' }}</dd></div>
             <div><dt class="text-sm text-slate-500">Email</dt><dd class="font-semibold">{{ $selectedAccount->email }}</dd></div>
             <div><dt class="text-sm text-slate-500">Role</dt><dd class="font-semibold">{{ $roleLabel }}</dd></div>
+            <div><dt class="text-sm text-slate-500">Status</dt><dd class="font-semibold">{{ $selectedAccount->is_active ? 'Active' : 'Deactivated' }}</dd></div>
         </dl>
     @elseif ($action === 'edit')
         <form method="POST" action="{{ route('signup.update', $selectedAccount, absolute: false) }}" class="space-y-4 p-6">
@@ -38,6 +40,14 @@
                            required maxlength="{{ $maxLength }}" class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal">
                 </label>
             @endforeach
+            <label class="block text-sm font-semibold">Sex
+                <select name="sex" class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal">
+                    <option value="">Not specified</option>
+                    @foreach (\App\Models\User::SEX_OPTIONS as $value => $label)
+                        <option value="{{ $value }}" @selected(($errors->accountEdit->any() ? old('sex') : $selectedAccount->sex) === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+            </label>
             @if ($isOwnAccount)
                 <p class="text-sm"><strong>Role</strong> {{ $roleLabel }}</p>
                 <input type="hidden" name="role" value="{{ $selectedAccount->role }}">
@@ -47,6 +57,13 @@
                         @foreach ($roles as $value => $label)
                             <option value="{{ $value }}" @selected(($errors->accountEdit->any() ? old('role') : $selectedAccount->role) === $value)>{{ $label }}</option>
                         @endforeach
+                    </select>
+                </label>
+                <label class="block text-sm font-semibold">Status
+                    @php($active = (string) old('is_active', (int) $selectedAccount->is_active))
+                    <select name="is_active" required class="mt-1 block w-full rounded-lg border border-slate-300 p-2.5 font-normal">
+                        <option value="1" @selected($active === '1')>Active</option>
+                        <option value="0" @selected($active === '0')>Deactivated</option>
                     </select>
                 </label>
             @endif

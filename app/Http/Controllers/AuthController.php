@@ -26,12 +26,22 @@ class AuthController extends Controller
 
         if ($credentials['password'] !== 'ChangeMe123!' && strlen($credentials['password']) <= 72 && Auth::attemptWhen(
             $credentials,
-            fn (User $user) => isset(User::ROLES[$user->role]),
+            fn (User $user) => $user->is_active && isset(User::ROLES[$user->role]),
             $request->boolean('remember'),
         )) {
             $request->session()->regenerate();
+            $user = $request->user();
+            $name = trim($user->first_name.' '.$user->last_name) ?: trim((string) $user->name);
+            $title = match ($user->sex) {
+                'male' => 'Sir',
+                'female' => 'Ma’am',
+                default => '',
+            };
+            $request->session()->flash('login_welcome', [
+                'name' => trim($title.' '.$name),
+            ]);
 
-            if ($request->user()->role === User::TECHNICIAN) {
+            if ($user->role === User::TECHNICIAN) {
                 $request->session()->forget('url.intended');
 
                 return redirect()->route('ui.monitoring');
@@ -42,13 +52,13 @@ class AuthController extends Controller
 
         return back()->withErrors([
             'email' => 'The provided credentials do not match our records.',
-        ])->onlyInput('email');
+        ])->onlyInput('email', 'remember');
     }
 
     public function showSignup(Request $request)
     {
         $perPage = TablePagination::size($request);
-        $accounts = User::query()->latest('id')->paginate($perPage, ['id', 'name', 'first_name', 'last_name', 'email', 'role'])
+        $accounts = User::query()->latest('id')->paginate($perPage, ['id', 'name', 'first_name', 'last_name', 'sex', 'email', 'role', 'is_active'])
             ->appends(['per_page' => $perPage]);
 
         $action = $request->query('action');
@@ -77,6 +87,7 @@ class AuthController extends Controller
         $data = $request->validateWithBag('signup', [
             'first_name' => ['required', 'string', 'max:127'],
             'last_name' => ['required', 'string', 'max:127'],
+            'sex' => ['nullable', Rule::in(array_keys(User::SEX_OPTIONS))],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => [
                 'bail', 'required', 'string', 'confirmed', Password::min(User::MIN_PASSWORD_LENGTH), Rule::notIn(['ChangeMe123!']),
@@ -104,16 +115,20 @@ class AuthController extends Controller
         $data = $request->validateWithBag('accountEdit', [
             'first_name' => ['required', 'string', 'max:127'],
             'last_name' => ['required', 'string', 'max:127'],
+            'sex' => ['nullable', Rule::in(array_keys(User::SEX_OPTIONS))],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($account)],
             'role' => ['required', Rule::in(array_keys(User::ROLES))],
+            'is_active' => ['sometimes', 'required', 'boolean'],
         ]);
 
         $adminId = (int) $request->user()->getKey();
         abort_if($adminId === $account && $data['role'] !== User::ADMIN, 403, 'You cannot change your own role.');
+        abort_if($adminId === $account && isset($data['is_active']) && ! $data['is_active'], 403, 'You cannot deactivate your own account.');
 
         DB::transaction(function () use ($adminId, $account, $data) {
             $users = User::whereKey([$adminId, $account])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-            abort_unless($users->get($adminId)?->isAdmin(), 403);
+            $admin = $users->get($adminId);
+            abort_unless($admin?->is_active && $admin->isAdmin(), 403);
             $user = $users->get($account);
             abort_unless($user, 404);
             $user->update(['name' => $data['first_name'].' '.$data['last_name']] + $data);

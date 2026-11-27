@@ -18,3 +18,4 @@
 .phpunit.cache
 .DS_Store
 Thumbs.db
+/resources/data/calf-drop-history.json

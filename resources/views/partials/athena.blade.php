@@ -1,6 +1,6 @@
 <div x-data="athenaAssistant()" x-cloak>
     <button type="button" @click="open = true; $nextTick(() => $refs.question.focus())"
-            class="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#0b1f3a] px-5 py-3 text-sm font-bold text-white shadow-xl transition hover:bg-[#122b4d]"
+            class="cbed-mobile-floating fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full bg-[#0b1f3a] px-5 py-3 text-sm font-bold text-white shadow-xl transition hover:bg-[#122b4d]"
             aria-label="Open Athena AI assistant">
         <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
         <span>Ask Athena</span>

@@ -18,11 +18,23 @@
         </div>
         <div class="flex flex-wrap gap-2">
             @if(auth()->user()->canManageMonitoring() && !$cooperatives->isEmpty())<button type="button" onclick="openMonitoringModal()" class="cbed-add-button inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold"><i class="fa-solid fa-plus"></i>Add Monitoring Record</button>@endif
-            <a href="{{ route('ui.activity-logs.monitoring') }}" class="action-secondary"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity Logs</a>
+            @if(empty($offlineShell))<a href="{{ route('ui.activity-logs.monitoring') }}" class="action-secondary"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity Logs</a>@endif
         </div>
     </div>
 
     @if(auth()->user()->canManageMonitoring())
+    <section id="monitoring-sync-panel" hidden class="mb-6 rounded-xl border border-slate-200 bg-white px-4 py-3 print:hidden" aria-label="Monitoring synchronization">
+        <div id="monitoring-offline-strip" class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <strong id="monitoring-connection" role="status">Checking connection…</strong>
+                <span>Pending <strong id="monitoring-pending-count">0</strong></span>
+                <span>Last sync <time id="monitoring-last-sync">Never</time></span>
+            </div>
+            <button id="monitoring-sync-now" type="button" class="action-secondary disabled:opacity-50" disabled>Sync Now</button>
+        </div>
+        <p id="monitoring-sync-message" class="mt-1 text-sm text-slate-600" role="status"></p>
+        <ul id="monitoring-pending-list" class="mt-2 space-y-2"></ul>
+    </section>
     @if($cooperatives->isEmpty())
         <p class="mb-6 rounded-lg bg-amber-100 p-3 text-sm text-amber-900">Add a cooperative before creating a monitoring report.</p>
     @endif
@@ -125,6 +137,7 @@
     @include('partials.animal-exit-dialog', ['monitoringExit' => true])
     @endif
 
+    @if(empty($offlineShell))
     <details @if(request()->hasAny(['view', 'month', 'date'])) open @endif class="group inventory-panel mb-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5 [&::-webkit-details-marker]:hidden">
             <h2 class="text-lg font-bold text-slate-900">Monitoring Calendar</h2>
@@ -272,10 +285,15 @@
         </div>
         <p id="monitoring-pagination-status" class="sr-only print:hidden" role="status"></p>
     </section>
+    @endif
 </div>
 @endsection
 
 @push('styles')
+@if(auth()->user()->canManageMonitoring())
+    <link rel="manifest" href="/monitoring.webmanifest">
+    <link rel="apple-touch-icon" href="/images/monitoring-icon-192.png">
+@endif
 <style>
 .monitoring-page [x-cloak]{display:none!important}
 .shared-calf-modal .form-input,.shared-mating-modal .form-input{width:100%;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;padding:.625rem .75rem;font-size:.875rem;color:#1e293b;outline:none}
@@ -324,7 +342,7 @@
     #animal-monitoring-print,#animal-monitoring-print *{visibility:visible!important}
     #monitoring-record-table{overflow:visible!important;border:0!important;box-shadow:none!important}
     .monitoring-page{overflow:visible!important;min-width:0!important;background:#fff!important}
-    #animal-monitoring-print{display:block!important;position:absolute!important;inset:0 auto auto 0!important;width:100%!important;margin:0!important;padding:0!important;background:#fff!important;color:#000!important;font-family:Arial,sans-serif!important}
+    #animal-monitoring-print{display:block!important;position:absolute!important;inset:0 auto auto 0!important;width:100%!important;margin:0!important;padding:0!important;background:#fff!important;color:#000!important;font-family:var(--cbed-font)!important}
     #animal-monitoring-print .inventory-table-scroll{overflow:visible!important}
     #animal-monitoring-print .monitoring-print-header{display:block!important;margin-bottom:3mm;text-align:center;font-size:8pt;line-height:1.2}
     #animal-monitoring-print .monitoring-print-header p{margin:0}
@@ -353,6 +371,7 @@
 @endif
 
 @push('scripts')
+@if(auth()->user()->canManageMonitoring())<script src="/js/monitoring-offline.js?v=7"></script>@endif
 <script>
 let monitoringAnimals = [], monitoringRoster = [], bcsOptions = [];
 let monitoringSubmitting = false;
@@ -364,6 +383,7 @@ const monitoringDialog = document.getElementById('monitoring-modal');
     const pager = document.getElementById('monitoring-table-pagination');
     const rows = document.getElementById('monitoring-table-rows');
     const status = document.getElementById('monitoring-pagination-status');
+    if (!pager || !rows) return;
     let pending;
 
     async function loadPage(url, focusSelector) {
@@ -389,7 +409,7 @@ const monitoringDialog = document.getElementById('monitoring-modal');
             document.getElementById('animal-monitoring-print').replaceWith(printable);
             document.querySelector('#monitoring-record-table input[name="table_per_page"]').value =
                 pager.querySelector('select[name="table_per_page"]').value;
-            if (restoreFocus) (pager.querySelector(focusSelector) || pager).focus({preventScroll: true});
+            if (restoreFocus) ((focusSelector && pager.querySelector(focusSelector)) || pager).focus({preventScroll: true});
             status.textContent = pager.querySelector('p').textContent.replace(/\s+/g, ' ').trim();
         } catch (error) {
             if (request.signal.aborted) return;
@@ -416,6 +436,7 @@ const monitoringDialog = document.getElementById('monitoring-modal');
     pager.addEventListener('change', event => {
         if (event.target.matches('[data-page-jump]')) loadPage(event.target.value, '[data-page-jump]');
     });
+    window.addEventListener('monitoring-reports-synced', () => loadPage(location.href));
     pager.addEventListener('submit', event => {
         event.preventDefault();
         const url = new URL(event.target.action);
@@ -425,6 +446,34 @@ const monitoringDialog = document.getElementById('monitoring-modal');
 })();
 
 @if(auth()->user()->canManageMonitoring())
+let editingMonitoringDraft = null;
+const monitoringForm = document.getElementById('monitoring-form');
+const monitoringOffline = window.MonitoringOffline ? new MonitoringOffline({
+    account: @json((string) auth()->id()),
+    contextUrl: @json(route('ui.monitoring.offline-context', absolute: false)),
+    syncUrl: @json(route('ui.monitoring.offline-sync', absolute: false)),
+    shell: @json(!empty($offlineShell)),
+    onChange: renderMonitoringSync,
+}) : null;
+monitoringOffline?.start().catch(() => {});
+document.getElementById('monitoring-sync-now').addEventListener('click', () => monitoringOffline?.run(true));
+monitoringDialog.addEventListener('close', () => {
+    if (editingMonitoringDraft) {
+        monitoringAnimalsRequest?.abort();
+        monitoringAnimalsRequest = null;
+        monitoringAnimals = [];
+        monitoringRoster = [];
+        monitoringRosterLoaded = false;
+        const cooperative = monitoringForm.elements.cooperative_id;
+        cooperative.value = '';
+        cooperative.closest('[x-data]')?.dispatchEvent(new Event('monitoring-selection'));
+        populateMonitoringFarmers();
+        document.getElementById('monitoring-loading').classList.add('hidden');
+        renderMonitoringRows();
+    }
+    if (monitoringOffline) monitoringOffline.editing = null;
+    editingMonitoringDraft = null;
+});
 monitoringDialog.addEventListener('cancel', (event) => {
     if (monitoringSubmitting) event.preventDefault();
 });
@@ -435,16 +484,105 @@ const monitoringSpecs = {
   health_nutrition: {label:'Health and Nutrition'},
   nature_of_exit: {label:'Nature of Exit'},
 };
-async function openMonitoringModal() {
+function renderMonitoringSync({online, locked, enabled, drafts, lastSync, syncing, preparing, message}) {
+    window.dispatchEvent(new CustomEvent('cbed-monitoring-connection', {detail: {online}}));
+    document.getElementById('monitoring-sync-panel').hidden = online && !locked && !drafts.length;
+    document.getElementById('monitoring-offline-strip').classList.toggle('hidden', online);
+    const status = document.getElementById('monitoring-connection');
+    status.textContent = online ? 'Online' : 'Offline';
+    status.className = online ? 'text-emerald-700' : 'text-amber-800';
+    document.getElementById('monitoring-pending-count').textContent = drafts.length;
+    const last = document.getElementById('monitoring-last-sync');
+    last.textContent = lastSync ? new Date(lastSync).toLocaleString() : 'Never';
+    if (lastSync) last.dateTime = new Date(lastSync).toISOString();
+    else last.removeAttribute('datetime');
+    document.getElementById('monitoring-sync-now').disabled = !navigator.onLine || locked || !enabled || syncing;
+    document.getElementById('monitoring-sync-message').textContent = locked
+        ? 'Sign in and reopen Monitoring to unlock local data and sync.'
+        : (!enabled ? 'Offline storage is unavailable in this browser.' : (syncing ? 'Syncing…' : (preparing ? 'Preparing cooperative data for offline use…' : message || '')));
+    const list = document.getElementById('monitoring-pending-list');
+    list.replaceChildren(...drafts.map(draft => {
+        const item = document.createElement('li');
+        item.className = 'flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm';
+        const summary = document.createElement('span');
+        summary.className = 'grow';
+        summary.textContent = draft.cooperative + ' · ' + draft.payload.monitoring_date + ' · ' + draft.payload.rows.length + ' animal(s)';
+        item.append(summary);
+        if (draft.reportId || draft.closed) {
+            if (draft.reportId) {
+                const report = document.createElement('a');
+                report.href = '/monitoring/reports/' + encodeURIComponent(draft.reportId);
+                report.className = 'font-semibold text-blue-700 underline';
+                report.textContent = 'View synced report';
+                item.append(report);
+            }
+            const discard = document.createElement('button');
+            discard.type = 'button';
+            discard.className = 'font-semibold text-rose-700 underline';
+            discard.textContent = 'Discard local copy';
+            discard.addEventListener('click', () => {
+                if (confirm('Discard this local copy?')) monitoringOffline.discardConfirmed(draft);
+            });
+            item.append(discard);
+        } else {
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'font-semibold text-blue-700 underline disabled:opacity-50';
+            edit.textContent = 'Edit pending report';
+            edit.disabled = monitoringOffline?.submitting.has(draft.id);
+            edit.addEventListener('click', () => openMonitoringModal(draft));
+            item.append(edit);
+        }
+        if (draft.error) {
+            const error = document.createElement('p');
+            error.className = 'w-full text-rose-800';
+            error.textContent = draft.error;
+            item.append(error);
+        }
+        return item;
+    }));
+    if (locked && monitoringDialog.open && !monitoringSubmitting) monitoringDialog.close();
+}
+
+async function openMonitoringModal(draft = null) {
     if (monitoringDialog.open) return;
+    if (monitoringOffline?.locked || (draft && monitoringOffline?.submitting.has(draft.id))) return;
+    if (draft) {
+        editingMonitoringDraft = draft;
+        monitoringOffline.editing = draft.id;
+    } else if (monitoringAnimals.length === 0) {
+        monitoringForm.elements.monitoring_date.value = new Date().toLocaleDateString('sv-SE', {timeZone: 'Asia/Manila'});
+    }
+    document.getElementById('monitoring-modal-title').textContent = draft ? 'Edit Pending Monitoring Record' : 'Add Monitoring Record';
     monitoringDialog.showModal();
     renderMonitoringRows();
     if (!bcsOptions.length) {
         try {
-            const response = await fetch(@json(route('ui.monitoring.bcs-scores', absolute: false)), {headers: {Accept: 'application/json'}});
-            if (response.ok) bcsOptions = await response.json();
+            const cached = await monitoringOffline?.lookup('bcs');
+            if (cached) bcsOptions = cached;
+            else {
+                const response = await fetch(@json(route('ui.monitoring.bcs-scores', absolute: false)), {headers: {Accept: 'application/json'}});
+                if (response.ok) bcsOptions = await response.json();
+            }
         } catch (error) {
             console.warn('BCS values unavailable', error);
+        }
+    }
+    if (draft && monitoringDialog.open && editingMonitoringDraft === draft) {
+        const cooperative = monitoringForm.elements.cooperative_id;
+        if (![...cooperative.options].some(option => option.value === String(draft.payload.cooperative_id))) {
+            cooperative.add(new Option(draft.cooperative, draft.payload.cooperative_id));
+        }
+        cooperative.value = draft.payload.cooperative_id;
+        monitoringForm.elements.monitoring_date.value = draft.payload.monitoring_date;
+        await loadMonitoringRoster();
+        if (monitoringDialog.open && editingMonitoringDraft === draft) {
+            monitoringAnimals = JSON.parse(JSON.stringify(draft.rows));
+            const farmer = document.getElementById('monitoring-farmer-filter');
+            farmer.value = draft.farmer || '';
+            farmer.dispatchEvent(new Event('change'));
+            // Update the searchable picker without issuing another roster request.
+            cooperative.closest('[x-data]')?.dispatchEvent(new Event('monitoring-selection'));
         }
     }
     if (monitoringAnimals.length) renderMonitoringRows();
@@ -511,7 +649,10 @@ function renderMonitoringRows() {
 }
 
 function renderMonitoringRow(row, index, position, selected) {
-    const options = farmerMonitoringAnimals(row._farmerId).map(animal => {
+    const farmerAnimals = farmerMonitoringAnimals(row._farmerId);
+    const missing = row.carabao_id && !farmerAnimals.some(animal => animal.carabao_id === row.carabao_id)
+        ? `<option value="${row.carabao_id}" selected>${escapeMonitoring(monitoringAnimalLabel(row))} (saved draft)</option>` : '';
+    const options = missing + farmerAnimals.map(animal => {
         const isSelected = animal.carabao_id === row.carabao_id;
         return `<option value="${animal.carabao_id}" ${isSelected ? 'selected' : (selected.has(animal.carabao_id) ? 'disabled' : '')}>${escapeMonitoring(monitoringAnimalLabel(animal))}</option>`;
     }).join('');
@@ -594,6 +735,8 @@ function openMonitoringService(index, service) {
         bodyConditionScore: row._bcs,
         hasService: Boolean(row._services[service]),
         data: row._services[service] || {},
+        cachedMatings: monitoringOffline?.matingHistory(cooperative.selectedOptions[0]?.dataset.animalsUrl, row.carabao_id),
+        lookupBulls: () => monitoringOffline?.lookup('bulls'),
     };
     if (service === 'calf_monitoring') {
         context.otherCalfDrafts = monitoringAnimals.flatMap((animal, rowIndex) => {
@@ -651,9 +794,20 @@ async function loadMonitoringRoster() {
     farmer.value = '';
     populateMonitoringFarmers();
     renderMonitoringRows();
-    if (!request) return;
+    if (!request) {
+        loading.classList.add('hidden');
+        return;
+    }
 
     try {
+        if (monitoringOffline?.enabled) {
+            const data = await monitoringOffline.roster(url, request.signal);
+            if (monitoringAnimalsRequest !== request) return;
+            monitoringRoster = data;
+            monitoringRosterLoaded = true;
+            populateMonitoringFarmers();
+            return;
+        }
         const response = await fetch(url, {
             headers: {Accept: 'application/json'},
             cache: 'no-store',
@@ -705,7 +859,7 @@ document.getElementById('monitoring-farmer-filter').addEventListener('input', (e
     }
     renderMonitoringRows();
 });
-document.getElementById('monitoring-form').addEventListener('submit', (event) => {
+monitoringForm.addEventListener('submit', async (event) => {
     if (monitoringSubmitting) {
         event.preventDefault();
         return;
@@ -726,6 +880,44 @@ document.getElementById('monitoring-form').addEventListener('submit', (event) =>
     const button = document.getElementById('monitoring-submit-button');
     button.disabled = true;
     button.textContent = 'Saving…';
+    if (!monitoringOffline?.enabled) return;
+
+    event.preventDefault();
+    try {
+        const payload = {rows: {}};
+        for (const [name, value] of new FormData(monitoringForm)) {
+            if (name === '_token') continue;
+            const field = name.match(/^rows\[(\d+)\]\[([a-z_]+)\](?:\[([a-z_]+)\])?$/);
+            if (!field) {
+                payload[name] = value;
+            } else {
+                const [, index, key, service] = field;
+                const row = payload.rows[index] ??= {};
+                if (service) (row[key] ??= {})[service] = value;
+                else row[key] = value;
+            }
+        }
+        payload.rows = Object.values(payload.rows);
+        const cooperative = monitoringForm.elements.cooperative_id;
+        await monitoringOffline.save({
+            payload,
+            cooperative: cooperative.selectedOptions[0].textContent.trim(),
+            farmer: document.getElementById('monitoring-farmer-filter').value,
+            rows: monitoringRows().map(({row}) => row),
+        }, editingMonitoringDraft);
+        monitoringAnimals = [];
+        monitoringDialog.close();
+        monitoringOffline.editing = null;
+        editingMonitoringDraft = null;
+        monitoringOffline.run();
+    } catch (exception) {
+        document.getElementById('monitoring-error-message').textContent = exception.message || 'Could not save this report on this device.';
+        error.classList.remove('hidden');
+    } finally {
+        monitoringSubmitting = false;
+        button.textContent = 'Save Report';
+        renderMonitoringRows();
+    }
 });
 document.getElementById('monitoring-animal-rows').addEventListener('input', (event) => {
     const field = event.target.name.match(/^rows\[(\d+)\]\[(remarks|body_condition_score)\]$/);

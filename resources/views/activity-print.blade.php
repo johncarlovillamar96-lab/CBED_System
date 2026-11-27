@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Activity and Accomplishment Report</title>
     <style>
-        body { color: #172435; font: 14px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 76rem; padding: 0 1rem; }
+        body { color: #172435; font-size: 14px; line-height: 1.5; margin: 2rem auto; max-width: 76rem; padding: 0 1rem; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border-bottom: 1px solid #cbd5e1; padding: .45rem; text-align: left; vertical-align: top; }
         dt, summary { font-weight: 600; }
@@ -13,6 +13,7 @@
         .activity-metrics { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; }
         @media print { .print-button { display: none; } body { margin: 0; max-width: none; } tr { break-inside: avoid; } }
     </style>
+    @include('partials.typography')
 </head>
 <body>
     <button class="print-button" onclick="window.print()">Print Report</button>

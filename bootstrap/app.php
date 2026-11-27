@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Middleware\EnsureActiveAccount;
 use App\Http\Middleware\FrameDevServerResponse;
 use App\Http\Middleware\SecureCookiesOnHttps;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\AuthenticateSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,7 +27,11 @@ return Application::configure(basePath: dirname(__DIR__))
         );
         $middleware->web(prepend: [SecureCookiesOnHttps::class]);
         $middleware->alias(['workspace' => \App\Http\Middleware\AuthorizeWorkspace::class]);
-        $middleware->web(append: [\App\Http\Middleware\RecordActivity::class]);
+        $middleware->web(append: [
+            EnsureActiveAccount::class,
+            AuthenticateSession::class,
+            \App\Http\Middleware\RecordActivity::class,
+        ]);
         $middleware->redirectUsersTo(fn (\Illuminate\Http\Request $request) => route(
             $request->user()->role === \App\Models\User::TECHNICIAN ? 'ui.monitoring' : 'dashboard'
         ));

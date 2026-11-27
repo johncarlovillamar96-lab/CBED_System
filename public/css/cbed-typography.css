@@ -1,0 +1,88 @@
+@font-face {
+    font-family: Inter;
+    src: url("/fonts/inter/InterVariable.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: Inter;
+    src: url("/fonts/inter/InterVariable-Italic.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: italic;
+    font-display: swap;
+}
+
+:root {
+    --cbed-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --cbed-text-xs: .8125rem;
+    --cbed-text-sm: .9375rem;
+    --cbed-text-md: 1rem;
+    --cbed-heading-1: clamp(1.5rem, 1.25rem + .85vw, 1.875rem);
+    --cbed-heading-2: 1.375rem;
+    --cbed-heading-3: 1.125rem;
+    --cbed-line-body: 1.55;
+    --cbed-line-heading: 1.2;
+    --cbed-weight-medium: 500;
+    --cbed-weight-semibold: 600;
+    --cbed-weight-bold: 700;
+}
+
+html, body { font-family: var(--cbed-font); }
+:is(button, input, select, textarea) { font-family: inherit; }
+:is(table, .tabular-nums) { font-variant-numeric: lining-nums tabular-nums; }
+
+@media screen {
+    body {
+        font-size: var(--cbed-text-md);
+        line-height: var(--cbed-line-body);
+    }
+
+    :is(h1, h2, h3, h4) {
+        font-weight: var(--cbed-weight-bold);
+        line-height: var(--cbed-line-heading);
+        text-wrap: balance;
+    }
+
+    h1 { font-size: var(--cbed-heading-1); }
+    h2 { font-size: var(--cbed-heading-2); }
+    h3 { font-size: var(--cbed-heading-3); }
+    h4 { font-size: var(--cbed-text-md); }
+
+    :is(.cbed-page-header, .pcc-mating-hero) h1 {
+        font-size: var(--cbed-heading-1);
+        letter-spacing: -.025em;
+    }
+
+    .cbed-nav-link { font-size: var(--cbed-text-sm); font-weight: var(--cbed-weight-medium); line-height: 1.35; }
+    .cbed-section-label { font-size: .72rem; line-height: 1.35; letter-spacing: .09em; }
+
+    :is(.dashboard-stat-card, .management-summary-card, .pcc-stat-card) :is(.text-2xl, .text-3xl) {
+        font-size: clamp(1.45rem, 1.25rem + .6vw, 1.875rem);
+        font-weight: var(--cbed-weight-bold);
+        line-height: 1.15;
+        letter-spacing: -.025em;
+        font-variant-numeric: lining-nums tabular-nums;
+    }
+
+    :is(.dashboard-stat-card, .management-summary-card, .pcc-stat-card) .text-xs { font-size: var(--cbed-text-xs); line-height: 1.4; }
+    :is(table.text-sm, .calf-records-table, .calf-history-table, .inventory-data-table) { font-size: var(--cbed-text-sm); line-height: 1.45; }
+    table :is(thead th, .cbed-record-summary) { font-weight: var(--cbed-weight-semibold); }
+    table thead.text-xs th { font-size: var(--cbed-text-xs); line-height: 1.35; }
+
+    :is(.cbed-add-button, .cbed-save-button, .action-primary, .action-secondary, .cbed-mobile-filter-toggle) {
+        font-size: var(--cbed-text-sm);
+        font-weight: var(--cbed-weight-semibold);
+        line-height: 1.35;
+    }
+
+    :is(.form-input, .filter-input) { font-size: var(--cbed-text-sm); line-height: 1.45; }
+    form label.text-sm { line-height: 1.4; }
+}
+
+@media screen and (max-width: 1023px) {
+    :is(.cbed-mobile-editor, .cbed-mobile-filters, .login-form) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+        font-size: max(1rem, 16px);
+    }
+}

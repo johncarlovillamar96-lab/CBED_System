@@ -11,7 +11,7 @@
 <x-admin-page-header title="Welcome to CBED Data System" description="Monitor farmers, carabaos, and enterprise development activities." breadcrumb="Dashboard" />
 
 <!-- Statistics -->
-<div class="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+<div class="cbed-mobile-dashboard-grid mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
     <div class="cbed-card dashboard-stat-card management-summary-card p-5">
         <div class="flex items-center justify-between">

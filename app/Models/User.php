@@ -17,15 +17,26 @@ class User extends Authenticatable
         self::NON_ADMIN => 'Non-admin',
     ];
 
-    protected $fillable = ['name', 'first_name', 'last_name', 'email', 'password', 'role'];
+    public const SEX_OPTIONS = ['male' => 'Male', 'female' => 'Female'];
 
-    protected $attributes = ['role' => self::NON_ADMIN];
+    protected $fillable = ['name', 'first_name', 'last_name', 'sex', 'email', 'password', 'role', 'is_active'];
+
+    protected $attributes = ['role' => self::NON_ADMIN, 'is_active' => true];
 
     protected $hidden = ['password', 'remember_token'];
 
     protected function casts(): array
     {
-        return ['password' => 'hashed', 'email_verified_at' => 'datetime'];
+        return ['password' => 'hashed', 'email_verified_at' => 'datetime', 'is_active' => 'boolean'];
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (User $user) {
+            if ($user->isDirty('password') || ($user->isDirty('is_active') && ! $user->is_active)) {
+                $user->setRememberToken(null);
+            }
+        });
     }
 
     public function isAdmin(): bool

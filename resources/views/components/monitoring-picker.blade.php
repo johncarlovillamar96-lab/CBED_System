@@ -1,6 +1,6 @@
 @props(['id', 'label', 'name' => null])
 
-<div x-data="monitoringPicker()" @click.outside="open = false"
+<div x-data="monitoringPicker()" @click.outside="open = false" @monitoring-selection="syncSelection()"
     @keydown.escape="if (open) { $event.preventDefault(); $event.stopPropagation(); closePicker(); }"
     class="relative min-w-0 text-sm">
     <span id="{{ $id }}-label" class="font-semibold">{{ $label }}</span>

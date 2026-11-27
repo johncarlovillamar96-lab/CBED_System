@@ -2237,9 +2237,9 @@ const registerFarmerPage = () => {
                 <head>
                     <meta charset="UTF-8">
                     <title>CBED Farmer Report</title>
+                    <link rel="stylesheet" href="${new URL('/css/cbed-typography.css?v=1', location.origin)}">
                     <style>
                         body {
-                            font-family: Arial, sans-serif;
                             padding: 20px;
                         }
                         h1 { color: #0b1f3a; }
@@ -2293,7 +2293,10 @@ const registerFarmerPage = () => {
                     </table>
 
                     <script>
-                        window.onload = () => window.print();
+                        window.onload = async () => {
+                            await document.fonts?.ready;
+                            window.print();
+                        };
                     <\/script>
                 </body>
                 </html>

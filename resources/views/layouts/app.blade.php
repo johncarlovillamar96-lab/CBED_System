@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <title>@yield('title', 'CBED Data System')</title>
@@ -12,25 +12,30 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="/css/table-drag-scroll.css">
     <link rel="stylesheet" href="/css/cbed-buttons.css">
+    <link rel="stylesheet" href="/css/cbed-mobile.css?v=3">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" media="(max-width: 1023px)">
     <script defer src="/js/table-drag-scroll.js"></script>
+    <script defer src="/js/cbed-mobile.js?v=3"></script>
 
     <style>
         [x-cloak] { display: none !important; }
-        body {
-            font-family: Arial, sans-serif;
-        }
 
         .navy {
             background: #0b1f3a;
         }
     </style>
+    @include('partials.typography')
 </head>
 
 <body class="bg-slate-100 text-slate-800">
 
-    <div class="min-h-screen lg:flex" x-data="{ cooperativeImportOpen: false }">
+    <div class="cbed-mobile-frame min-h-screen lg:flex" x-data="{ cooperativeImportOpen: false, sidebarOpen: false }" @keydown.escape.window="sidebarOpen = false">
 
-        <aside class="navy text-white w-full lg:w-64 p-5">
+        <div x-cloak x-show="sidebarOpen" @click="sidebarOpen = false" class="fixed inset-0 z-50 bg-slate-950/50 lg:hidden"></div>
+        <aside id="cbed-sidebar" class="cbed-legacy-sidebar navy text-white w-full lg:w-64 p-5" :class="{ 'mobile-open': sidebarOpen }">
+
+            <button type="button" @click="sidebarOpen = false" aria-label="Close menu"
+                class="cbed-mobile-menu-close absolute right-2 top-2 rounded-lg text-white">×</button>
 
             <div class="text-xl font-bold">
                 CBED Data System
@@ -107,6 +112,7 @@
                 </form>
             </div>
         </div>
+        @auth @include('partials.mobile-navigation') @endauth
     </div>
 
     @include('partials.athena')

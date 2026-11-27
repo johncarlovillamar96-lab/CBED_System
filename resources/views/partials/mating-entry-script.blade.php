@@ -133,8 +133,8 @@ function breedingPage(monitoringMode = false){return {
         }));
     },
 
-    async loadSemenBulls(){
-        const result=await this.request(this.api.bulls);
+    async loadSemenBulls(cached = null){
+        const result=cached ?? await this.request(this.api.bulls);
         const data=Array.isArray(result)?result:Array.isArray(result.data)?result.data:
             (Array.isArray(result.data?.data)?result.data.data:[]);
 
@@ -416,7 +416,7 @@ function breedingPage(monitoringMode = false){return {
         this.$root.showModal();
         if (!this.semenBulls.length) {
             try {
-                await this.loadSemenBulls();
+                await this.loadSemenBulls(await context.lookupBulls?.());
                 if (!this.monitoringMatingContext || this.bulkRows[0]?._key !== rowKey) return;
                 const row = this.bulkRows[0];
                 const bull = this.semenBulls.find(item => item.id === row.semen_bull_id);
